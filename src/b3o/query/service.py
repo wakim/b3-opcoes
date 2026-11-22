@@ -38,11 +38,12 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
 
+from b3o.derive.calendar import trading_sessions
 from b3o.derive.realized import DEFAULT_GAP_THRESHOLD, flag_unexplained
 from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
@@ -241,7 +242,7 @@ class Health:
     """Maior `refdate` presente no lake (a verdade do dado, P-C)."""
 
     age_sessions: object
-    """Pregões entre `ingest_state.last_session` e a última sessão do lake."""
+    """Pregões de atraso contra a última sessão **esperada** (D-1, calendário B3)."""
 
     lake_sessions: object
     """Quantas sessões o lake tem (todas as partições)."""
@@ -308,11 +309,15 @@ class Health:
     as_of: str | None
     """`updated_at` do `ingest_state` (ISO com offset, P-D)."""
 
+    expected_last_session: str | None = None
+    """Última sessão exigível hoje (estritamente antes de hoje, calendário B3)."""
+
     def to_dict(self) -> dict[str, object]:
         """Serialização JSON (ordem estável, nada de `date` solto)."""
         return {
             "last_session": self.last_session,
             "age_sessions": self.age_sessions,
+            "expected_last_session": self.expected_last_session,
             "lake_sessions": self.lake_sessions,
             "lake_years": self.lake_years,
             "counts_by_date": self.counts_by_date,
@@ -866,6 +871,7 @@ class QueryService:
             last_session_value = last_session.isoformat() if last_session else None
 
         age_sessions = self._age_sessions(state, sessions, state_error)
+        expected = _expected_last_session(date.today())
         counts_by_market, discarded = self._markets(prepare)
         skipped_lines = self._skipped(state, state_error)
         rate_source = self._rate_source()
@@ -877,6 +883,7 @@ class QueryService:
         return Health(
             last_session=last_session_value,
             age_sessions=age_sessions,
+            expected_last_session=expected.isoformat() if expected else None,
             lake_sessions=lake_sessions,
             lake_years=lake_years,
             counts_by_date=counts_by_date,
@@ -1017,12 +1024,21 @@ class QueryService:
         state: IngestState | None,
         sessions: list[date],
         state_error: SourceError | None,
+        *,
+        today: date | None = None,
     ) -> object:
-        """Idade em pregões do **calendário do lake**: state × dado presente.
+        """Idade em pregões: quantas sessões o lake está **atrás do esperado**.
 
-        `0` significa que o `ingest_state` cobre a última sessão do lake. Se o
-        estado não tem `last_session` (nunca rodou, ou o arquivo se perdeu), a
-        idade é o lake inteiro — o state está atrás de tudo o que existe.
+        O `last_session` do `ingest_state` é, por construção, a maior data do lake
+        — comparar o estado com o próprio lake devolve **0 sempre** (defeito
+        achado na revisão do F0: o `health` não acusaria fonte parada). O
+        esperado é a última sessão **estritamente antes de hoje** no calendário
+        da B3 (dia útil menos feriado, ADR-015), porque o arquivo é **D-1**: a
+        sessão de hoje só é exigível amanhã.
+
+        `today` existe para a borda injetar a data (o relógio aqui mede
+        defasagem, não é a data de referência do dado — P-C continua valendo).
+        Sem `today`, usa o relógio local do processo.
         """
         if state_error is not None:
             return _error_item(state_error)
@@ -1030,7 +1046,17 @@ class QueryService:
             return _missing_lake_item(self.data_dir)
         if state is None or state.last_session is None:
             return len(sessions)
-        return sum(1 for day in sessions if day > state.last_session)
+        reference = today or date.today()
+        expected = _expected_last_session(reference)
+        if state.last_session >= expected:
+            return 0
+        behind = [day for day in sessions if state.last_session < day <= expected]
+        # Sessões esperadas que nem existem no lake também contam: a idade é a
+        # distância no calendário da B3, não o que por acaso foi baixado.
+        expected_days = trading_sessions(
+            state.last_session + timedelta(days=1), expected, known=tuple(sessions)
+        )
+        return max(len(behind), len(expected_days))
 
     def _markets(self, prepare: PrepareState) -> tuple[object, object]:
         """Contagens por mercado (D3): tudo do sidecar, separando os descartados."""
@@ -1327,6 +1353,20 @@ class QueryService:
         if not isinstance(raw, list):
             return ()
         return tuple(str(item) for item in raw)
+
+
+def _expected_last_session(today: date) -> date | None:
+    """Última sessão exigível **estritamente antes de hoje** (calendário B3, ADR-015).
+
+    O COTAHIST do ano corrente vem como D-1: a sessão de hoje só é exigível
+    amanhã. Devolve `None` se o calendário não tiver sessão no intervalo (não
+    deve acontecer; falha explícita em vez de data inventada).
+    """
+    limit = today - timedelta(days=1)
+    if limit.year < 2000:
+        return None
+    sessions = trading_sessions(date(limit.year - 1, 12, 1), limit)
+    return sessions[-1] if sessions else None
 
 
 def _missing_lake_item(data_dir: Path) -> dict[str, object]:

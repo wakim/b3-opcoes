@@ -256,10 +256,7 @@ def fetch_open_interest(date_ref: date, *, client: httpx.Client) -> OIResult: ..
 - SIMH 18/02/2026: ×2 (grupamento).
 - LOGG 06/2026: Δ ≈ R$ 2,86 (dividendo).
 - ABEVX131: 12,04 → 12,00 → 11,94 (dois proventos contíguos).
-- OI 19/11/2026: `PETRPZ26` = 12.651.200 contratos em aberto; `PETRA365`
-  EQUITY CALL com Quantidade descoberta 3.500, coberta 100 (extraia a linha do
-  CSV salvo em `C:\Users\wakim\AppData\Local\Temp\opencode\oi_20261119.csv`
-  para conferir byte a byte).
+- OI 19/11/2026: `PETRPZ26` = 12.651.200 contratos em aberto (futuro); para **opções** o `Contratos em aberto` é `-` (sempre — ver AGENTS) e a posição é `Total de posições`: `PETRA365` EQUITY CALL = total **22.300** (coberta 100, bloqueada 3.500, descoberta 18.700 — em ações-objeto, não contratos).
 - Curva PRE 19/11/2026: DI x pré 1 du = 13,65; 21 du = 13,72; 41 du = 13,76
   (aprox.; confira no CSV real baixado na hora).
 - ITR 2026: BCO BRASIL S.A. (CD_CVM 001023), DT_REFER 2026-03-31, VERSAO 1,

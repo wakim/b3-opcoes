@@ -80,6 +80,15 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** `uv.lock` muda com frequência (diff grande e semântico — sempre commit separado `chore(deps): …`); Python permanece 3.12 e Node 22 (convenção/spec — upgrade de linguagem NÃO é "atualização de biblioteca" e é decisão de spec); pacotes que não sobem sem quebrar ficam registrados aqui com o motivo.
 - **Revisar em:** a cada sessão que tocar dependências.
 
+## ADR-009 — Caminho do lake: `data/<tabela>/year=YYYY` (sem prefixo `lake/`)
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** médio (mover partições)
+- **Contexto:** P-A dizia `data/lake/<tabela>/year=YYYY`; o contrato da Onda B especificou (e B1/B3/B4/B5 implementaram) `data/<tabela>/year=YYYY` direto — `raw_cotahist`, `rates_di`, `earnings`, `open_interest` etc. como filhos imediatos de `data_dir`.
+- **Decisão:** adotar o caminho plano (o contrato da onda venceu o detalhe de pasta do P-A). Registra-se aqui para o P-A não voltar a criar dúvida.
+- **Por quê:** um nível de nesting a menos, `B3_DATA_DIR` já é o "lake" (o único conteúdo de `/data` são as tabelas + `ingest_state.json` + `raw/`), e todas as ondas B já gravaram nesse layout com testes.
+- **Consequência:** `ingest_state.json` continua em `data/ingest_state.json` (esquema do `.gitkeep`); `data/raw/` continua como cache de downloads. Mover para `data/lake/` exigiria regenerar partições — só se o dono pedir.
+- **Revisar em:** se o dono quiser o prefixo de volta (questão estética, não funcional).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

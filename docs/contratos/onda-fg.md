@@ -231,10 +231,19 @@ Para cada `refdate` (em ordem crescente; `--backfill` itera 2024→2026):
 4. **DF**: `log_df_interp(du = round(T·252), curva_da_sessão)`; sem curva →
    `no_rates`, papel fora de IV.
 5. **forward** por `(papel, vencimento)` com `forward_by_parity` (irmã europeia
-   preferida; call americana só OTM sem ex-div; put 'A' exclui o par).
+   preferida; call americana só OTM sem ex-div; put 'A' exclui o par). **O preço
+   que entra é o `close` do dia** (ADR-017), não o mid; `spot` do dia é o
+   argumento que separa OTM de ITM.
 6. **IV + gregas** por série (Black-76 sobre F do vencimento), com
    `american_call_ex_div` (call americana ITM e ex-div antes do vencimento →
-   flag e fora do smile) e `quote_factor` aplicado no preço.
+   flag e fora do smile) e `quote_factor` aplicado no preço. A IV sai em
+   **fração** de `iv.py` — a tabela grava `×100` (`iv_pct`).
+   **Smile = IV por strike, uma linha por strike**: quando call E e put E do
+   mesmo strike têm IV válida, a IV do strike é a **média das duas** (paridade
+   manda que sejam iguais; a média divide o ruído de tick) e o `Δ` do ponto é o
+   da perna **OTM** (o sinal do Δ diz o lado; nunca a média de Δ de call com Δ
+   de put, que se anula). Perna sem IV (intrínseco, preço fora de faixa) não
+   entra; strike sem nenhuma perna válida fica fora.
 7. **validadores** (`check_chain`) por vencimento → `inconsistent` fora do
    smile.
 8. **ATM** por vencimento (`atm_by_expiry`) e **30d** (`atm_interpolate_30d`);

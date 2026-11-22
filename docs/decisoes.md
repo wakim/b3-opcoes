@@ -161,6 +161,23 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** o `PLAN.md`, este log e o `AGENTS.md` passam a ser a memória pública do projeto; segredo continua só em `.env` (fora do git) e não há credencial em arquivo versionado.
 - **Revisar em:** se o dono quiser outro fluxo (branch por sessão, PR).
 
+## ADR-017 — Preço para IV/forward é o fechamento do negócio (não o mid do book)
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** médio (recalcular o histórico)
+- **Contexto:** o contrato da Onda D e o da C falavam em "mid" para IV e forward (`ParaityQuote.call_mid`). Medição em 3 datas × 5 ações: o book de fechamento da B3 é largo e velho — PETRX44 (K=4316, 18/12) tinha `70/167` e fechamento 157 ¢; o mid (118,5) dá IV 24,8% e o fechamento dá 32,8%, e o call do mesmo strike fecha em 158 ¢ (IV 32,84%).
+- **Decisão:** a série/forward/ATM usam o **`close`** (último negócio do dia) como preço de inversão. `best_bid`/`best_ask` continuam guardados e alimentam **só** a classificação de liquidez (§6.9) e as flags (`one_sided`, `wide_spread`). O `mid` fica para `structure_eval` (F4), onde o que importa é o preço executável.
+- **Por quê:** paridade E/E com fechamento dá mediana 1,2 vol point contra 4,8 com mid; o fechamento é uma transação real, o book de fim de dia é uma foto de intenções.
+- **Consequência:** `metrics_series.mid` passa a carregar o `close` (documentado no schema); quem quiser o mid lê `trades`/book da tabela bruta. Recalcular se o dono preferir mid.
+- **Revisar em:** F4 (estruturas) e no primeiro dia com book realmente líquido.
+
+## ADR-018 — Paridade E/E: critério do PLAN não é atingível (pendente do dono)
+
+- **Data:** 2026-11-22 · **Status:** **pendente de ratificação** · **Custo de reverter:** baixo (é critério, não código)
+- **Contexto:** o PLAN pede `|IV_call − IV_put|` com mediana ≤ 0,5 e P90 ≤ 1,5 vol point nos pares E/E ATM ±10%. Medido com a melhor convenção de preço (fechamento, ADR-017): **mediana 1,22 / P90 5,14** (19/11, n=140), **1,09 / 6,33** (13/11, n=173) e **1,84 / 16,96** (15/10, n=202). A causa é física: vega no ATM de 20 dias ≈ 4,8 ¢ por ponto de vol, então **1 centavo** de diferença entre call e put já é 0,21 vol point; o tick da B3 é 1 ¢ e os fechamentos das duas pernas vêm de negócios em horários diferentes. Pares com book dos dois lados e spread ≤ 5% dão **0,85** de mediana — mas n≈5 por dia.
+- **Decisão tomada agora:** registrar a medição, **não** marcar o critério no PLAN e **não** afrouxá-lo por conta própria (P-L: limiar não se move depois de ver o resultado).
+- **Proposta ao dono:** trocar o alvo por **medição em duas camadas** — (a) pares com book dos dois lados e `spread ≤ 5%`: mediana ≤ 0,5 e P90 ≤ 1,5 (é aí que a paridade vale); (b) todos os pares E/E ATM ±10% com fechamento: mediana ≤ 2,0 e P90 ≤ 8 (limite de qualidade do dado, não do modelo), incluindo o `n` no relatório. As duas juntas provam o que o critério quer provar: se o par líquido concordar e o resto divergir por ruído de tick, o forward/taxa/preço do pipeline estão certos.
+- **Revisar em:** decisão do dono na próxima leitura deste log.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e131c">
+<title>Opções B3 — mockup mobile</title>
+<style>
+  :root{
+    --bg:#0b0f16; --panel:#151c28; --panel2:#1b2433; --line:#2a3547;
+    --txt:#e6ecf5; --muted:#93a3b8; --dim:#6b7c93;
+    --teal:#2dd4bf; --amber:#f5b84b; --red:#f97b7b; --blue:#63a8f0; --green:#7bd88f;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --safe:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--txt)}
+  body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+
+  .stage{min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:0}
+  .phone{
+    width:100%;max-width:412px;height:100dvh;background:var(--bg);
+    display:flex;flex-direction:column;position:relative;overflow:hidden
+  }
+  @media(min-width:560px){
+    .stage{padding:28px;background:radial-gradient(circle at 50% 0%,#131a25,#080b11 70%)}
+    .phone{height:844px;border-radius:34px;border:1px solid #2c3849;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+  }
+
+  /* ---------- app bar ---------- */
+  .appbar{
+    padding:14px 16px 10px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    background:rgba(14,19,28,.96);backdrop-filter:blur(8px);flex:0 0 auto
+  }
+  .appbar h1{margin:0;font-size:16px;letter-spacing:-.01em}
+  .appbar h1 b{color:var(--teal);font-weight:600}
+  .sess{font:10.5px/1.3 var(--mono);color:var(--dim);text-align:right}
+  .sess b{color:var(--amber)}
+
+  main{flex:1 1 auto;overflow-y:auto;overscroll-behavior:contain;padding:14px 14px 96px;scroll-behavior:smooth}
+  .screen{display:none} .screen.on{display:block}
+
+  /* ---------- componentes ---------- */
+  .badge{display:inline-block;font:600 10.5px/1 var(--mono);padding:4px 7px;border-radius:5px;letter-spacing:.03em;white-space:nowrap}
+  .b-ok{background:#12332f;color:var(--teal);border:1px solid #1d4f48}
+  .b-warn{background:#332a12;color:var(--amber);border:1px solid #57451c}
+  .b-bad{background:#331a1a;color:var(--red);border:1px solid #5a2a2a}
+  .b-mut{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+  .sec{font:600 10.5px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--dim);margin:20px 4px 9px}
+
+  /* lista de papéis */
+  .row{display:flex;align-items:center;gap:12px;width:100%;background:var(--panel);border:1px solid var(--line);
+       border-radius:14px;padding:13px 14px;margin-bottom:9px;color:inherit;text-align:left;font:inherit;cursor:pointer}
+  .row:active{background:var(--panel2)}
+  .row .l{min-width:0;flex:1 1 auto}
+  .row .tk{font:600 15px/1.2 var(--mono);letter-spacing:.01em}
+  .row .px{font:11.5px/1.4 var(--mono);color:var(--muted);margin-top:3px}
+  .row .m{display:flex;gap:11px;margin-top:7px;font:10.5px/1.2 var(--mono);color:var(--dim);flex-wrap:wrap}
+  .row .m b{color:#c3cfdd;font-weight:500}
+  .row .r{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+
+  /* hero do ticker */
+  .hero{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:12px}
+  .hero .big{font-size:30px;letter-spacing:-.02em;line-height:1}
+  .hero .big small{font-size:12px;color:var(--muted);font-family:var(--mono);margin-left:7px}
+
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .cell{background:var(--panel);padding:11px 10px}
+  .cell .k{font:600 9.5px/1 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--dim);margin-bottom:6px;display:block}
+  .cell .v{font:14px/1.2 var(--mono);color:var(--txt)}
+  .cell .v small{display:block;font-size:10px;color:var(--dim);margin-top:2px}
+
+  /* segmented */
+  .seg{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;margin-bottom:8px;scrollbar-width:none}
+  .seg::-webkit-scrollbar{display:none}
+  .seg button{flex:0 0 auto;font:600 11.5px/1 var(--mono);letter-spacing:.04em;
+    background:var(--panel2);border:1px solid var(--line);color:var(--muted);
+    padding:9px 13px;border-radius:999px;min-height:34px}
+  .seg button.on{background:#12332f;border-color:#1d4f48;color:var(--teal)}
+
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 10px 6px;margin-bottom:10px}
+  .chartbox h4{margin:0 4px 2px;font:600 10px/1.3 var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .chartbox p{margin:0 4px 6px;font-size:11px;color:var(--dim)}
+  svg.chart{display:block;width:100%;height:auto}
+
+  /* cadeia mobile */
+  .chain{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .crow{display:grid;grid-template-columns:1fr 84px 1fr;align-items:center;gap:6px;
+        padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .crow:last-child{border-bottom:none}
+  .crow:active{background:var(--panel2)}
+  .crow.atm{background:#16262a}
+  .side{font:12.5px/1.35 var(--mono)}
+  .side.put{text-align:left} .side.call{text-align:right}
+  .side .p{color:var(--txt);font-weight:600}
+  .side .d{color:var(--dim);font-size:10px;display:block;margin-top:2px}
+  .mid{text-align:center}
+  .mid .k{font:600 12.5px/1.2 var(--mono);color:var(--txt);display:block}
+  .mid .t{font:9px/1 var(--mono);color:var(--dim);letter-spacing:.06em;text-transform:uppercase;display:block;margin-top:3px}
+  .crow.atm .mid .k{color:var(--teal)}
+  .detail{display:none;padding:0 12px 11px;border-bottom:1px solid var(--line);background:#111825}
+  .detail.on{display:block}
+  .dg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;font:10.5px/1.35 var(--mono);color:var(--muted)}
+  .dg b{display:block;color:#c3cfdd;font-weight:500;font-size:11.5px}
+
+  /* dias da série */
+  .day{display:grid;grid-template-columns:58px 1fr auto;gap:10px;align-items:center;
+       padding:11px 12px;border-bottom:1px solid var(--line);font:12px/1.3 var(--mono)}
+  .day:last-child{border-bottom:none}
+  .day .d{color:var(--muted)}
+  .day .v{color:#c3cfdd;font-size:11px}
+  .day .v b{color:var(--txt);font-weight:600}
+
+  /* diário */
+  .jcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:9px}
+  .jtop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+  .jtop .d{font:11px/1 var(--mono);color:var(--dim)}
+  .jcard .t{font-size:13.5px;color:#dbe5f2;margin:0 0 6px}
+  .jcard .s{font:11.5px/1.5 var(--mono);color:var(--muted);margin:0}
+  .jcard .s b{color:var(--amber);font-weight:500}
+
+  .expander{width:100%;text-align:left;background:transparent;border:1px dashed #3b4a61;color:var(--muted);
+    border-radius:12px;padding:11px 13px;font:11.5px/1.4 var(--mono);min-height:44px}
+  .expander .body{display:none;margin-top:9px;color:#a9b7c7;line-height:1.7}
+  .expander.on .body{display:block}
+  .expander.on{border-style:solid}
+
+  .note{font-size:11px;color:var(--dim);margin:8px 4px 0;line-height:1.6}
+
+  /* bottom nav */
+  .nav{
+    position:absolute;left:0;right:0;bottom:0;display:grid;grid-template-columns:repeat(4,1fr);
+    background:rgba(14,19,28,.97);backdrop-filter:blur(12px);border-top:1px solid var(--line);
+    padding:6px 4px calc(6px + var(--safe))
+  }
+  .nav button{background:none;border:none;color:var(--dim);font:600 9.5px/1 var(--mono);letter-spacing:.06em;
+    display:flex;flex-direction:column;align-items:center;gap:5px;padding:6px 0;min-height:46px;text-transform:uppercase}
+  .nav button.on{color:var(--teal)}
+  .nav svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+  .back{display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:var(--muted);
+    font:600 12px var(--mono);padding:4px 0;margin:-2px 0 8px;min-height:36px}
+  .back:active{color:var(--teal)}
+  .poscard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:13px 14px;margin-bottom:9px}
+  .ph{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}
+  .ph .t{font:600 14px var(--mono)}
+  .legs{font:11.5px/1.5 var(--mono);color:var(--muted);margin:0 0 8px}
+  .pnl{font:600 16px var(--mono)}
+  .posmini{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px;
+    border-top:1px solid var(--line);padding-top:9px;font:10px/1.3 var(--mono);color:var(--dim)}
+  .posmini b{display:block;color:#c3cfdd;font-size:12px;font-weight:500;margin-top:2px}
+  .lvl{display:flex;flex-direction:column;gap:1px;background:var(--line);border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;margin-bottom:12px}
+  .lvl button{background:var(--panel);padding:12px 14px;font:12.5px/1.4 var(--mono);color:#c3cfdd;
+    display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;border:none;
+    text-align:left;min-height:44px}
+  .lvl button:active{background:var(--panel2)}
+  .lvl button small{color:var(--dim);font-size:11px}
+
+  /* ---- aprender (dentro do app) ---- */
+  .fichas details{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    margin-bottom:9px;overflow:hidden}
+  .fichas details[open]{border-color:#33415a}
+  .fichas summary{list-style:none;cursor:pointer;padding:13px 14px;display:flex;gap:10px;align-items:flex-start;min-height:52px}
+  .fichas summary::-webkit-details-marker{display:none}
+  .fichas summary:active{background:var(--panel2)}
+  .fichas .n{font:600 10.5px/1.6 var(--mono);color:var(--dim);min-width:16px}
+  .fichas .tt{flex:1;min-width:0}
+  .fichas .tt b{display:block;font-size:14px;font-weight:600;letter-spacing:-.01em}
+  .fichas .tt small{display:block;font-size:12px;color:var(--muted);margin-top:2px;line-height:1.45}
+  .fichas .body{padding:0 14px 14px;border-top:1px solid var(--line);margin-top:-1px}
+  .blk{margin-top:12px}
+  .blk .lbl{font:600 9px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:5px}
+  .blk p{margin:0;font-size:13.5px;color:#cfd9e6}
+  .blk.trap{background:#1d1a12;border-left:2px solid var(--amber);border-radius:0 8px 8px 0;padding:10px 12px}
+  .blk.trap .lbl{color:var(--amber)}
+  .blk.trap p{color:#e6d8bd}
+  .blk.ex{background:#101a20;border-left:2px solid var(--blue);border-radius:0 8px 8px 0;padding:10px 12px}
+  .blk.ex .lbl{color:var(--blue)}
+  .blk.ex p{font-family:var(--mono);font-size:11.5px;color:#bcd2e4;line-height:1.6}
+
+  .cell.tap{cursor:pointer}
+  .cell.tap .k:after{content:"?";display:inline-flex;align-items:center;justify-content:center;
+    width:12px;height:12px;margin-left:5px;border:1px solid #35435a;border-radius:999px;
+    font-size:8px;color:var(--dim);vertical-align:1px}
+
+  .sheet{position:absolute;inset:0;z-index:30;display:none}
+  .sheet.on{display:block}
+  .sheet-bg{position:absolute;inset:0;background:rgba(4,7,11,.62)}
+  .sheet-panel{position:absolute;left:0;right:0;bottom:0;max-height:84%;overflow-y:auto;
+    background:var(--panel);border-top:1px solid #33415a;border-radius:18px 18px 0 0;
+    padding:12px 14px calc(20px + var(--safe))}
+  .sheet-x{width:100%;background:none;border:none;color:var(--dim);font:600 10px var(--mono);
+    letter-spacing:.1em;text-transform:uppercase;padding:6px 0 10px}
+  .sheet-x:before{content:"—";display:block;width:34px;height:3px;background:#35435a;
+    border-radius:2px;margin:0 auto 8px}
+</style>
+</head>
+<body>
+<div style="padding:10px 14px;margin:12px;border:1px solid #888;border-radius:6px;font:13px system-ui">Nota (spec v0.4): PoP, densidade neutra ao risco e preço vivo saíram da v1. O mockup é referência de estrutura; onde divergir, vale <code>docs/spec.md</code>.</div>
+<div class="stage">
+<div class="phone">
+
+  <div class="appbar">
+    <h1>Opções <b>B3</b></h1>
+    <div class="sess">sessão <b id="sess">19/11</b> · D-1<br><span id="fresh">íntegro</span></div>
+  </div>
+
+  <main id="main">
+
+    <!-- ================= HOJE ================= -->
+    <section class="screen on" id="s-hoje">
+      <div class="hero">
+        <div>
+          <div class="big">48<small>candidatos</small></div>
+        </div>
+        <div style="text-align:right;font:11px/1.5 var(--mono);color:var(--dim)">7 papéis · 2 novos<br>25 líquidos de 118</div>
+      </div>
+
+      <div class="seg" style="margin-bottom:12px">
+        <button class="on">Todos</button><button>Premium caro</button><button>Barato</button><button>Skew</button>
+      </div>
+
+      <div id="list"></div>
+
+      <button class="expander" onclick="this.classList.toggle('on')">
+        4 papéis fora do corte — ver por quê
+        <span class="body">
+          MGLU3 — 14 séries com spread &gt; 15%<br>
+          AZUL4 — 9 séries sem negócio em 5 pregões<br>
+          CSNA3 — butterfly negativo (cotação inconsistente)<br>
+          VIVT3 — liquidez de papel abaixo de R$ 1,8 M/dia
+        </span>
+      </button>
+      <p class="note">O ranking não tem score único: os componentes estão à vista para você discordar.</p>
+    </section>
+
+    <!-- ================= TICKER ================= -->
+    <section class="screen" id="s-ticker">
+      <button class="back" onclick="go('hoje')">‹ Hoje</button>
+      <div class="hero">
+        <div>
+          <div class="big">PETR4<small>41,18 <span style="color:var(--red)">−1,04%</span></small></div>
+        </div>
+        <div class="badge b-warn">premium caro</div>
+      </div>
+
+      <div class="grid3" style="margin-bottom:12px">
+        <div class="cell"><span class="k">IV ATM 30d</span><div class="v">28,4<small>p82 · 12m</small></div></div>
+        <div class="cell"><span class="k">VRP</span><div class="v" style="color:var(--amber)">+6,3<small>z +1,9</small></div></div>
+        <div class="cell"><span class="k">RV20</span><div class="v">22,1<small>60d: 24,7</small></div></div>
+        <div class="cell"><span class="k">Exp. move</span><div class="v">±7,0%<small>até 18/dez</small></div></div>
+        <div class="cell"><span class="k">RR / BFLY</span><div class="v">−4,2<small>+2,1</small></div></div>
+        <div class="cell"><span class="k">Dias p/ liq.</span><div class="v">2,4<small>OI 68k</small></div></div>
+      </div>
+
+      <div class="seg" id="seg-chart">
+        <button class="on" data-c="term">Termo</button>
+        <button data-c="ivrv">IV vs real.</button>
+        <button data-c="smile">Smile</button>
+        <button data-c="payoff">Payoff</button>
+      </div>
+      <div class="chartbox">
+        <h4 id="chart-t">Estrutura a termo</h4>
+        <p id="chart-p">ATM por vencimento · tracejado = 30 dias atrás</p>
+        <div id="chart"></div>
+      </div>
+
+      <div class="sec" style="margin-top:16px">Cadeia · 18/dez/2026</div>
+      <div class="seg">
+        <button class="on">ATM ±3</button><button>Líquidas</button><button>Todas</button><button>Puts</button><button>Calls</button>
+      </div>
+      <div class="chain" id="chain"></div>
+      <p class="note">Toque numa linha para ver OI, volume, IV e spread em R$.</p>
+
+      <button class="expander" style="margin-top:12px" onclick="this.classList.toggle('on')">
+        4 séries deste vencimento não aparecem
+        <span class="body">
+          PETRM46 — sem negócio há 6 pregões<br>
+          PETRM48 — spread 31% (R$ 0,04 sobre mid de R$ 0,13)<br>
+          PETRM50 — bid = 0, book vazio<br>
+          PETRM52 — butterfly negativo entre vizinhas
+        </span>
+      </button>
+    </section>
+
+    <!-- ================= SÉRIE ================= -->
+    <section class="screen" id="s-serie">
+      <button class="back" onclick="go('ticker')">‹ PETR4</button>
+      <div class="hero" style="align-items:flex-start">
+        <div>
+          <div style="font:600 17px/1.2 var(--mono)">PETRZ400</div>
+          <div style="font:11.5px/1.5 var(--mono);color:var(--dim);margin-top:4px">put · 40,00 · 18/dez · 21 du</div>
+        </div>
+        <div class="badge b-ok">líquida</div>
+      </div>
+
+      <div class="grid3" style="margin-bottom:12px">
+        <div class="cell"><span class="k">Mid</span><div class="v">1,42<small>R$ 0,04 · 3,1%</small></div></div>
+        <div class="cell"><span class="k">IV</span><div class="v" style="color:var(--amber)">31,2<small>p88</small></div></div>
+        <div class="cell"><span class="k">Δ</span><div class="v">−0,41<small>Θ −0,56%/du</small></div></div>
+        <div class="cell"><span class="k">OI / vol</span><div class="v">12.400<small>830 hoje</small></div></div>
+        <div class="cell"><span class="k">ν</span><div class="v">+0,05<small>R$ / vol pt</small></div></div>
+        <div class="cell"><span class="k">Early-ex</span><div class="v">2,1%<small>+R$ 0,03</small></div></div>
+      </div>
+
+      <div class="chartbox">
+        <h4>Histórico da série</h4>
+        <p>prêmio e IV · linha = ajuste de strike por provento</p>
+        <div id="chart-serie"></div>
+      </div>
+
+      <div class="sec">Últimos pregões</div>
+      <div class="chain" style="padding:2px 0">
+        <div class="day"><span class="d">19/11</span><span class="v"><b>1,42</b> · 31,2</span><span class="badge b-ok">3,1%</span></div>
+        <div class="day"><span class="d">18/11</span><span class="v"><b>1,36</b> · 30,4</span><span class="badge b-ok">4,4%</span></div>
+        <div class="day"><span class="d">17/11</span><span class="v"><b>1,51</b> · 32,1</span><span class="badge b-ok">2,6%</span></div>
+        <div class="day"><span class="d">14/11</span><span class="v"><b>1,48</b> · 31,8</span><span class="badge b-warn">9,5%</span></div>
+        <div class="day"><span class="d">13/11</span><span class="v"><b>1,55</b> · 32,6</span><span class="badge b-ok">3,9%</span></div>
+      </div>
+      <p class="note">Em 14/11 o strike caiu de 40,04 para 40,00: R$ 0,04 de dividendo. É a mesma série — mas nenhuma métrica atravessa essa data.</p>
+    </section>
+
+    <!-- ================= DIÁRIO ================= -->
+    <section class="screen" id="s-diario">
+      <div class="hero">
+        <div class="big" style="font-size:22px">Diário</div>
+        <div class="badge b-mut">1 aguardando</div>
+      </div>
+
+      <div class="jcard">
+        <div class="jtop"><span class="d">19/11 · PETR4</span><span class="badge b-warn">aguardando</span></div>
+        <p class="t">Prêmio acima da realizada; skew puxa para o lado das puts.</p>
+        <p class="s">estrutura <b>trava put 40/38 dez</b> · crédito 0,71 · perda máx 1,29<br>
+        previsão <b>IV ATM &lt; 26 em 5 sessões</b></p>
+      </div>
+
+      <div class="jcard">
+        <div class="jtop"><span class="d">06/11 · VALE3</span><span class="badge b-mut">recusada</span></div>
+        <p class="t">Skew invertido — pareceu oportunidade, mas o volume do lado das calls era fino.</p>
+        <p class="s">previsão <b>skew volta a +2 em 10 sessões</b><br>
+        desfecho <b style="color:var(--green)">acertou em 9</b></p>
+      </div>
+
+      <div class="jcard">
+        <div class="jtop"><span class="d">21/10 · PETR4</span><span class="badge b-ok">operada</span></div>
+        <p class="t">Coberta antes do balanço.</p>
+        <p class="s">estrutura <b>coberta 42 out</b><br>
+        previsão <b>IV cai ≥ 3 pts após o evento</b><br>
+        desfecho <b style="color:var(--red)">errou: −1,2 pt</b></p>
+      </div>
+
+      <p class="note">3 de 12 previsões avaliadas. Sem esta tela, os gatilhos nunca são testados contra o desfecho.</p>
+    </section>
+
+    <!-- ================= CARTEIRA ================= -->
+    <section class="screen" id="s-carteira">
+      <div class="hero">
+        <div class="big" style="font-size:26px">Carteira</div>
+        <div class="badge b-warn">2 abertas</div>
+      </div>
+
+      <div class="grid3" style="margin-bottom:12px">
+        <div class="cell"><span class="k">Capital</span><div class="v">R$ 4.180<small>de R$ 20.000</small></div></div>
+        <div class="cell"><span class="k">P&amp;L aberto</span><div class="v" style="color:var(--red)">−R$ 52<small>−1,2%</small></div></div>
+        <div class="cell"><span class="k">Δ líquido</span><div class="v">−0,21<small>−R$ 8,60 / R$ 1</small></div></div>
+        <div class="cell"><span class="k">Θ líquido</span><div class="v" style="color:var(--green)">+R$ 14<small>por dia útil</small></div></div>
+        <div class="cell"><span class="k">ν líquido</span><div class="v">−R$ 0,03<small>por vol pt</small></div></div>
+        <div class="cell"><span class="k">PoP médio</span><div class="v">61%<small>no vencimento</small></div></div>
+      </div>
+
+      <div class="poscard">
+        <div class="ph"><span class="t">PETR4</span><span class="badge b-warn">evento em 15/12</span></div>
+        <p class="legs">trava de baixa · vende put 40 · compra put 38 · 18/dez</p>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+          <span class="pnl neg">−R$ 52</span>
+          <span style="font:11px var(--mono);color:var(--dim)">BE 39,29 · 21 du</span>
+        </div>
+        <div class="posmini">
+          <div>Δ<b>−0,17</b></div><div>Θ<b>+R$ 3</b></div><div>ν<b>−R$ 0,02</b></div>
+        </div>
+        <p class="legs" style="margin:9px 0 0">tese: IV ATM &lt; 26 em 5 sessões → <b style="color:var(--amber)">27,6</b> · aguardando</p>
+      </div>
+
+      <div class="poscard">
+        <div class="ph"><span class="t">VALE3</span><span class="badge b-ok">+R$ 310</span></div>
+        <p class="legs">coberta · 100 ações + vende call 62 · 27/nov · 5 du</p>
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+          <span class="pnl pos">+R$ 310</span>
+          <span style="font:11px var(--mono);color:var(--dim)">BE 59,80</span>
+        </div>
+        <div class="posmini">
+          <div>Δ<b>−0,34</b></div><div>Θ<b>+R$ 11</b></div><div>ν<b>−R$ 0,01</b></div>
+        </div>
+        <p class="legs" style="margin:9px 0 0">tese: IV cai ≥ 2 pts em 10 sessões → <b style="color:var(--green)">−2,4</b> · acertou</p>
+      </div>
+
+      <p class="note">Marcação é EOD, do mesmo fechamento da sessão. P&amp;L só bate com a corretora se a posição for aberta e fechada por aqui.</p>
+    </section>
+
+    <!-- ================= APRENDER ================= -->
+    <section class="screen" id="s-aprender">
+      <div class="hero">
+        <div class="big" style="font-size:26px">Aprender</div>
+        <div class="badge b-mut">22 fichas</div>
+      </div>
+      <div class="seg" id="trilhas">
+        <button class="on" data-t="0">Tudo</button>
+        <button data-t="1">1 · Ler a tela</button>
+        <button data-t="2">2 · Caro ou barato</button>
+        <button data-t="3">3 · O formato</button>
+        <button data-t="4">4 · A estrutura</button>
+        <button data-t="5">5 · Quando erra</button>
+      </div>
+      <div class="fichas" id="doclist"></div>
+      <p class="note">Em qualquer tela, toque numa métrica para abrir a ficha dela com o número do dia.</p>
+    </section>
+
+  </main>
+
+  <div class="sheet" id="sheet">
+    <div class="sheet-bg" onclick="closeSheet()"></div>
+    <div class="sheet-panel">
+      <button class="sheet-x" onclick="closeSheet()">fechar</button>
+      <div id="sheet-body"></div>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <button class="on" data-s="hoje">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+      Hoje
+    </button>
+    <button data-s="carteira">
+      <svg viewBox="0 0 24 24"><path d="M3 8h15a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M3 8l2-3h11l2 3"/><circle cx="16.5" cy="14" r="1"/></svg>
+      Carteira
+    </button>
+    <button data-s="diario">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.5L16 9.5"/></svg>
+      Diário
+    </button>
+    <button data-s="aprender">
+      <svg viewBox="0 0 24 24"><path d="M4 4h6a2 2 0 012 2v14a2 2 0 00-2-2H4z"/><path d="M20 4h-6a2 2 0 00-2 2v14a2 2 0 012-2h6z"/></svg>
+      Aprender
+    </button>
+  </nav>
+
+</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+/* ---------- lista ---------- */
+const ROWS = [
+  ["PETR4","41,18","−1,04%",28.4,82,6.3,1.9,-4.2,7.0,"premium caro","warn"],
+  ["B3SA3","15,03","−0,33%",33.8,88,5.7,1.5,-5.6,9.0,"skew anômalo","bad"],
+  ["BBAS3","17,51","−0,80%",31.2,74,5.8,1.4,-2.8,8.1,"premium caro","warn"],
+  ["GGBR4","18,90","−0,22%",35.4,91,5.2,1.3,-6.1,9.7,"premium caro","warn"],
+  ["VALE3","61,90","+0,42%",24.9,31,-2.1,-1.6,1.1,5.2,"premium barato","ok"],
+  ["BBDC4","15,59","+0,65%",27.3,61,2.5,0.9,-2.2,6.3,"—","mut"],
+  ["ITUB4","41,42","+0,10%",22.7,46,0.8,0.2,-1.4,4.6,"neutro","mut"],
+  ["ELET3","43,10","−0,51%",29.6,55,2.4,0.7,-3.1,6.8,"—","mut"]
+];
+$("#list").innerHTML = ROWS.map(r=>{
+  const [tk,px,chg,iv,rank,vrp,z,rr,em,sig,cls] = r;
+  return `<button class="row" onclick="go('ticker')">
+    <span class="l">
+      <span class="tk">${tk}</span>
+      <span class="px">${px} <span style="color:${chg.startsWith("−")?"var(--red)":"var(--green)"}">${chg}</span></span>
+      <span class="m">
+        <span>IV <b>${iv.toFixed(1)}</b></span>
+        <span>rank <b>p${rank}</b></span>
+        <span>VRP <b style="color:${vrp>0?"var(--amber)":"var(--green)"}">${vrp>0?"+":""}${vrp.toFixed(1)}</b></span>
+        <span>z <b>${z>0?"+":""}${z.toFixed(1)}</b></span>
+        <span>±<b>${em.toFixed(1)}%</b></span>
+      </span>
+    </span>
+    <span class="r"><span class="badge b-${cls}">${sig}</span></span>
+  </button>`;
+}).join("");
+
+/* ---------- cadeia ---------- */
+const CHAIN = [
+  {k:38, pm:0.71, ps:6.4, poi:5100, pd:-0.24, piv:33.8, cm:4.06, cs:2.1, coi:5100, cd:0.77, civ:29.0, q:"ok"},
+  {k:39, pm:1.02, ps:4.1, poi:6200, pd:-0.32, piv:32.4, cm:3.35, cs:2.4, coi:4300, cd:0.71, civ:28.8, q:"ok"},
+  {k:40, pm:1.42, ps:3.1, poi:12400,pd:-0.41, piv:31.2, cm:2.71, cs:2.8, coi:7800, cd:0.64, civ:28.6, q:"ok"},
+  {k:41, pm:1.88, ps:2.9, poi:9800, pd:-0.50, piv:30.1, cm:2.14, cs:3.0, coi:6900, cd:0.56, civ:28.5, q:"atm"},
+  {k:42, pm:2.44, ps:3.6, poi:7100, pd:-0.59, piv:29.6, cm:1.63, cs:3.4, coi:5400, cd:0.47, civ:28.9, q:"ok"},
+  {k:43, pm:3.12, ps:5.1, poi:3900, pd:-0.68, piv:29.9, cm:1.19, cs:4.2, coi:3200, cd:0.38, civ:29.7, q:"ok"},
+  {k:44, pm:3.88, ps:7.8, poi:1800, pd:-0.76, piv:30.7, cm:0.84, cs:6.0, coi:2100, cd:0.30, civ:30.8, q:"warn"}
+];
+$("#chain").innerHTML = CHAIN.map((r,i)=>`
+  <div class="crow ${r.q==="atm"?"atm":""}" onclick="document.getElementById('d${i}').classList.toggle('on')">
+    <span class="side put"><span class="p">${r.pm.toFixed(2)}</span><span class="d">Δ ${r.pd.toFixed(2)} · ${r.ps.toFixed(1)}%</span></span>
+    <span class="mid"><span class="k">${r.k.toFixed(2)}</span><span class="t">${r.q==="atm"?"ATM":"strike"}</span></span>
+    <span class="side call"><span class="p">${r.cm.toFixed(2)}</span><span class="d">Δ ${r.cd.toFixed(2)} · ${r.cs.toFixed(1)}%</span></span>
+  </div>
+  <div class="detail" id="d${i}">
+    <div class="dg">
+      <div>OI put<b>${r.poi.toLocaleString("pt-BR")}</b></div>
+      <div>OI call<b>${r.coi.toLocaleString("pt-BR")}</b></div>
+      <div>IV put<b>${r.piv.toFixed(1)}</b></div>
+      <div>IV call<b>${r.civ.toFixed(1)}</b></div>
+      <div>spr put<b>R$ ${(r.pm*r.ps/100).toFixed(2)}</b></div>
+      <div>spr call<b>R$ ${(r.cm*r.cs/100).toFixed(2)}</b></div>
+      <div>Δ put<b>${r.pd.toFixed(2)}</b></div>
+      <div>Δ call<b>${r.cd.toFixed(2)}</b></div>
+    </div>
+  </div>`).join("");
+
+/* ---------- gráficos ---------- */
+const W=360, H=180, PAD=28;
+function scale(v,d0,d1,r0,r1){ return r0 + (v-d0)/((d1-d0)||1)*(r1-r0); }
+function axes(){
+  let s="";
+  for(let i=0;i<=3;i++){ const y=PAD+i*(H-2*PAD)/3;
+    s+=`<line x1="${PAD}" y1="${y}" x2="${W-8}" y2="${y}" stroke="#222c3b" stroke-width="1"/>`; }
+  return s;
+}
+function xlabels(arr){
+  return arr.map((t,i)=>{
+    const x = PAD + i*(W-PAD-8)/(arr.length-1||1);
+    return `<text x="${x}" y="${H-6}" fill="#5f7288" font-size="9.5" text-anchor="middle" font-family="ui-monospace,monospace">${t}</text>`;
+  }).join("");
+}
+function ylabels(arr){
+  return arr.map((t,i)=>{
+    const y = PAD + i*(H-2*PAD)/(arr.length-1||1);
+    return `<text x="${PAD-5}" y="${y+3}" fill="#5f7288" font-size="9.5" text-anchor="end" font-family="ui-monospace,monospace">${t}</text>`;
+  }).join("");
+}
+function poly(arr,ymin,ymax){
+  return arr.map((v,i)=>{
+    const x = PAD + i*(W-PAD-8)/(arr.length-1);
+    const y = scale(v,ymin,ymax,H-PAD,PAD);
+    return (i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);
+  }).join("");
+}
+function svg(inner){ return `<svg class="chart" viewBox="0 0 ${W} ${H}">${inner}</svg>`; }
+
+const CHARTS = {
+  term:{
+    t:"Estrutura a termo", p:"ATM por vencimento · tracejado = 30 dias atrás",
+    render(){
+      const hoje=[27.9,28.4,30.1,31.0,31.8], antes=[26.2,26.6,28.0,28.8,29.5];
+      let s=axes();
+      s+=`<path d="${poly(antes,24,33)}" fill="none" stroke="#5b7189" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+      s+=`<path d="${poly(hoje,24,33)}" fill="none" stroke="#2dd4bf" stroke-width="2.2"/>`;
+      hoje.forEach((v,i)=>{ const x=PAD+i*(W-PAD-8)/(hoje.length-1), y=scale(v,24,33,H-PAD,PAD);
+        s+=`<circle cx="${x}" cy="${y}" r="2.8" fill="#2dd4bf"/>`; });
+      s+=xlabels(["nov","dez","jan","fev","mar"])+ylabels(["33","30","27","24"]);
+      return s;
+    }
+  },
+  ivrv:{
+    t:"IV ATM 30d vs realizada", p:"60 sessões · teal = implícita · vermelho = realizada",
+    render(){
+      const n=60; let iv=[],rv=[];
+      for(let i=0;i<n;i++){ iv.push(27+4*Math.sin(i/7)+1.2*Math.sin(i/3)+i*.02);
+                            rv.push(22+3*Math.cos(i/9)+.9*Math.sin(i/4)+i*.015); }
+      let s=axes();
+      s+=`<path d="${poly(rv,16,38)}" fill="none" stroke="#f97b7b" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+      s+=`<path d="${poly(iv,16,38)}" fill="none" stroke="#2dd4bf" stroke-width="2.2"/>`;
+      s+=xlabels(["−60","−30","−15","0"])+ylabels(["38","30","23","16"]);
+      return s;
+    }
+  },
+  smile:{
+    t:"Smile — 18/dez", p:"IV por delta · só quotes OTM",
+    render(){
+      const b=[30.4,29.2,28.7,28.5,30.1,32.4,35.6];
+      let s=axes();
+      s+=`<path d="${poly(b,27,37)}" fill="none" stroke="#2dd4bf" stroke-width="2.2"/>`;
+      b.forEach((v,i)=>{ const x=PAD+i*(W-PAD-8)/(b.length-1), y=scale(v,27,37,H-PAD,PAD);
+        s+=`<circle cx="${x}" cy="${y}" r="3" fill="#0b0f16" stroke="#2dd4bf" stroke-width="1.6"/>`; });
+      s+=xlabels(["85Δ","70Δ","55Δ","45Δ","30Δ","18Δ","10Δ"])+ylabels(["37","34","30","27"]);
+      return s;
+    }
+  },
+  payoff:{
+    t:"Payoff — trava put 40/38", p:"crédito 0,71 · perda máx 1,29 · BE 39,29",
+    render(){
+      const ys=[-1.29,-1.29,0.71,0.71,0.71];
+      const zero = scale(0,-1.6,1.0,H-PAD,PAD);
+      let s=axes();
+      s+=`<line x1="${PAD}" y1="${zero}" x2="${W-8}" y2="${zero}" stroke="#3b4a61" stroke-width="1"/>`;
+      s+=`<path d="${poly(ys,-1.6,1.0)}" fill="none" stroke="#f5b84b" stroke-width="2.4"/>`;
+      s+=xlabels(["34","38","40","44","48"])+ylabels(["+1,0","+0,3","−0,4","−1,6"]);
+      return s;
+    }
+  }
+};
+function drawChart(k){
+  const c = CHARTS[k];
+  $("#chart-t").textContent = c.t;
+  $("#chart-p").textContent = c.p;
+  $("#chart").innerHTML = svg(c.render());
+}
+drawChart("term");
+
+document.querySelectorAll("#seg-chart button").forEach(b=>{
+  b.addEventListener("click",()=>{
+    document.querySelectorAll("#seg-chart button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");
+    drawChart(b.dataset.c);
+  });
+});
+
+/* ---------- série ---------- */
+(function(){
+  const n=70, px=[], iv=[];
+  for(let i=0;i<n;i++){ px.push(1.2+.35*Math.sin(i/8)+i*.004);
+                        iv.push(29+3*Math.sin(i/11)+.8*Math.sin(i/4)); }
+  let s=axes();
+  s+=`<path d="${poly(px,0.6,1.9)}" fill="none" stroke="#63a8f0" stroke-width="2.2"/>`;
+  s+=`<path d="${poly(iv,25,35)}" fill="none" stroke="#2dd4bf" stroke-width="1.8" stroke-dasharray="5 3"/>`;
+  const ax = PAD + 52*(W-PAD-8)/(n-1);
+  s+=`<line x1="${ax}" y1="${PAD}" x2="${ax}" y2="${H-PAD}" stroke="#f5b84b" stroke-width="1.2"/>`;
+  s+=`<text x="${ax+5}" y="${PAD+11}" fill="#f5b84b" font-size="9" font-family="ui-monospace,monospace">−0,04</text>`;
+  s+=`<text x="${PAD+2}" y="${PAD+11}" fill="#63a8f0" font-size="9" font-family="ui-monospace,monospace">prêmio</text>`;
+  s+=`<text x="${PAD+56}" y="${PAD+11}" fill="#2dd4bf" font-size="9" font-family="ui-monospace,monospace">IV</text>`;
+  $("#chart-serie").innerHTML = svg(s);
+})();
+
+/* ---------- aprender: conteúdo e fichas ---------- */
+const DOCS=[
+{ t:1, n:1, name:"Preço (spot e fechamento)",
+  hook:"O último negócio do pregão — quase sempre de ontem.",
+  what:"É o fechamento da ação na sessão anterior. Tudo no painel sai daí: a IV, o forward, a probabilidade.",
+  read:"É a âncora de todos os outros números. Sem ele, prêmio, strike e delta não significam nada.",
+  trap:"Tratar o fechamento como “o preço”. Em papel ilíquido, o último negócio pode ser de horas antes e não refletir o book. E o número envelhece: na abertura do dia seguinte ele já está errado.",
+  ex:"PETR4 41,18 · −1,04% — fechamento de 19/11, e a tela diz isso no topo." },
+{ t:1, n:1, name:"Prêmio, bid e ask",
+  hook:"Quanto custa a opção, e por quanto o mercado compra e vende.",
+  what:"O prêmio é o preço da opção. bid é o que o mercado paga por ela; ask é o que pede. O mid é a média dos dois — é o número que o painel usa, porque é o menos enviesado.",
+  read:"Comparar prêmios só faz sentido com o mesmo vencimento e o mesmo strike. Fora disso, você está comparando prazos diferentes.",
+  trap:"Achar que o mid é preço executável. Você compra no ask e vende no bid. O mid é referência, não transação.",
+  ex:"PETRZ400 · mid 1,42 · bid 1,40 · ask 1,44." },
+{ t:1, n:1, name:"Spread",
+  hook:"O custo escondido de entrar e sair.",
+  what:"A distância entre bid e ask. É o que você paga para o mercado te deixar entrar e sair.",
+  read:"Vale mais em R$ do que em %. O percentual é útil para comparar séries com o mesmo prêmio; o valor absoluto diz o custo real.",
+  trap:"Olhar só a porcentagem. 15% de spread sobre R$ 0,13 é R$ 0,02 — irrelevante. Sobre R$ 3,00 é R$ 0,45, que come metade de um movimento pequeno.",
+  ex:"PETRZ400: R$ 0,04 · 3,1% (bom). PETRM48: R$ 0,04 · 31% (péssimo, mesmo valor absoluto).", chart:"spread" },
+{ t:1, n:1, name:"Strike e vencimento",
+  hook:"O preço combinado e a data em que o contrato acaba.",
+  what:"Strike é o preço pelo qual você pode comprar (call) ou vender (put) a ação. Vencimento é o último dia do contrato.",
+  read:"Juntos definem se a opção está dentro, no ou fora do dinheiro. Só o par tem sentido: strike sem vencimento não é uma opção.",
+  trap:"Assumir que o strike é fixo. Na B3 ele é ajustado quando a empresa paga provento, e o mesmo código passa a ter outro strike no meio da vida. Em 2026 isso aconteceu em 23,5% dos tickers de opção.",
+  ex:"PETRZ400: strike 40,04 em 13/11 e 40,00 em 14/11 — R$ 0,04 de dividendo. É a mesma série, mas nenhuma métrica atravessa essa data." },
+{ t:1, n:1, name:"Volatilidade implícita (IV)",
+  hook:"O quanto o mercado está cobrando por movimento.",
+  what:"A volatilidade que o preço da opção está pedindo, ao ano, em %. É a resposta a “com que volatilidade o mercado estaria precificando isto, se usássemos um modelo padrão?”.",
+  read:"IV alta = opção cara e expectativa de movimento grande. Não diz para que lado.",
+  trap:"Achar que IV alta significa “vai subir”. Significa que o mercado espera movimento — para cima ou para baixo. E IV sozinha não diz se está cara: para isso existe o IV rank e o VRP.",
+  ex:"IV 28,4 significa ~28,4% de oscilação anualizada esperada. Compare com a realizada (22,1) antes de concluir." },
+{ t:1, n:1, name:"Expected move",
+  hook:"Quanto o mercado espera que a ação ande até o vencimento.",
+  what:"Sai direto do preço da trava no dinheiro (call + put no mesmo strike), sem modelo nenhum. É a forma mais honesta de ler “expectativa”.",
+  read:"±7% com spot 41,18 significa que o mercado precifica a ação entre ~38,3 e ~44,1 no vencimento, com ~68% de confiança.",
+  trap:"Ler como previsão. É dispersão, não direção — e embute prêmio de risco, então costuma ser maior que o movimento realizado.",
+  ex:"±7,0% até 18/dez, com spot em 41,18.", chart:"expmove" },
+{ t:1, n:1, name:"Delta",
+  hook:"Quanto o prêmio muda para cada R$ 1 da ação.",
+  what:"A sensibilidade do prêmio ao preço do papel. Também é a exposição equivalente: uma put com Δ −0,41 se move como 41% de uma ação vendida.",
+  read:"Serve para dimensionar posição e para saber onde a opção vai estar se o papel andar.",
+  trap:"Usar delta como probabilidade de exercício. Não é, e a distância entre os dois é justamente o skew. Numa put OTM, a probabilidade real de virar dinheiro é menor que |Δ|.",
+  ex:"Δ −0,41: se a ação cair R$ 1,00, o prêmio sobe ~R$ 0,41 (em primeira ordem).", chart:"delta" },
+{ t:2, n:2, name:"IV ATM 30d",
+  hook:"O termômetro do papel, comparável no tempo.",
+  what:"A IV da opção no dinheiro, padronizada para 30 dias. Sem essa padronização, cada dia você estaria comparando um prazo diferente.",
+  read:"É o número que entra no IV rank, no VRP e na estrutura a termo. Você compara com ele mesmo ontem e com outros papéis.",
+  trap:"Comparar IV de vencimentos diferentes. O vencimento mais próximo sobe e desce com o calendário, criando serra dente de serra — por isso o painel interpola em variância total, em vez de pegar o mais próximo.",
+  ex:"28,4 · p82 · 12m: hoje é maior que 82% dos dias do último ano." },
+{ t:2, n:2, name:"IV rank e percentil",
+  hook:"Onde a IV de hoje está dentro do último ano.",
+  what:"Rank mostra a posição dentro da faixa mínima–máxima do período; percentil mostra a fração de dias com IV menor que a de hoje.",
+  read:"Contexto, não gatilho. Serve para responder “caro em relação ao que este papel costuma cobrar?”.",
+  trap:"Usar como sinal. Se o papel mudou de regime, o “p85” pode ser o novo normal. Por isso o gatilho do funil é o z-score do VRP, e o rank fica só como leitura.",
+  ex:"p82 não quer dizer “vai cair”. Quer dizer “historicamente alto para este papel”.", chart:"ivrank" },
+{ t:2, n:2, name:"Volatilidade realizada (RV)",
+  hook:"Quanto a ação de fato andou.",
+  what:"A oscilação medida do passado, anualizada. É o contraponto factual da IV, que é expectativa.",
+  read:"Compare sempre no mesmo horizonte: RV de 30 dias com IV de 30 dias.",
+  trap:"Calcular de fechamento a fechamento e ignorar o gap de abertura. No Brasil o gap noturno carrega boa parte do movimento. E provento/split entram como “queda” e inflam a RV se você não tratar.",
+  ex:"RV20 22,1 · RV60 24,7: o papel está mais calmo nas últimas 4 semanas do que nos últimos 3 meses." },
+{ t:2, n:2, name:"VRP — prêmio de risco de volatilidade",
+  hook:"Quanto o mercado cobra acima do que o papel entrega.",
+  what:"IV menos RV, no mesmo horizonte. É o “lucro estrutural” de quem vende prêmio — e o custo de quem compra.",
+  read:"Positivo é a regra: o mercado cobra seguro. O que importa é o tamanho e a persistência.",
+  trap:"Comparar IV de 30 dias com RV de 20 ou de 5. Tenores diferentes fabricam VRP do nada. Tenor casado, sempre.",
+  ex:"VRP +6,3: cobra 6,3 pontos de vol acima do realizado.", chart:"vrp" },
+{ t:2, n:2, name:"z-score do VRP",
+  hook:"O VRP de hoje contra o VRP deste papel.",
+  what:"Quantos desvios-padrão o VRP está da própria média de 252 sessões.",
+  read:"É o gatilho do funil. +1,9 significa “caro para este papel, no histórico dele” — e não “caro em termos absolutos”.",
+  trap:"Comparar VRP absoluto entre papéis. Papel estruturalmente mais volátil tem VRP maior sempre. O z-score normaliza isso.",
+  ex:"z +1,9 é o que coloca a PETR4 no topo do ranking hoje." },
+{ t:3, n:2, name:"Skew e risk reversal",
+  hook:"Puts e calls não custam o mesmo.",
+  what:"O smile não é simétrico. O risk reversal mede a inclinação: IV da call 25Δ menos IV da put 25Δ.",
+  read:"RR negativo = puts mais caras (proteção demandada). Positivo = calls mais caras (corrida por upside).",
+  trap:"Chamar de “skew” o nível de IV. Skew é inclinação, não altura. E RR sem o butterfly conta metade da história.",
+  ex:"RR 25Δ −4,2: puts 4,2 pontos de vol mais caras que calls — normal em papel de alto dividendo.", chart:"skew" },
+{ t:3, n:2, name:"Butterfly",
+  hook:"A curvatura do smile.",
+  what:"Metade da soma das asas (25Δ call e put) menos a IV no dinheiro. Mede o quanto as asas estão levantadas em relação ao centro.",
+  read:"Junto com o RR, descreve o formato inteiro: RR é inclinação, butterfly é convexidade. Os dois são ortogonais.",
+  trap:"Confundir com oportunidade. Butterfly negativo quase sempre é cotação inconsistente, não prêmio grátis — e o painel descarta a série por isso.",
+  ex:"BFLY +2,1: asas 2,1 pontos acima do centro. Formato normal." },
+{ t:3, n:2, name:"Estrutura a termo",
+  hook:"A IV por vencimento.",
+  what:"A IV no dinheiro em cada prazo. Normalmente sobe com o tempo (contango).",
+  read:"Quando o curto fica mais caro que o longo, o mercado está com medo de algo próximo. Isso aparece como degrau, não como rampa.",
+  trap:"Olhar um vencimento só. Um evento (resultado, decisão de dividendo) aparece na estrutura e desaparece depois — e quem olha só o front acha que a IV “subiu”.",
+  ex:"28,4 (nov) / 30,1 (dez) / 31,8 (jan): contango, sem evento concentrado.", chart:"term" },
+{ t:4, n:3, name:"Theta",
+  hook:"Quanto o prêmio evapora por dia.",
+  what:"A perda diária por passagem de tempo, com o resto constante.",
+  read:"Em % do prêmio, não em R$. R$ 0,008 é muito para uma opção de R$ 0,10 e pouco para uma de R$ 3,00.",
+  trap:"Ignorar a aceleração. O decaimento não é linear: ele dispara na última semana de vida. Posição vendida perto do vencimento é a forma mais rápida de perder o controle.",
+  ex:"Θ −0,56%/dia: em 10 dias úteis, ~5,5% do prêmio evapora se nada mais mudar.", chart:"theta" },
+{ t:4, n:3, name:"Vega",
+  hook:"Quanto o prêmio muda com 1 ponto de vol.",
+  what:"A sensibilidade à volatilidade implícita, em R$ por ponto.",
+  read:"Vega é exposição, não qualidade. Positivo se você comprou prêmio, negativo se vendeu.",
+  trap:"Achar que vega alto é bom. Quem vende coberta está vendendo vega e sofre quando a IV sobe depois de entrar — mesmo com o papel parado.",
+  ex:"Put ATM: +R$ 0,05 por ponto. Na trava 40/38 o vega líquido é negativo (~−R$ 0,02)." },
+{ t:4, n:3, name:"Gamma",
+  hook:"O delta que não fica parado.",
+  what:"A taxa de variação do delta. É o que faz a posição acelerar quando o papel se aproxima do strike.",
+  read:"Gamma máximo no dinheiro, e cresce conforme o vencimento chega.",
+  trap:"Ignorar gamma no vencimento. ATM, na semana final, o delta vira 0 ou 1 em horas — e a posição que “estava equilibrada” deixa de estar.",
+  ex:"A mesma put de 21 dias tem gamma pequeno; na véspera do vencimento, é outro contrato." },
+{ t:4, n:3, name:"Probabilidade e PoP",
+  hook:"A chance que o mercado está precificando.",
+  what:"A distribuição de preço embutida no smile — a densidade neutra ao risco. Dela sai “chance de fechar abaixo de 40” e a probabilidade de lucro de uma estrutura.",
+  read:"É o número que responde “qual a chance de eu ser exercido?”, que é diferente de “qual o meu delta?”.",
+  trap:"Chamar de probabilidade “real”. É neutra ao risco: embute prêmio e não é a frequência histórica. Serve para comparar estruturas, não para prever o mundo.",
+  ex:"Trava put 40/38: PoP calculado por integração da densidade, não por delta." },
+{ t:5, n:3, name:"Ajuste de strike e dividendo",
+  hook:"O mesmo contrato, com preço de exercício diferente.",
+  what:"Quando a empresa paga provento, a B3 ajusta o strike. O código continua o mesmo, e o Δstrike é o dividendo por ação.",
+  read:"É a forma mais barata de saber a data exata do provento: a data do ajuste é a data ex.",
+  trap:"Calcular IV, retorno ou paridade atravessando a data do ajuste. Você estaria comparando dois contratos diferentes como se fossem um.",
+  ex:"12,04 → 12,00 = R$ 0,04. E 698 tickers tiveram strike subindo em 2026 — esses não são dividendo." },
+{ t:5, n:3, name:"Prêmio de exercício antecipado",
+  hook:"Opção de ação na B3 é americana.",
+  what:"Quanto o preço de mercado excede o preço europeu equivalente. Exercer a qualquer momento tem valor, e o prêmio embute isso.",
+  read:"Quando aparece alto, há provento no caminho e a IV calculada está contaminada pelo valor americano.",
+  trap:"Precificar opção brasileira como europeia. Em papel de alto dividendo, calls ITM perto do ex-dividendo são exercidas com frequência.",
+  ex:"2,1% nesta série — pequeno. Alto é sinal de alerta." },
+{ t:5, n:3, name:"Liquidez: volume, OI e dias para liquidar",
+  hook:"Ter posição é diferente de conseguir sair dela.",
+  what:"Volume é o que girou no dia; open interest é a posição aberta. Dias para liquidar é o OI dividido pelo volume médio.",
+  read:"Acima de ~10 dias, a estrutura deixa de ser desmontável no prazo do vencimento.",
+  trap:"Concluir liquidez pelo volume de um dia. Um negócio grande num book vazio infla o volume. O que vale é negócios recorrentes + spread estreito + OI.",
+  ex:"OI 12.400 · vol 830 · 2,4 dias para liquidar: confortável." }
+];
+
+const CW=360, CH=170, CP=26;
+const dx=(v,a,b,c,d)=>c+(v-a)/((b-a)||1)*(d-c);
+function daxes(){let s="";for(let i=0;i<=3;i++){const y=CP+i*(CH-2*CP)/3;
+  s+=`<line x1="${CP}" y1="${y}" x2="${CW-10}" y2="${y}" stroke="#1e2836" stroke-width="1"/>`;}return s;}
+function dpoly(arr,a,b){return arr.map((v,i)=>{
+  const x=CP+i*(CW-CP-10)/(arr.length-1), y=dx(v,a,b,CH-CP,CP);
+  return (i?"L":"M")+x.toFixed(1)+","+y.toFixed(1);}).join("");}
+function dlab(xs,ys){
+  return xs.map((t,i)=>{const x=CP+i*(CW-CP-10)/(xs.length-1);
+    return `<text x="${x}" y="${CH-5}" fill="#5f7288" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">${t}</text>`;}).join("")
+  + ys.map((t,i)=>{const y=CP+i*(CH-2*CP)/(ys.length-1);
+    return `<text x="${CP-4}" y="${y+3}" fill="#5f7288" font-size="9" text-anchor="end" font-family="ui-monospace,monospace">${t}</text>`;}).join("");
+}
+const dsvg=i=>`<svg class="chart" viewBox="0 0 ${CW} ${CH}">${i}</svg>`;
+
+const DC={
+  spread(){let s="";
+    const rows=[{y:70,spr:0.020,label:"prêmio R$ 0,13 · spread 15% = R$ 0,02"},
+                {y:122,spr:0.450,label:"prêmio R$ 3,00 · spread 15% = R$ 0,45"}];
+    const x0=16,maxW=CW-40,maxS=0.45;
+    rows.forEach(r=>{const w=Math.max(2,r.spr/maxS*maxW);
+      s+=`<text x="${x0}" y="${r.y-7}" fill="#93a3b8" font-size="9" font-family="ui-monospace,monospace">${r.label}</text>`;
+      s+=`<rect x="${x0}" y="${r.y}" width="${maxW}" height="14" rx="3" fill="#1b2433"/>`;
+      s+=`<rect x="${x0}" y="${r.y}" width="${w}" height="14" rx="3" fill="#f5b84b"/>`;});
+    s+=`<text x="${CW/2}" y="26" fill="#6b7c93" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">mesmo % de spread — custos 22× diferentes</text>`;
+    return dsvg(s);},
+  expmove(){let s=daxes();
+    const n=60,mu=41.18,sig=0.07*41.18,pts=[];
+    for(let i=0;i<n;i++){const x=mu-3*sig+(6*sig)*i/(n-1);
+      pts.push(Math.exp(-0.5*((x-mu)/sig)**2));}
+    const X=v=>dx(v,mu-3*sig,mu+3*sig,CP,CW-10);
+    s+=`<rect x="${X(mu-sig)}" y="${CP}" width="${X(mu+sig)-X(mu-sig)}" height="${CH-2*CP}" fill="#12332f" opacity=".55"/>`;
+    s+=`<path d="${dpoly(pts,0,1.05)}" fill="none" stroke="#2dd4bf" stroke-width="2"/>`;
+    s+=`<line x1="${X(mu)}" y1="${CP}" x2="${X(mu)}" y2="${CH-CP}" stroke="#e6ecf5" stroke-width="1" stroke-dasharray="3 3"/>`;
+    s+=`<text x="${X(mu)}" y="${CP-8}" fill="#e6ecf5" font-size="9.5" text-anchor="middle" font-family="ui-monospace,monospace">41,18</text>`;
+    s+=`<text x="${X(mu-sig)}" y="${CH-CP+12}" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">38,3</text>`;
+    s+=`<text x="${X(mu+sig)}" y="${CH-CP+12}" fill="#2dd4bf" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">44,1</text>`;
+    s+=`<text x="${X(mu)}" y="${CH-6}" fill="#6b7c93" font-size="9" text-anchor="middle" font-family="ui-monospace,monospace">±1σ = 68%</text>`;
+    return dsvg(s);},
+  ivrank(){let s=daxes();
+    const nb=34,bars=[];
+    for(let i=0;i<nb;i++){const v=0.25+0.75*Math.exp(-0.5*((i-nb*0.35)/(nb*0.26))**2)+0.10*Math.sin(i);
+      bars.push(Math.max(0.04,v));}
+    const bw=(CW-CP-10)/nb;
+    bars.forEach((v,i)=>{const h=(v/1.2)*(CH-2*CP),x=CP+i*bw;
+      s+=`<rect x="${x+0.5}" y="${CH-CP-h}" width="${bw-1}" height="${h}" fill="${i<nb*0.82?"#2a3a3f":"#3b4a61"}"/>`;});
+    const mx=CP+nb*0.82*bw;
+    s+=`<line x1="${mx}" y1="${CP-4}" x2="${mx}" y2="${CH-CP}" stroke="#f5b84b" stroke-width="1.4"/>`;
+    s+=`<text x="${mx-4}" y="${CP-8}" fill="#f5b84b" font-size="9.5" text-anchor="end" font-family="ui-monospace,monospace">hoje · p82</text>`;
+    s+=`<text x="${CP}" y="${CH-5}" fill="#5f7288" font-size="9" font-family="ui-monospace,monospace">252 sessões</text>`;
+    return dsvg(s);},
+  vrp(){let s=daxes();
+    const n=48,iv=[],rv=[];
+    for(let i=0;i<n;i++){iv.push(26+4*Math.sin(i/9)+i*0.06);rv.push(21+3*Math.cos(i/11)+i*0.03);}
+    s+=`<path d="${dpoly(rv,16,36)}" fill="none" stroke="#f97b7b" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+    s+=`<path d="${dpoly(iv,16,36)}" fill="none" stroke="#2dd4bf" stroke-width="2"/>`;
+    s+=dlab(["−48","−24","−8","hoje"],["36","29","22","16"]);
+    s+=`<text x="${CW-14}" y="${CP+10}" fill="#2dd4bf" font-size="9" text-anchor="end" font-family="ui-monospace,monospace">IV</text>`;
+    s+=`<text x="${CW-14}" y="${CP+24}" fill="#f97b7b" font-size="9" text-anchor="end" font-family="ui-monospace,monospace">RV</text>`;
+    return dsvg(s);},
+  skew(){let s=daxes();
+    const b=[30.4,29.2,28.7,28.5,30.1,32.4,35.6];
+    s+=`<path d="${dpoly(b,27,37)}" fill="none" stroke="#2dd4bf" stroke-width="2.2"/>`;
+    [[1,29.2],[5,32.4]].forEach(([i,v])=>{const x=CP+i*(CW-CP-10)/6,y=dx(v,27,37,CH-CP,CP);
+      s+=`<circle cx="${x}" cy="${y}" r="3.4" fill="#0b0f16" stroke="#f5b84b" stroke-width="1.8"/>`;});
+    s+=dlab(["85Δ","70Δ","55Δ","45Δ","30Δ","18Δ","10Δ"],["37","34","30","27"]);
+    s+=`<text x="${CP+4}" y="${CP+10}" fill="#f5b84b" font-size="9" font-family="ui-monospace,monospace">RR = call 25Δ − put 25Δ</text>`;
+    return dsvg(s);},
+  term(){let s=daxes();
+    const cont=[27.9,28.4,30.1,31.0,31.8],inv=[34.0,31.5,30.2,29.6,29.2];
+    s+=`<path d="${dpoly(cont,26,35)}" fill="none" stroke="#2dd4bf" stroke-width="2"/>`;
+    s+=`<path d="${dpoly(inv,26,35)}" fill="none" stroke="#f5b84b" stroke-width="2" stroke-dasharray="5 3"/>`;
+    s+=dlab(["nov","dez","jan","fev","mar"],["35","32","29","26"]);
+    s+=`<text x="${CW-14}" y="${CP+10}" fill="#2dd4bf" font-size="9" text-anchor="end" font-family="ui-monospace,monospace">contango</text>`;
+    s+=`<text x="${CW-14}" y="${CP+24}" fill="#f5b84b" font-size="9" text-anchor="end" font-family="ui-monospace,monospace">invertida</text>`;
+    return dsvg(s);},
+  theta(){let s=daxes();
+    const n=40,d=[];
+    for(let i=0;i<n;i++) d.push(1.42*Math.pow(1-i/n,0.55));
+    s+=`<path d="${dpoly(d,0,1.5)}" fill="none" stroke="#f5b84b" stroke-width="2.2"/>`;
+    s+=dlab(["−21 du","−14","−7","venc."],["R$ 1,42","R$ 1,00","R$ 0,50","0"]);
+    s+=`<text x="${CP+4}" y="${CP+10}" fill="#6b7c93" font-size="9" font-family="ui-monospace,monospace">o decaimento acelera no fim</text>`;
+    return dsvg(s);},
+  delta(){let s=daxes();
+    const a=[],b=[];
+    for(let i=0;i<40;i++){const x=-3+6*i/39;
+      a.push(1/(1+Math.exp(-1.7*x)));
+      b.push(1/(1+Math.exp(-1.7*(x-0.85))));}
+    s+=`<path d="${dpoly(a,0,1)}" fill="none" stroke="#63a8f0" stroke-width="2"/>`;
+    s+=`<path d="${dpoly(b,0,1)}" fill="none" stroke="#f97b7b" stroke-width="2" stroke-dasharray="4 3"/>`;
+    s+=dlab(["OTM","ATM","ITM","fundo"],["1,0","0,67","0,33","0"]);
+    s+=`<text x="${CP+4}" y="${CP+10}" fill="#63a8f0" font-size="9" font-family="ui-monospace,monospace">delta</text>`;
+    s+=`<text x="${CP+42}" y="${CP+10}" fill="#f97b7b" font-size="9" font-family="ui-monospace,monospace">probabilidade</text>`;
+    return dsvg(s);}
+};
+const DOCCAP={spread:"o mesmo % de spread, dois custos bem diferentes",
+  expmove:"a faixa de ±1σ embutida no preço da trava",
+  ivrank:"onde a IV de hoje cai no histórico do papel",
+  vrp:"a distância entre implícita e realizada é o VRP",
+  skew:"a inclinação entre as asas de 25 delta",
+  term:"contango é o normal; invertida é sinal de estresse",
+  theta:"o prêmio evapora devagar e depois de repente",
+  delta:"delta e probabilidade divergem — e a diferença é o skew"};
+
+function docBody(m){
+  const ch=m.chart?`<div class="chartbox"><p style="margin:0 2px 2px;font:10px/1.4 var(--mono);color:var(--dim)">${DOCCAP[m.chart]}</p>${DC[m.chart]()}</div>`:"";
+  return `<div class="blk"><span class="lbl">O que é</span><p>${m.what}</p></div>
+    <div class="blk"><span class="lbl">Como ler</span><p>${m.read}</p></div>
+    <div class="blk trap"><span class="lbl">Erro comum</span><p>${m.trap}</p></div>
+    <div class="blk ex"><span class="lbl">No painel</span><p>${m.ex}</p></div>${ch}`;
+}
+
+document.getElementById("doclist").innerHTML = DOCS.map((m,i)=>{
+  const tag = m.n===1?'<span class="badge b-ok">nível 1</span>'
+            : m.n===2?'<span class="badge b-warn">nível 2</span>'
+            : '<span class="badge b-mut">nível 3</span>';
+  return `<details data-t="${m.t}">
+    <summary><span class="n">${String(i+1).padStart(2,"0")}</span>
+      <span class="tt"><b>${m.name}</b><small>${m.hook}</small></span>${tag}</summary>
+    <div class="body">${docBody(m)}</div></details>`;
+}).join("");
+
+document.getElementById("trilhas").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  document.querySelectorAll("#trilhas button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");
+  const t=b.dataset.t;
+  document.querySelectorAll("#doclist details").forEach(d=>{
+    d.style.display=(t==="0"||d.dataset.t===t)?"":"none";
+  });
+});
+
+function openMetric(i){
+  const m=DOCS[i]; if(!m) return;
+  document.getElementById("sheet-body").innerHTML =
+    `<div style="font:600 16px/1.25 var(--mono);padding:2px 2px 0">${m.name}</div>
+     <p style="margin:4px 2px 0;font-size:12.5px;color:var(--muted)">${m.hook}</p>
+     ${docBody(m)}`;
+  document.getElementById("sheet").classList.add("on");
+}
+function closeSheet(){ document.getElementById("sheet").classList.remove("on"); }
+
+/* toque numa métrica do painel abre a ficha dela */
+(function(){
+  const MAP={"IV ATM 30d":8,"VRP":11,"RV20":9,"Exp. move":5,"RR / BFLY":12,
+             "Dias p/ liq.":21,"Mid":1,"IV":4,"Δ":7,"OI / vol":21,"ν":17,"Early-ex":20};
+  document.querySelectorAll(".cell").forEach(c=>{
+    const k=c.querySelector(".k");
+    if(!k) return;
+    const i=MAP[k.textContent.trim()];
+    if(i===undefined) return;
+    c.classList.add("tap");
+    c.addEventListener("click",()=>openMetric(i));
+  });
+})();
+
+/* ---------- navegação ---------- */
+function go(id){
+  document.querySelectorAll(".screen").forEach(x=>x.classList.remove("on"));
+  $("#s-"+id).classList.add("on");
+  document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("on", b.dataset.s===id));
+  $("#main").scrollTop = 0;
+}
+document.querySelectorAll(".nav button").forEach(b=> b.addEventListener("click",()=>go(b.dataset.s)));
+</script>
+</body>
+</html>

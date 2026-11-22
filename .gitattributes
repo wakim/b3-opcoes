@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# binários (o repo de código não deve carregar dado, mas se algum dia entrar, não normaliza)
+*.png binary
+*.jpg binary
+*.zip binary
+*.parquet binary
+*.db binary
+*.pdf binary

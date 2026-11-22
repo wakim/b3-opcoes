@@ -1,0 +1,36 @@
+# dados
+data/
+!data/.gitkeep
+
+# python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# node / frontend
+node_modules/
+web/dist/
+web/.vite/
+*.tsbuildinfo
+
+# container
+.env
+docker-compose.override.yaml
+compose.override.yaml
+
+# banco local
+*.db
+*.db-journal
+*.sqlite
+
+# saída
+out/
+*.parquet
+
+# sistema
+.DS_Store
+Thumbs.db
+desktop.ini

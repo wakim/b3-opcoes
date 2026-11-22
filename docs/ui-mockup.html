@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opções B3 — mockup do painel</title>
+<style>
+  :root{
+    --bg:#0e131c; --panel:#151c28; --panel2:#1b2433; --line:#2a3547;
+    --txt:#e6ecf5; --muted:#93a3b8; --dim:#6b7c93;
+    --teal:#2dd4bf; --amber:#f5b84b; --red:#f97b7b; --blue:#63a8f0; --green:#7bd88f;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit;text-decoration:none}
+  .app{max-width:1180px;margin:0 auto;padding:24px 22px 70px}
+
+  header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:16px}
+  .brand{font-size:19px;letter-spacing:-.01em;margin:0}
+  .brand span{color:var(--teal)}
+  .session{font:12px/1.4 var(--mono);color:var(--dim);text-align:right}
+  .session b{color:var(--amber)}
+  .badge{display:inline-block;font:600 11px/1 var(--mono);padding:3px 7px;border-radius:4px;letter-spacing:.03em}
+  .b-ok{background:#12332f;color:var(--teal);border:1px solid #1d4f48}
+  .b-warn{background:#332a12;color:var(--amber);border:1px solid #57451c}
+  .b-bad{background:#331a1a;color:var(--red);border:1px solid #5a2a2a}
+  .b-mut{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+
+  nav.tabs{display:flex;gap:6px;margin:20px 0 26px;flex-wrap:wrap}
+  nav.tabs button{
+    font:600 12px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;
+    background:transparent;border:1px solid var(--line);color:var(--muted);
+    padding:10px 16px;border-radius:8px;cursor:pointer
+  }
+  nav.tabs button.on{background:var(--panel2);color:var(--txt);border-color:#3b4a61}
+
+  .view{display:none}
+  .view.on{display:block}
+
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .kpi .l{font:600 10.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:9px}
+  .kpi .v{font-size:24px;letter-spacing:-.02em}
+  .kpi .s{font-size:12px;color:var(--muted);margin-top:4px}
+
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th{font:600 10.5px/1.3 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--dim);text-align:right;padding:9px 10px;border-bottom:1px solid #35435a;white-space:nowrap;cursor:pointer}
+  th:first-child,td:first-child{text-align:left}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;color:#c6d2e0;white-space:nowrap}
+  tbody tr:hover{background:#18202d}
+  tr.atm{background:#182a2a}
+  tr.atm:hover{background:#1c3130}
+  .tk{font-family:var(--mono);color:var(--txt);font-weight:600}
+  .sub{display:block;font-size:11px;color:var(--dim);font-family:var(--mono);font-weight:400}
+  .pos{color:var(--green)} .neg{color:var(--red)} .hi{color:var(--amber)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+  .panel h3{margin:0 0 14px;font-size:13px;font-family:var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid4{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+
+  .headline{display:flex;gap:26px;flex-wrap:wrap;align-items:baseline;margin-bottom:4px}
+  .px{font-size:30px;letter-spacing:-.02em}
+  .px .c{font-size:13px;color:var(--muted);margin-left:8px;font-family:var(--mono)}
+  .metric{display:flex;flex-direction:column;gap:2px}
+  .metric .k{font:600 10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .metric .v{font:15px/1.2 var(--mono);color:var(--txt)}
+  .metric .v small{color:var(--dim);font-size:11px}
+
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .chartbox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px 8px}
+  .chartbox h4{margin:0 0 2px;font-size:11px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .chartbox p{margin:0 0 6px;font-size:11.5px;color:var(--dim)}
+  svg.chart{display:block;width:100%;height:auto}
+
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .toolbar select,.toolbar input{
+    background:var(--panel2);border:1px solid var(--line);color:var(--txt);
+    font:12.5px var(--mono);padding:7px 9px;border-radius:6px
+  }
+  .toolbar label{font:11px var(--mono);color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--dim);font-family:var(--mono);margin-top:4px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+  .drop{background:#1a1620;border:1px solid #3b2f3f;border-radius:10px;padding:14px 18px;margin-top:6px}
+  .drop h4{margin:0 0 8px;font-size:11px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#c9a9c9}
+  .drop ul{margin:0;padding-left:18px}
+  .drop li{font-size:12.5px;color:#b9a8bd;margin-bottom:5px;font-family:var(--mono)}
+
+  .note{font-size:12px;color:var(--dim);margin-top:10px}
+  @media(max-width:860px){
+    .kpis{grid-template-columns:1fr 1fr}
+    .charts,.grid2,.grid4{grid-template-columns:1fr}
+    td,th{padding:8px 6px;font-size:12.5px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header class="top">
+  <div>
+    <h1 class="brand">Opções <span>B3</span> · painel</h1>
+    <div style="font-size:12.5px;color:var(--dim);margin-top:6px">mockup de layout — métricas ilustrativas, estrutura de strikes/vencimentos real</div>
+  </div>
+  <div class="session">
+    sessão <b id="session">2026-11-19</b> · D-1<br>
+    <span class="badge b-ok" id="fresh">dado íntegro</span>
+    <span class="badge b-warn">preço vivo: indisponível</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="on" data-v="painel">Painel do dia</button>
+  <button data-v="ticker">Ticker</button>
+  <button data-v="serie">Série</button>
+  <button data-v="diario">Diário</button>
+</nav>
+
+<!-- ======================= PAINEL ======================= -->
+<section class="view on" id="v-painel">
+  <div class="kpis">
+    <div class="kpi"><div class="l">Papéis líquidos</div><div class="v">25</div><div class="s">de 118 com opção</div></div>
+    <div class="kpi"><div class="l">Séries negociáveis</div><div class="v">3.184</div><div class="s">spread ≤ 10% · ≥ 5 negócios</div></div>
+    <div class="kpi"><div class="l">Candidatos hoje</div><div class="v">48</div><div class="s">7 papéis · 2 novos</div></div>
+    <div class="kpi"><div class="l">Qualidade</div><div class="v">99,4%</div><div class="s">12 séries descartadas</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>Ranking do funil — top 10 de 48 candidatos</h3>
+    <table id="tbl-painel">
+      <thead><tr>
+        <th>Ticker</th><th>Spot</th><th>IV ATM 30d</th><th>IV rank</th>
+        <th>RV20</th><th>VRP</th><th>z VRP</th><th>RR 25Δ</th>
+        <th>Exp. move</th><th>Liquidez</th><th>Sinal</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="note">Cada linha abre o detalhamento. <b>Score não é exibido como número único</b> — os componentes estão nas colunas, para você discordar deles.</p>
+  </div>
+
+  <div class="drop">
+    <h4>Excluídas hoje — e por quê</h4>
+    <ul>
+      <li>MGLU3 — 14 séries descartadas: spread &gt; 15% do mid</li>
+      <li>AZUL4 — 9 séries descartadas: sem negócio nos últimos 5 pregões</li>
+      <li>CSNA3 — 3 séries: butterfly negativo (cotação inconsistente)</li>
+      <li>VIVT3 — papel fora do corte de liquidez (R$ 1,8 M/dia)</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ======================= TICKER ======================= -->
+<section class="view" id="v-ticker">
+  <div class="panel">
+    <div class="headline">
+      <div class="px">PETR4 <span class="c">41,18 <span class="neg">−1,04%</span></span></div>
+      <div class="metric"><span class="k">IV ATM 30d</span><span class="v">28,4 <small>p82 · 12m</small></span></div>
+      <div class="metric"><span class="k">RV20</span><span class="v">22,1</span></div>
+      <div class="metric"><span class="k">VRP</span><span class="v hi">+6,3 <small>z +1,9</small></span></div>
+      <div class="metric"><span class="k">Exp. move 1σ</span><span class="v">±7,0% <small>até 18/dez</small></span></div>
+      <div class="metric"><span class="k">RR / BFLY 25Δ</span><span class="v">−4,2 / +2,1</span></div>
+      <div class="metric"><span class="k">Dias p/ liquidar</span><span class="v">2,4</span></div>
+    </div>
+    <p class="note">RR negativo = puts mais caras que calls. BFLY positivo = smile com convexidade normal.</p>
+  </div>
+
+  <div class="charts">
+    <div class="chartbox">
+      <h4>Estrutura a termo da IV</h4>
+      <p>ATM por vencimento — hoje vs 30 dias atrás</p>
+      <div id="c-term"></div>
+    </div>
+    <div class="chartbox">
+      <h4>IV ATM 30d vs realizada</h4>
+      <p>60 sessões · em cinza, ajustes de strike (proventos)</p>
+      <div id="c-ivrv"></div>
+    </div>
+    <div class="chartbox">
+      <h4>Smile — 18/dez/2026</h4>
+      <p>IV por delta · só quotes OTM</p>
+      <div id="c-smile"></div>
+    </div>
+    <div class="chartbox">
+      <h4>Payoff da estrutura candidata</h4>
+      <p>put 40 vendida + put 38 comprada · 1 contrato</p>
+      <div id="c-payoff"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Cadeia</h3>
+    <div class="toolbar">
+      <label>Vencimento</label>
+      <select id="exp"><option>18/dez/2026 · 26 dias</option><option>15/jan/2027 · 54 dias</option><option>19/fev/2027 · 89 dias</option></select>
+      <label>Liquidez</label>
+      <select id="liq"><option>spread ≤ 10%</option><option>todas</option><option>spread ≤ 5%</option></select>
+      <label>Lado</label>
+      <select id="side"><option>calls e puts</option><option>só puts</option><option>só calls</option></select>
+    </div>
+    <table id="tbl-chain">
+      <thead><tr>
+        <th>Strike</th>
+        <th>C mid<span class="sub">R$ · spr</span></th><th>C OI</th><th>C Δ</th><th>C IV</th>
+        <th>P mid<span class="sub">R$ · spr</span></th><th>P OI</th><th>P Δ</th><th>P IV</th>
+        <th>Qualidade</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="legend">
+      <span><i style="background:#2dd4bf"></i>linha ATM</span>
+      <span><i style="background:#7bd88f"></i>líquida</span>
+      <span><i style="background:#f5b84b"></i>spread largo</span>
+      <span><i style="background:#f97b7b"></i>cot. inconsistente</span>
+    </div>
+    <p class="note">Θ e ν aparecem no detalhe da série, não na cadeia — a tabela já está no limite de largura útil.</p>
+  </div>
+
+  <div class="drop">
+    <h4>Por que 4 séries deste vencimento não aparecem</h4>
+    <ul>
+      <li>PETRM46 — sem negócio há 6 pregões</li>
+      <li>PETRM48 — spread 31% do mid (R$ 0,04 sobre mid R$ 0,13)</li>
+      <li>PETRM50 — bid = 0 (book vazio)</li>
+      <li>PETRM52 — butterfly negativo: IV 41,2 entre vizinhas de 35,1 e 35,4</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ======================= SÉRIE ======================= -->
+<section class="view" id="v-serie">
+  <div class="panel">
+    <div class="headline">
+      <div class="px" style="font-size:24px">PETRZ400 <span class="c">put · strike 40,00 · 18/dez/2026</span></div>
+      <div class="metric"><span class="k">Mid</span><span class="v">1,42</span></div>
+      <div class="metric"><span class="k">Spread</span><span class="v">R$ 0,04 <small>3,1%</small></span></div>
+      <div class="metric"><span class="k">IV</span><span class="v hi">31,2 <small>p88</small></span></div>
+      <div class="metric"><span class="k">Δ / Θ% / ν</span><span class="v">−0,41 · −0,56%/d · −14,1</span></div>
+      <div class="metric"><span class="k">OI / vol</span><span class="v">12.400 / 830</span></div>
+      <div class="metric"><span class="k">Early-ex prem.</span><span class="v">+0,03 <small>2,1%</small></span></div>
+    </div>
+  </div>
+
+  <div class="chartbox" style="margin-bottom:16px">
+    <h4>Histórico da série</h4>
+    <p>prêmio e IV · a linha vertical marca o ajuste de strike por provento</p>
+    <div id="c-serie"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Últimos pregões</h3>
+    <table>
+      <thead><tr><th>Data</th><th>Strike</th><th>Fech.</th><th>Bid</th><th>Ask</th><th>Spread</th><th>Negócios</th><th>Volume</th><th>IV</th><th>Δ</th></tr></thead>
+      <tbody>
+        <tr><td class="tk">19/11</td><td>40,00</td><td>1,42</td><td>1,40</td><td>1,44</td><td class="badge b-ok">3,1%</td><td>41</td><td>830</td><td>31,2</td><td>−0,41</td></tr>
+        <tr><td class="tk">18/11</td><td>40,00</td><td>1,36</td><td>1,33</td><td>1,39</td><td class="badge b-ok">4,4%</td><td>28</td><td>512</td><td>30,4</td><td>−0,40</td></tr>
+        <tr><td class="tk">17/11</td><td>40,00</td><td>1,51</td><td>1,49</td><td>1,53</td><td class="badge b-ok">2,6%</td><td>63</td><td>1.240</td><td>32,1</td><td>−0,43</td></tr>
+        <tr><td class="tk">14/11</td><td>40,04</td><td>1,48</td><td>1,41</td><td>1,55</td><td class="badge b-warn">9,5%</td><td>19</td><td>304</td><td>31,8</td><td>−0,42</td></tr>
+        <tr><td class="tk">13/11</td><td>40,04</td><td>1,55</td><td>1,52</td><td>1,58</td><td class="badge b-ok">3,9%</td><td>37</td><td>690</td><td>32,6</td><td>−0,44</td></tr>
+      </tbody>
+    </table>
+    <p class="note">O strike mudou em 14/11: R$ 0,04 a menos. Isso é o dividendo por ação — a série é a mesma, mas nenhuma métrica atravessa essa data.</p>
+  </div>
+</section>
+
+<!-- ======================= DIÁRIO ======================= -->
+<section class="view" id="v-diario">
+  <div class="panel">
+    <h3>Decisões e previsões</h3>
+    <table>
+      <thead><tr><th>Data</th><th>Tese</th><th>Estrutura</th><th>Previsão (falseável)</th><th>Decisão</th><th>Desfecho</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="tk">19/11</td>
+          <td>prêmio acima da realizada</td>
+          <td>trava put 40/38 dez</td>
+          <td>IV ATM &lt; 26 em 5 sessões</td>
+          <td><span class="badge b-warn">aguardando</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td class="tk">06/11</td>
+          <td>skew invertido em VALE3</td>
+          <td>não operar</td>
+          <td>skew volta a +2 em 10 sessões</td>
+          <td><span class="badge b-mut">recusada</span></td>
+          <td class="pos">acertou (9 sessões)</td>
+        </tr>
+        <tr>
+          <td class="tk">21/10</td>
+          <td>evento no vencimento</td>
+          <td>coberta 42 out</td>
+          <td>IV cai ≥ 3 pts após o balanço</td>
+          <td><span class="badge b-ok">operada</span></td>
+          <td class="neg">errou (−1,2 pt)</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">Sem esta tabela, os gatilhos do funil nunca são testados contra desfecho — e não há como saber se a ferramenta vale algo.</p>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ---------- dados ilustrativos ---------- */
+const ROWS = [
+  ["PETR4", 41.18, -1.04, 28.4, 82, 22.1,  6.3,  1.9, -4.2,  7.0, "alta",  "premium caro"],
+  ["VALE3", 61.90,  0.42, 24.9, 31, 27.0, -2.1, -1.6,  1.1,  5.2, "alta",  "premium barato"],
+  ["BBAS3", 17.51, -0.80, 31.2, 74, 25.4,  5.8,  1.4, -2.8,  8.1, "média", "premium caro"],
+  ["ITUB4", 41.42,  0.10, 22.7, 46, 21.9,  0.8,  0.2, -1.4,  4.6, "alta",  "neutro"],
+  ["BBDC4", 15.59,  0.65, 27.3, 61, 24.8,  2.5,  0.9, -2.2,  6.3, "alta",  "—"],
+  ["B3SA3", 15.03, -0.33, 33.8, 88, 28.1,  5.7,  1.5, -5.6,  9.0, "média", "skew anômalo"],
+  ["ABEV3", 13.42,  0.15, 21.4, 22, 19.8,  1.6,  0.4, -0.9,  4.1, "média", "—"],
+  ["ELET3", 43.10, -0.51, 29.6, 55, 27.2,  2.4,  0.7, -3.1,  6.8, "média", "—"],
+  ["SUZB3", 54.20,  1.10, 26.1, 39, 25.9,  0.2,  0.1, +0.4,  5.9, "média", "—"],
+  ["GGBR4", 18.90, -0.22, 35.4, 91, 30.2,  5.2,  1.3, -6.1,  9.7, "média", "premium caro"]
+];
+
+const $ = s => document.querySelector(s);
+
+/* painel */
+$("#tbl-painel tbody").innerHTML = ROWS.map(r => {
+  const [tk, spot, chg, iv, rank, rv, vrp, z, rr, em, liq, sig] = r;
+  const c = chg < 0 ? "neg" : "pos";
+  const zc = Math.abs(z) >= 1.5 ? "hi" : "";
+  const badge = sig === "premium caro" ? "b-warn" : sig === "premium barato" ? "b-ok" : sig === "neutro" || sig === "—" ? "b-mut" : "b-bad";
+  return `<tr>
+    <td class="tk">${tk}</td>
+    <td>${spot.toFixed(2)} <span class="${c}" style="font-size:11px">${chg > 0 ? "+" : ""}${chg.toFixed(2)}%</span></td>
+    <td>${iv.toFixed(1)}</td>
+    <td>p${rank}</td>
+    <td>${rv.toFixed(1)}</td>
+    <td class="${vrp > 0 ? "hi" : ""}">${vrp > 0 ? "+" : ""}${vrp.toFixed(1)}</td>
+    <td class="${zc}">${z > 0 ? "+" : ""}${z.toFixed(1)}</td>
+    <td>${rr > 0 ? "+" : ""}${rr.toFixed(1)}</td>
+    <td>±${em.toFixed(1)}%</td>
+    <td>${liq}</td>
+    <td><span class="badge ${badge}">${sig}</span></td>
+  </tr>`;
+}).join("");
+
+/* cadeia ilustrativa — 18/dez/2026, spot 41,18 */
+const CHAIN = [
+  { k: 36, cm: 5.62, cs: 1.8, coi: 3100, cd: 0.86, civ: 30.1, pm: 0.21, ps: 9.4, poi: 4200, pd: -0.13, piv: 34.2, q: "warn" },
+  { k: 37, cm: 4.81, cs: 1.9, coi: 2650, cd: 0.82, civ: 29.4, pm: 0.29, ps: 7.2, poi: 3800, pd: -0.17, piv: 33.1, q: "ok" },
+  { k: 38, cm: 4.06, cs: 2.1, coi: 5100, cd: 0.77, civ: 29.0, pm: 0.71, ps: 6.4, poi: 5100, pd: -0.24, piv: 33.8, q: "ok" },
+  { k: 39, cm: 3.35, cs: 2.4, coi: 4300, cd: 0.71, civ: 28.8, pm: 1.02, ps: 4.1, poi: 6200, pd: -0.32, piv: 32.4, q: "ok" },
+  { k: 40, cm: 2.71, cs: 2.8, coi: 7800, cd: 0.64, civ: 28.6, pm: 1.42, ps: 3.1, poi: 12400, pd: -0.41, piv: 31.2, q: "ok" },
+  { k: 41, cm: 2.14, cs: 3.0, coi: 6900, cd: 0.56, civ: 28.5, pm: 1.88, ps: 2.9, poi: 9800, pd: -0.50, piv: 30.1, q: "atm" },
+  { k: 42, cm: 1.63, cs: 3.4, coi: 5400, cd: 0.47, civ: 28.9, pm: 2.44, ps: 3.6, poi: 7100, pd: -0.59, piv: 29.6, q: "ok" },
+  { k: 43, cm: 1.19, cs: 4.2, coi: 3200, cd: 0.38, civ: 29.7, pm: 3.12, ps: 5.1, poi: 3900, pd: -0.68, piv: 29.9, q: "ok" },
+  { k: 44, cm: 0.84, cs: 6.0, coi: 2100, cd: 0.30, civ: 30.8, pm: 3.88, ps: 7.8, poi: 1800, pd: -0.76, piv: 30.7, q: "warn" },
+  { k: 45, cm: 0.57, cs: 8.8, coi: 1400, cd: 0.23, civ: 32.0, pm: 4.71, ps: 9.2, poi: 900,  pd: -0.82, piv: 31.6, q: "warn" },
+  { k: 46, cm: 0.31, cs: 15.0, coi: 600, cd: 0.15, civ: 34.9, pm: 5.55, ps: 11.4, poi: 400, pd: -0.87, piv: 33.2, q: "warn" },
+  { k: 48, cm: 0.13, cs: 31.0, coi: 210, cd: 0.07, civ: 41.2, pm: 7.30, ps: 14.0, poi: 120, pd: -0.93, piv: 36.0, q: "bad" }
+];
+
+function qbadge(q){ return q==="atm" ? '<span class="badge b-ok">ATM</span>' : q==="ok" ? '<span class="badge b-ok">ok</span>' : q==="warn" ? '<span class="badge b-warn">spread</span>' : '<span class="badge b-bad">inconsist.</span>'; }
+
+function renderChain(){
+  $("#tbl-chain tbody").innerHTML = CHAIN.map(r => `
+    <tr class="${r.q==="atm"?"atm":""}">
+      <td class="tk">${r.k.toFixed(2)}</td>
+      <td>${r.cm.toFixed(2)}<span class="sub">R$ ${(r.cm*r.cs/100).toFixed(2)} · ${r.cs.toFixed(1)}%</span></td>
+      <td>${r.coi.toLocaleString("pt-BR")}</td>
+      <td>${r.cd.toFixed(2)}</td>
+      <td>${r.civ.toFixed(1)}</td>
+      <td>${r.pm.toFixed(2)}<span class="sub">R$ ${(r.pm*r.ps/100).toFixed(2)} · ${r.ps.toFixed(1)}%</span></td>
+      <td>${r.poi.toLocaleString("pt-BR")}</td>
+      <td>${r.pd.toFixed(2)}</td>
+      <td>${r.piv.toFixed(1)}</td>
+      <td>${qbadge(r.q)}</td>
+    </tr>`).join("");
+}
+renderChain();
+
+/* ---------- mini biblioteca de gráfico em SVG ---------- */
+function svgEl(w,h,inner){ return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">${inner}</svg>`; }
+function scale(v, d0, d1, r0, r1){ return r0 + (v - d0) / ((d1 - d0) || 1) * (r1 - r0); }
+function path(pts){ return pts.map((p,i)=> (i?"L":"M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" "); }
+function axis(w,h,pad){
+  let s = "";
+  for(let i=0;i<=3;i++){ const y = pad + i*(h-2*pad)/3;
+    s += `<line x1="${pad}" y1="${y}" x2="${w-pad}" y2="${y}" stroke="#222c3b" stroke-width="1"/>`; }
+  return s;
+}
+function labels(xs, ys, w, h, pad){
+  let s = "";
+  xs.forEach((t,i)=>{ const x = pad + i*(w-2*pad)/(xs.length-1||1);
+    s += `<text x="${x}" y="${h-4}" fill="#5f7288" font-size="10" text-anchor="middle" font-family="ui-monospace,monospace">${t}</text>`; });
+  ys.forEach((t,i)=>{ const y = pad + i*(h-2*pad)/(ys.length-1||1);
+    s += `<text x="${pad-6}" y="${y+3}" fill="#5f7288" font-size="10" text-anchor="end" font-family="ui-monospace,monospace">${t}</text>`; });
+  return s;
+}
+
+/* estrutura a termo */
+(function(){
+  const w=470,h=190,pad=30;
+  const exps=["nov","dez","jan","fev","mar"], hoje=[27.9,28.4,30.1,31.0,31.8], antes=[26.2,26.6,28.0,28.8,29.5];
+  const ymin=24, ymax=33;
+  const P = arr => arr.map((v,i)=>[scale(i,0,arr.length-1,pad,w-pad), scale(v,ymin,ymax,h-pad,pad)]);
+  let s = axis(w,h,pad);
+  s += `<path d="${path(P(antes))}" fill="none" stroke="#5b7189" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  s += `<path d="${path(P(hoje))}" fill="none" stroke="#2dd4bf" stroke-width="2"/>`;
+  P(hoje).forEach(p=> s += `<circle cx="${p[0]}" cy="${p[1]}" r="2.6" fill="#2dd4bf"/>`);
+  s += labels(exps, ["33","30","27","24"], w,h,pad);
+  s += `<text x="${w-pad}" y="${pad+10}" fill="#5f7288" font-size="10" text-anchor="end" font-family="ui-monospace,monospace">contango</text>`;
+  $("#c-term").innerHTML = svgEl(w,h,s);
+})();
+
+/* IV vs RV */
+(function(){
+  const w=470,h=190,pad=30, n=60;
+  let iv=[], rv=[];
+  for(let i=0;i<n;i++){
+    iv.push(27 + 4*Math.sin(i/7) + 1.2*Math.sin(i/3) + i*0.02);
+    rv.push(22 + 3*Math.cos(i/9) + 0.9*Math.sin(i/4) + i*0.015);
+  }
+  const ymin=16, ymax=38;
+  const P = arr => arr.map((v,i)=>[scale(i,0,n-1,pad,w-pad), scale(v,ymin,ymax,h-pad,pad)]);
+  let s = axis(w,h,pad);
+  s += `<path d="${path(P(rv))}" fill="none" stroke="#f97b7b" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  s += `<path d="${path(P(iv))}" fill="none" stroke="#2dd4bf" stroke-width="2"/>`;
+  const ax = scale(41,0,n-1,pad,w-pad);
+  s += `<line x1="${ax}" y1="${pad}" x2="${ax}" y2="${h-pad}" stroke="#3b4a61" stroke-width="1"/>`;
+  s += labels(["−60","−30","−15","0"], ["38","30","23","16"], w,h,pad);
+  $("#c-ivrv").innerHTML = svgEl(w,h,s);
+})();
+
+/* smile */
+(function(){
+  const w=470,h=190,pad=30;
+  const deltas=[0.85,0.70,0.55,0.45,0.30,0.18,0.10];
+  const base=[30.4,29.2,28.7,28.5,30.1,32.4,35.6];
+  const ymin=27, ymax=37;
+  const P = arr => arr.map((v,i)=>[scale(i,0,arr.length-1,pad,w-pad), scale(v,ymin,ymax,h-pad,pad)]);
+  let s = axis(w,h,pad);
+  s += `<path d="${path(P(base))}" fill="none" stroke="#2dd4bf" stroke-width="2"/>`;
+  P(base).forEach(p=> s += `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="#0e131c" stroke="#2dd4bf" stroke-width="1.6"/>`);
+  s += labels(["85Δ","70Δ","55Δ","45Δ","30Δ","18Δ","10Δ"], ["37","34","30","27"], w,h,pad);
+  $("#c-smile").innerHTML = svgEl(w,h,s);
+})();
+
+/* payoff */
+(function(){
+  const w=470,h=190,pad=30;
+  const xs=[34,38,40,44,48];
+  const ys=[-1.29,-1.29,0.71,0.71,0.71];
+  const ymin=-1.6, ymax=1.0;
+  const P = arr => arr.map((v,i)=>[scale(i,0,arr.length-1,pad,w-pad), scale(v,ymin,ymax,h-pad,pad)]);
+  let s = axis(w,h,pad);
+  const zero = scale(0,ymin,ymax,h-pad,pad);
+  s += `<line x1="${pad}" y1="${zero}" x2="${w-pad}" y2="${zero}" stroke="#3b4a61" stroke-width="1"/>`;
+  s += `<path d="${path(P(ys))}" fill="none" stroke="#f5b84b" stroke-width="2.2"/>`;
+  s += labels(["34","38","40","44","48"], ["+1,0","+0,3","−0,4","−1,6"], w,h,pad);
+  s += `<text x="${w-pad}" y="${pad+10}" fill="#5f7788" font-size="10" text-anchor="end" font-family="ui-monospace,monospace">BE 39,29</text>`;
+  $("#c-payoff").innerHTML = svgEl(w,h,s);
+})();
+
+/* série */
+(function(){
+  const w=1080,h=230,pad=34,n=70;
+  let px=[], iv=[];
+  for(let i=0;i<n;i++){
+    px.push(1.2 + 0.35*Math.sin(i/8) + i*0.004);
+    iv.push(29 + 3*Math.sin(i/11) + 0.8*Math.sin(i/4));
+  }
+  const pmin=0.6, pmax=1.9, imin=25, imax=35;
+  const X = i => scale(i,0,n-1,pad,w-pad);
+  let s = axis(w,h,pad);
+  s += `<path d="${px.map((v,i)=>[X(i), scale(v,pmin,pmax,h-pad,pad)].join(",")).reduce((a,c,i)=> a+(i?"L":"M")+c, "")}" fill="none" stroke="#63a8f0" stroke-width="2"/>`;
+  s += `<path d="${iv.map((v,i)=>[X(i), scale(v,imin,imax,h-pad,pad)].join(",")).reduce((a,c,i)=> a+(i?"L":"M")+c, "")}" fill="none" stroke="#2dd4bf" stroke-width="1.8" stroke-dasharray="5 3"/>`;
+  const ax = X(52);
+  s += `<line x1="${ax}" y1="${pad}" x2="${ax}" y2="${h-pad}" stroke="#f5b84b" stroke-width="1.2"/>`;
+  s += `<text x="${ax+6}" y="${pad+12}" fill="#f5b84b" font-size="10" font-family="ui-monospace,monospace">ajuste de strike −0,04</text>`;
+  s += `<text x="${pad+4}" y="${pad+12}" fill="#63a8f0" font-size="10" font-family="ui-monospace,monospace">prêmio</text>`;
+  s += `<text x="${pad+70}" y="${pad+12}" fill="#2dd4bf" font-size="10" font-family="ui-monospace,monospace">IV</text>`;
+  $("#c-serie").innerHTML = svgEl(w,h,s);
+})();
+
+/* tabs */
+document.querySelectorAll("nav.tabs button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("nav.tabs button").forEach(x => x.classList.remove("on"));
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("on"));
+    b.classList.add("on");
+    $("#v-" + b.dataset.v).classList.add("on");
+  });
+});
+</script>
+</body>
+</html>

@@ -89,6 +89,18 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** `ingest_state.json` continua em `data/ingest_state.json` (esquema do `.gitkeep`); `data/raw/` continua como cache de downloads. Mover para `data/lake/` exigiria regenerar partições — só se o dono pedir.
 - **Revisar em:** se o dono quiser o prefixo de volta (questão estética, não funcional).
 
+## ADR-010 — Divergências do pacote earnings (B4), registradas na revisão da Onda B
+
+- **Data:** 2026-11-22 · **Status:** provisórias · **Custo de reverter:** baixo
+- **Contexto:** a revisão da Onda B aprovou o B4 com quatro desvios do contrato/espec que são justificados mas não estavam registrados (autonomia não pode virar memória invisível).
+- **Decisões:**
+  1. `build_earnings(itr_zip, dfp_zip, fca_zip, tickers, last_session)` aceita `Path | Sequence[Path]` por dataset (o contrato §5 desenhou `itr_dir`; a forma de lista serve o backfill e o DFP corrente+anterior). **A assinatura do código vence**; este ADR a torna oficial.
+  2. `data/earnings/part-0.parquet` **sem** `year=YYYY` (tabela pequena, ~3,7 k linhas) — exceção documentada ao ADR-009.
+  3. **Folga de 1 sessão no backtest:** `earnings.py:492` publica `actual` quando `DT_RECEB <= last_session` — mas o resultado sai **após o fechamento** (spec §6.14: o pregão afetado é o SEGUINTE). Não é look-ahead de execução (a data já era pública), mas o recorte "janela contém resultado" do F1b deve tratar `DT_RECEB` como evento do **pregão seguinte**; registrar no contrato do F1b.
+  4. `datetime.now(_tz)` em `earnings.py:846` é carimbo de download (`downloaded_at` da meta), mesma exceção documentada do `fetch.py` — o teste de arquitetura ganha whitelist explícita (arquivo: `fetch.py`, `earnings.py`) para a garantia ser real.
+- **Consequência:** dívida de consistência registrada (não bug): `earnings.py` reimplementa ~250 linhas de download condicional do `fetch.py` e mantém `_replace` privado em paralelo ao `b3o.fsutil` — consolidar quando o arquivo for tocado de novo.
+- **Revisar em:** C1 (usa `paths()` e `last_session`), F1b (folga de sessão).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

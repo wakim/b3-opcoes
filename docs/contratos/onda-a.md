@@ -105,6 +105,14 @@ def validate_cotahist(zip_path: Path) -> ValidationReport: ...
 - Problemas por linha: `kind` ∈ `"width" | "numeric" | "date" | "tipreg"`;
   `bad_width` recebe `width`, `bad_numeric` recebe os três demais (a espécie
   distingue). `errors` é só nível I/O/zip.
+- **Contagens TOTAIS (revisão da Onda B, D2 — a contagem não pode mentir):**
+  `ValidationReport` carrega `bad_width_count: int` e `bad_numeric_count: int`
+  (total de linhas afetadas, SEM capo) além das listas bounded em 20. O
+  `ingest_state.skipped_lines` usa os COUNTS, nunca `len()` das listas.
+- **Publicação em `/data` via `b3o.fsutil.replace_file`** (revisão da Onda B,
+  D1): `os.replace` cru sobre alvo existente dá EACCES no bind — inclusive no
+  zip e na meta do fetch (3ª execução com ETag novo → 200 → replace sobre
+  existente). TODO escritor em `data_dir` usa `replace_file`.
 - **Coleta, não explode:** nenhuma linha ruim levanta exceção; tudo entra nas listas
   (limitadas às primeiras 20 por espécie) e o resultado decide o exit code.
 - Zip com membro único; `sha256` do zip inteiro.

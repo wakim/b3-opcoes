@@ -178,6 +178,19 @@ Critérios de desempate, nesta ordem:
 - **Proposta ao dono:** trocar o alvo por **medição em duas camadas** — (a) pares com book dos dois lados e `spread ≤ 5%`: mediana ≤ 0,5 e P90 ≤ 1,5 (é aí que a paridade vale); (b) todos os pares E/E ATM ±10% com fechamento: mediana ≤ 2,0 e P90 ≤ 8 (limite de qualidade do dado, não do modelo), incluindo o `n` no relatório. As duas juntas provam o que o critério quer provar: se o par líquido concordar e o resto divergir por ruído de tick, o forward/taxa/preço do pipeline estão certos.
 - **Revisar em:** decisão do dono na próxima leitura deste log.
 
+## ADR-019 — O projeto não tem suíte de testes (diretiva do dono, 22/11/2026)
+
+- **Data:** 2026-11-22 · **Status:** ratificada pelo dono na sessão · **Custo de reverter:** baixo (o histórico do git tem tudo)
+- **Contexto:** o projeto nasceu com "toda fórmula e o parser têm teste" e chegou a 523 testes em `tests/`. O dono decidiu, com o produto ainda em formação, que **testes não fazem sentido neste estágio**.
+- **Decisão:** `tests/` foi **removido** do repositório; `pytest` saiu de `pyproject.toml`/`uv.lock` e do caminho oficial; o serviço `test` do compose vira **container de ferramentas** (roda `b3o`, `python`, `ruff`); `.gitattributes` perde as regras de fixture. O que substitui o teste:
+  1. **rodar no dado real** (`prepare`, `health`, `metrics`, `backtest`) e conferir 1 número à mão por caminho independente;
+  2. **auditoria independente** de dado (recálculo por fora do código, como a do F0);
+  3. **falha explícita** (`null` + flag) em vez de zero silencioso;
+  4. **`model_version`** + recálculo inteiro quando a fórmula muda.
+- **Por quê:** diretiva do dono; o custo de manter uma suíte grande num produto cujas fórmulas ainda estão mudando não se pagava.
+- **Consequência:** os critérios do `PLAN.md` que dizem "pytest verde" ficam **revogados** (o texto fica como registro); as armadilhas do `AGENTS.md` passam a ser a única proteção contra regressão de dado — por isso medição nova entra lá com número. Reintroduzir teste exige pedido do dono.
+- **Revisar em:** quando o produto estabilizar (F4/F5) ou se um erro de fórmula escapar para um número exibido.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

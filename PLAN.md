@@ -13,6 +13,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 - Tarefa que descobre algo novo sobre o dado: **anote no `AGENTS.md`**. As armadilhas já registradas lá custaram uma sessão cada.
 - Nada de UI antes de o número estar certo **e de o sinal provar que serve**. A tentação de "ver bonito" é o que produz gráfico de dado errado.
 - As estimativas são de trabalho focado. Conte com **2–3×** no calendário.
+- **Diretiva do dono (22/11/2026): o projeto não tem suíte de testes.** Onde este plano fala em `pytest`, "teste automatizado", "teste de contrato" ou "pytest verde", vale a **validação no dado real** (rodar o comando, conferir 1 número à mão por caminho independente, comparar com medição já registrada no `AGENTS.md`). `tests/` foi removido e `pytest` saiu das dependências — ver ADR-019.
 
 ---
 
@@ -39,7 +40,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 5. **Nenhuma métrica sem verbete.** Se entra na tela, entra no glossário.
 6. **Falha explícita, nunca dado parcial.** Erro com código e dica; `null` com flag; nunca zero silencioso.
 7. **Provar o sinal antes de construir em cima dele.** Há 3 anos de histórico: o backtest vem antes da UI.
-8. **Teste automatizado para fórmula e parser.** Validação manual confere uma vez; teste confere a cada `model_version`.
+8. **Validação no dado real.** O projeto **não tem suíte de testes** (ADR-019): cada fórmula é conferida à mão por um caminho independente (fonte citada ou propriedade matemática) e a medição fica registrada no `AGENTS.md`.
 
 ---
 
@@ -300,7 +301,7 @@ O F1b é o portão: se o sinal não se sustenta, nada depois dele é construído
 
 - [ ] roda no dado real de 2026, não só em fixture
 - [ ] roda dentro do container (`podman compose run --rm …`), sem depender de nada instalado no host
-- [ ] fórmula e parser com teste automatizado; número conferido à mão em pelo menos 1 caso
+- [ ] fórmula e parser com **1 número conferido à mão** por caminho independente (não há suíte de testes — ADR-019)
 - [ ] falha de forma explícita (erro ou `null` + flag), nunca zero silencioso
 - [ ] `health` não mente sobre a idade do dado
 - [ ] se mudou fórmula → `model_version` subiu, testes atualizados, recálculo documentado
@@ -331,7 +332,7 @@ cd C:\Users\wakim\Projects\b3-opcoes
 
 podman compose config                                    # valida o compose
 podman compose build                                     # imagem runtime + dev
-podman compose run --rm test pytest                      # testes
+podman compose run --rm test b3o health                     # saúde do lake (o serviço `test` é o container de ferramentas; não há testes — ADR-019)
 podman compose run --rm test ruff check src tests         # lint
 podman compose run --rm prepare                          # baixa e deriva
 podman compose run --rm app b3o health                    # saúde do lake

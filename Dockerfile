@@ -3,7 +3,7 @@
 # Imagens do b3o (ADR-002). Critério F0: build do zero em < 5 min.
 #   deps    → só dependências (cacheável entre edições de src/)
 #   runtime → app sem dev-deps (serviços app, prepare, prepare-watch)
-#   dev     → com dev-deps, src e tests (serviço test: pytest/ruff)
+#   dev     → com dev-deps e src (serviço test: container de ferramentas/python)
 #   web     → inerte até o F5.0 (só marca o lugar do build Node)
 
 ########## deps ##########
@@ -49,13 +49,12 @@ RUN uv sync --frozen --no-install-project
 
 COPY config.yaml /app/config.yaml
 COPY src /app/src
-COPY tests /app/tests
 RUN uv sync --frozen
 
 ENV PATH="/app/.venv/bin:$PATH" \
     B3_DATA_DIR=/data
 
-CMD ["pytest"]
+CMD ["b3o", "--help"]
 
 ########## web (inerte até o F5.0) ##########
 # node:26-slim = Node 26 (LTS ativa e current em 22/11/2026; 22-slim era LTS de manutenção).

@@ -14,7 +14,7 @@ Fonte: arquivos públicos da B3 (EOD). Interface: MCP (agente) + PWA (humano).
 1. **O Python calcula, o agente interpreta, o humano decide.** Nenhum número pode nascer de um LLM.
 2. **EOD é o dado.** Não há preço vivo na v1; se um dia houver, nunca entra em IV, grega, forward ou estrutura.
 3. **Uma camada de consulta.** MCP (montado em `/mcp`) e HTTP chamam o mesmo `QueryService`, no mesmo processo. Query SQL fora dela é bug.
-4. **Nenhuma métrica sem verbete** no `docs/glossario.md`, e o teste de cobertura tem que passar.
+4. **Nenhuma métrica sem verbete** no `docs/glossario.md`.
 5. **Falha explícita.** Erro com `code/message/hint`; indisponível vira `null` + flag; nunca zero silencioso.
 6. **`model_version` sobe a cada mudança de fórmula.** O histórico é recalculado inteiro; o rank não pode misturar modelos.
 
@@ -125,9 +125,9 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 
 - **Repositório e push:** `origin` = `git@github.com:wakim/b3-opcoes.git`, branch `master`, autenticação por **SSH** (`~/.ssh/id_ed25519`, sem token no disco). O dono criou o repositório e pediu o envio em 22/11/2026: commit por pacote **e** push depois de cada pacote verde. `data/` e `out/` ficam fora do git (`.gitignore`): relatório de sessão, de liquidez e `backtest.md` são artefato local, não commit.
 
-- **Golden fixtures são DADO, não código** (`.gitattributes`: `tests/fixtures/*.txt -text`): os bytes originais (CRLF incluído) têm que sobreviver a clone limpo. Sem a regra, o `* text=auto eol=lf` entrega o fixture em LF e **20 testes caem** — bug de reprodutibilidade real, achado na auditoria de deps de 22/11/2026. Ao criar fixture novo: confira com `git archive HEAD <fixture> | tar -xO | ...` que os bytes batem com o original.
+- **O projeto NÃO tem suíte de testes** (diretiva do dono, 22/11/2026 — ADR-019): `tests/` foi removido, `pytest` saiu das deps e do caminho oficial. Validar é rodar no **dado real** (`b3o prepare`, `b3o health`, `b3o metrics`, `b3o backtest`), conferir 1 número à mão por um caminho independente e comparar com medição já registrada aqui. Não crie `tests/` de novo sem o dono pedir.
 - Python 3.15, `uv`, layout `src/b3o/`.
-- **Tudo roda em container** (`compose.yaml`, spec §4.1). Nenhum comando oficial usa `uv`/Python/Node do host: `podman compose run --rm test pytest`, `podman compose run --rm prepare`. Se um comando só funciona no host, ele está errado.
+- **Tudo roda em container** (`compose.yaml`, spec §4.1). Nenhum comando oficial usa `uv`/Python/Node do host: `podman compose run --rm test b3o health`, `podman compose run --rm prepare`. Se um comando só funciona no host, ele está errado.
 - Runner: `podman compose` (o host não tem Docker). O `compose.yaml` é compose padrão — nunca usar extensão exclusiva do Podman, para que `docker compose` funcione em outra máquina.
 - `uv.lock` é versionado e a imagem instala com `uv sync --frozen`: sem lock atualizado a build quebra de propósito.
 - `.venv` e `node_modules` ficam em **volumes nomeados**, nunca no bind mount: no Windows o bind não preserva modo e é lento (medir antes de reclamar).
@@ -137,7 +137,7 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 - Datas em ISO com offset nas bordas; `date` internamente.
 - Nada de arredondar no cálculo — só na serialização.
 - Funções puras para fórmula (recebem número, devolvem número); I/O separado.
-- **Toda fórmula e o parser têm teste** (`podman compose run --rm test pytest`). Validação manual complementa, não substitui.
+- **Sem teste automatizado.** A garantia vem de: (a) medição no arquivo real, registrada aqui com número; (b) auditoria independente (contagem/valor recalculado por fora do código); (c) falha explícita (`null` + flag) em vez de zero silencioso; (d) `model_version` + recálculo inteiro quando a fórmula muda.
 
 ## Frontend
 

@@ -24,7 +24,8 @@ services:
       - "127.0.0.1:8080:8080"
     command: ["uvicorn", "b3o.api:app", "--host", "0.0.0.0", "--port", "8080"]
 
-  # É aqui que se valida: pytest, ruff (deps de dev, image dev).
+  # Container de ferramentas (image dev): é aqui que se roda `b3o ...`, python, ruff.
+  # NÃO há suíte de testes (diretiva do dono, 22/11/2026 — ADR-019).
   test:
     build:
       context: .
@@ -34,9 +35,8 @@ services:
       - ./data:/data
       # código bind para iteração rápida; .venv vive na imagem, nunca no bind (ADR-003)
       - ./src:/app/src
-      - ./tests:/app/tests
       - ./config.yaml:/app/config.yaml
-    command: ["pytest"]
+    command: ["b3o", "--help"]
 
   # backend com --reload (profile dev)
   dev:

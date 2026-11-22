@@ -221,8 +221,7 @@ puts 1.508.144 E e **zero** A; calls 818.364 A / 729.416 E; `None` em 0,15%
 | style | None | `A` | `E` |
 | side | None | `C` | `P` |
 
-Sanidade à mão: PETR4 `volume = qty × avg` fecha exato (39.230.100 × 4291);
-PETRM410 tem bid=ask=0 (caso `one_sided` futuramente).
+Sanidade à mão: PETR4 `volume/qty = 4291,4196 ¢` e `avg = 4291 ¢` — o `avg` é **truncado** pela B3 (2 decimais); `volume` é o financeiro exato. **A identidade `volume = qty × avg` é aproximada** (62% das linhas de 2026 diferem < 1¢ por unidade); nunca reconstituir/auditar `volume` por ela. PETRM410 tem bid=ask=0 (caso `one_sided` futuramente).
 
 ## 6. Definição de pronto (dos dois pacotes)
 

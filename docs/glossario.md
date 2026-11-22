@@ -88,9 +88,9 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 ## IV rank e percentil
 
-**O que é** — onde a IV de hoje está dentro da faixa dos últimos 12 meses. `p82` significa que a IV atual é maior que 82% dos dias do período.
+**O que é** — duas leituras diferentes de "onde a IV de hoje está" nos últimos 252 pregões. **IV rank** usa os extremos (mínimo e máximo do período): `(IV − mínimo) / (máximo − mínimo)`. **Percentil** conta os dias: "a IV de hoje é maior que X% dos dias". Podem divergir bastante quando há um pico isolado no período — o pico puxa o máximo e derruba o rank, mas mexe pouco no percentil.
 
-**Erro comum** — tratar como sinal. **IV rank é contexto, não gatilho.** Se o papel mudou de regime (entrou num ciclo de resultados piores, mudou de controlador), o "p85" pode ser o novo normal. Por isso o gatilho do funil é o z-score do VRP, e o rank fica só como leitura.
+**Erro comum** — tratar como sinal. **IV rank é contexto, não gatilho.** Se o papel mudou de regime (entrou num ciclo de resultados piores, mudou de controlador), o "p85" pode ser o novo normal. Por isso o gatilho do funil é o z-score do VRP, e o rank fica só como leitura. O outro erro é trocar as duas: rank não é percentil.
 
 **No painel** — `28,4 · p82 · 12m`: prêmio historicamente caro para este papel. Não diz se vai continuar caro.
 

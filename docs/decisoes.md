@@ -119,6 +119,30 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** existem dois JSONs de estado (o `health` é a visão única); quem apagar o sidecar perde telemetria, não dado. Consolidar num schema único quando o `ingest_state` for revisto (F2/F3).
 - **Revisar em:** F2 (quando o `screen` passar a ler o universo do state).
 
+## ADR-013 — Furos do contrato da Onda E fechados na abertura (tipo de entrada, ATM sem curva, duas estatísticas de IV)
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo
+- **Contexto:** o contrato `docs/contratos/onda-e.md` citava `OptionQuote` e `CurveInput` sem defini-los, dava a `atm_by_expiry` uma curva que a aritmética de smile não usa, e definia só uma de duas métricas que a spec §5.3 pede (`iv_rank_252` **e** `iv_pct_252`). Deixar assim faria dois implementadores inventarem tipos diferentes.
+- **Decisão:** (1) um tipo único `SmilePoint` em `atm.py` (ticker, maturity, strike ¢, t, iv_pct, delta, flags), importado por `checks.py`; (2) `atm_by_expiry(chain, forward)` **sem** curva — `t` já vem no ponto; (3) `iv_rank_252` = posição min–max, `iv_percentile_252` = percentil inclusivo, `vrp_z` = desvio amostral (n−1), todas fatiando 252 internamente; (4) banda de skew em `|Δ|`, interpolação linear em Δ; (5) tolerâncias de `checks` relativas à variância ATM (`5%`), não absolutas; (6) `expected_move_1s` devolve fração.
+- **Por quê:** nome de campo/tipo divergente é o bug mais caro do projeto; e a regra "fórmula pura recebe número" obriga a tirar calendário/curva de `derive/`.
+- **Consequência:** o `PLAN` não nomeia `ts_slope_30_90`; fica definido na Onda F como `iv_atm(90d) − iv_atm(30d)` em vol points (contango positivo), `null` + flag quando não há vencimento para 90d.
+- **Revisar em:** F2 (quando o `screen` exibir as métricas e o glossário ganhar os verbetes `iv_rank`/`iv_percentile`).
+
+## ADR-014 — Pipeline de métricas: tabelas, taxa por sessão (Selic plana) e classe de sinal no F1
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** médio (recalcular o histórico) · **Revisar em:** portão do F1b
+- **Contexto:** ao abrir a Onda F quatro furos apareceram: (1) `legs` não carrega preço nem `underlying`, e `ticker → papel` só existia em memória; (2) `rates_di` tem **uma** data (o proxy da B3 publica 20 sessões) e o backtest precisa de 2024–2026; (3) o portão depende das **classes de sinal** que o PLAN põe no F2; (4) `mid`/preço por ação precisa decidir onde o `FATCOT` entra.
+- **Decisão:**
+  1. `metrics_*` re-juntam `legs` × `raw_cotahist` por `(ticker, refdate)` e resolvem o papel pelo ISIN contra o spot do mesmo dia; `strike`/`distribution_id` do leg persistido vencem (fronteira de leg).
+  2. Curva por sessão: PRE da B3 quando existe; senão **Selic do BCB (SGS 11) em curva plana** (`du ∈ {1,21,42,63,126,252,504}`, `source="bcb_selic_flat"`), buscada em uma chamada por intervalo. Sem curva → `iv=None` + `no_rates` (nunca `DF=1`).
+  3. `derive/signal.py` (classes da §6.9) entra no **F1**, não no F2: sem classe não há portão.
+  4. Preço por ação = preço ÷ `quote_factor` (FATCOT) no pipeline; a tabela guarda ¢/ação e IV em %; o R$ de contrato fica para o F4.
+  5. `iv_pct_252` da série é calculado na gravação com `leg_id → deque(252)` cronológico (window SQL violaria a regra de consulta única).
+  6. A data ex usada no Yang-Zhang é a do `strike_events` de provento (é a primeira sessão com mudança contígua de strike — proxy honesto, documentado na flag).
+- **Por quê:** o backtest não roda sem taxa em toda sessão nem sem classe; e preço em unidade errada é o erro mais caro do projeto.
+- **Consequência:** `prepare` passa a fazer uma chamada ao BCB (só dias úteis, série pública sem token); `rate_source` vira atributo **por sessão** em `metrics_underlying`; recalcular `model_version` implica refazer o histórico inteiro (`--backfill`).
+- **Revisar em:** F2 (quando o `screen` consumir as tabelas) e no portão (a Selic plana pode explicar parte do erro de forward/IV).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

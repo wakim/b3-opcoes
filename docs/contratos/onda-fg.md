@@ -111,3 +111,194 @@ subconjunto de papéis; rodar até achar recorte que passe; recalcular
    ignorado; o orquestrador arquiva o texto na mensagem final).
 5. Nenhuma decisão de "seguir/parar" é sua: o orquestrador aplica os critérios
    pré-registrados e o dono ratifica.
+
+---
+
+## 4. Ajustes na abertura da Onda F — 22/11/2026 (orquestrador)
+
+O contrato acima fixou a **semântica**; esta seção fecha os **nomes** (a lista
+de arquivos, como prometido) e os furos encontrados ao ler o lake real.
+Registrado em `docs/decisoes.md` (ADR-014).
+
+### 4.1 Fato do lake que muda o desenho
+
+`data/legs/` guarda **só identidade de leg** (`leg_id, ticker, maturity, side,
+style, refdate, leg_index, strike, distribution_id, flags`) — **nenhum preço**.
+E `ticker → underlying` **não é persistido em lugar nenhum**: hoje só existe em
+memória (`strike_events._underlying_of`, `liquidity.paper_of_isin`), derivado do
+`isin_underlying` contra a linha `010`/`020` do mesmo dia. Consequência: o
+pipeline de métricas re-junta `legs` × `raw_cotahist` por `(ticker, refdate)` e
+resolve o papel pelo ISIN **no mesmo SQL** — e a junção tem que ser conferida:
+`strike` e `distribution_id` do leg persistido são a autoridade (fronteira de
+leg não se atravessa), o preço vem do raw.
+
+### 4.2 Donos de arquivo (fecha a lista)
+
+| Pacote | Arquivos |
+|---|---|
+| F1 (implementador F1) | `src/b3o/metrics/__init__.py`, `src/b3o/metrics/series.py`, `src/b3o/metrics/underlying.py`, `src/b3o/metrics/pipeline.py`, `src/b3o/store/metrics.py`, `src/b3o/ingest/selic.py`, `src/b3o/query/service.py` (só **métodos novos** de leitura), `src/b3o/cli.py` (só o comando `metrics`), `tests/test_metrics_series.py`, `tests/test_metrics_underlying.py`, `tests/test_metrics_pipeline.py`, `tests/test_selic.py` |
+| F2 (implementador F2, na mesma onda, depois do F1) | `src/b3o/derive/signal.py`, `src/b3o/metrics/validation.py`, `tests/test_signal.py`, `tests/test_validation.py`, `src/b3o/cli.py` (só o subcomando `metrics --checks`) |
+| congelado | todo o resto |
+
+Regra de SQL (teste de arquitetura): `duckdb` continua **proibido** em
+`metrics/`. Leitura vai por `QueryService` (métodos novos, um por consulta);
+escrita por `store/metrics.py` (que é `store/`, logo pode usar pyarrow e
+`b3o.fsutil.replace_file`).
+
+### 4.3 Tabelas de saída (schema exato)
+
+`data/metrics_series/year=YYYY/part-0.parquet` — uma linha por
+`(refdate, ticker)`:
+
+```
+refdate date, ticker str, maturity date, leg_id str, side str, style str|null,
+strike int64 (¢/ação), t double (du/252), mid double (¢/ação), quote_factor int64,
+iv double|null (% a.a.), delta double|null, gamma double|null,
+theta_brl double|null (R$/ação/dia útil), theta_pct double|null (% do prêmio/dia),
+vega_brl double|null (R$/ação/1 p.p. de vol), rho double|null,
+iv_pct_252 double|null, is_liquid bool, flags list<str>, model_version int64
+```
+
+`data/metrics_underlying/year=YYYY/part-0.parquet` — uma linha por
+`(refdate, underlying)`:
+
+```
+refdate date, underlying str, spot double (¢/ação, mercado 010 ou 020),
+underlying_market str, iv_atm_30d double|null (% a.a.),
+iv_rank_252 double|null, iv_pct_252 double|null,
+rv20 double|null, rv30 double|null, rv60 double|null (% a.a. base 252),
+vrp double|null (vol points), vrp_z_252 double|null,
+rr25 double|null, bfly25 double|null (vol points),
+ts_slope_30_90 double|null (vol points; §ADR-013),
+exp_move_1s_30d double|null (fração), implied_div_yield_30d double|null (% a.a.),
+days_to_liquidate double|null, forward_30d double|null (¢/ação),
+rate_source str, signal_class str ("premium_rich"|"premium_cheap"|
+"skew_anomaly"|"event_pressure"|"none"), flags list<str>, model_version int64
+```
+
+- **Unidade**: preço e strike em **centavos por ação** (o `/quote_factor` do
+  FATCOT é aplicado aqui — `mid = (bid+ask)/2 / FATCOT`, `close/FATCOT`);
+  IV e vols em **% a.a.**; VRP/skew/slope em **pontos de vol**; exp_move em
+  **fração**. Nada de R$ de contrato nesta tabela (contrato = ×100 só em F4).
+- `model_version` vem do `config.yaml` e é gravado em **toda** linha.
+- `flags` (união das flags da série/papel, sem repetição, ordem alfabética):
+  as de §1 + `smile_outside_range`, `no_forward`, `no_short_expiry`,
+  `no_expiry`, `no_rates`, `scale_event`, `earnings_before_expiry`,
+  `earnings_unmapped`.
+- Partição é **substituída por inteiro** quando o ano é recalculado
+  (`--backfill`), e por `(refdate)` quando o cálculo é de um dia (merge: lê a
+  partição, remove as linhas daquele `refdate`, concatena, ordena). Idempotente.
+
+### 4.4 `rate_source` por sessão — a curva DI não existe para o histórico
+
+Medido: `data/rates_di` tem **1 data** (2026-11-19). O proxy da B3 só publica as
+últimas 20 sessões, então 2024/2025 e quase todo o 2026 ficariam sem taxa.
+Decisão: `src/b3o/ingest/selic.py` busca a **Selic diária do BCB** (SGS 11,
+`api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial=&dataFinal=`,
+uma chamada devolve o intervalo inteiro; série publica só em dia útil → dia sem
+ponto = último anterior) e materializa **uma curva plana por sessão** do lake:
+nós `du ∈ {1, 21, 42, 63, 126, 252, 504}` com `rate_annual` = Selic anualizada
+`(1+t/100)^252 − 1` em **% a.a.**, `source="bcb_selic_flat"`. A curva PRE da B3
+(`b3_reference`) continua tendo precedência nas datas em que existe.
+`prepare` ganha o estágio (uma chamada HTTP por intervalo, não por data) e o
+`health` mostra `rates_sessions` (nº de sessões com curva) e a última `source`.
+Sem nenhuma fonte de taxa para a data → `df = 1.0` **não** é permitido: a série
+sai com `None` + flag `no_rates` e não entra em IV/forward.
+
+### 4.5 Pipeline (F1) — ordem por data, tudo em memória para um dia
+
+`run_metrics(data_dir, *, dates, model_version, config) -> MetricsSummary`.
+
+Para cada `refdate` (em ordem crescente; `--backfill` itera 2024→2026):
+
+1. **spot**: linha `010` (senão `020`) do papel; `spot` em ¢/ação = `close`
+   (o `010` não tem FATCOT; `020` também não). Papel sem negócio no dia → fora.
+2. **séries**: linhas `070`/`080` do dia, juntadas ao leg persistido por
+   `(ticker, refdate)` com `strike` igual ao do leg; `strike <= 0` sai (IBOV
+   órfã); `mid`/`one_sided` por `bid>0 e ask>0`, senão `close` + `one_sided`.
+3. **T** por `(refdate, maturity)` com `TradingCalendar` do lake (exclui o dia
+   do vencimento; vencido sai).
+4. **DF**: `log_df_interp(du = round(T·252), curva_da_sessão)`; sem curva →
+   `no_rates`, papel fora de IV.
+5. **forward** por `(papel, vencimento)` com `forward_by_parity` (irmã europeia
+   preferida; call americana só OTM sem ex-div; put 'A' exclui o par).
+6. **IV + gregas** por série (Black-76 sobre F do vencimento), com
+   `american_call_ex_div` (call americana ITM e ex-div antes do vencimento →
+   flag e fora do smile) e `quote_factor` aplicado no preço.
+7. **validadores** (`check_chain`) por vencimento → `inconsistent` fora do
+   smile.
+8. **ATM** por vencimento (`atm_by_expiry`) e **30d** (`atm_interpolate_30d`);
+   `ts_slope_30_90` = IV ATM em `90/252` menos `iv_atm_30d` (mesma
+   interpolação de variância total, `None`+flag se não houver bracket).
+9. **skew**: os `SmilePoint` do vencimento mais próximo de 30d (o `front` do
+   `Atm30d`; se não houver, o de menor `|t − 30/252|`) → `rr25`/`bfly25`.
+10. **RV**: Yang-Zhang 20/30/60 sobre o OHLC do papel (mercado escolhido em 1),
+    `adj_factor` acumulado de `strike_events` kind=`scale` (fator multiplicado
+    nas barras anteriores ao evento) e `ex_div_dates` = datas dos eventos
+    kind=`dividend` do papel.
+11. **VRP/z/rank**: `vrp = iv_atm_30d − rv30`; `vrp_z_252`/`iv_rank_252`/
+    `iv_pct_252` com **o histórico já gravado ≤ data** (lido da própria
+    `metrics_underlying`, nunca do futuro) — `--backfill` em ordem crescente é
+    o que garante isso.
+12. **classe** (`derive/signal.py`, thresholds fixos da §6.9) e
+    `earnings_before_expiry` (data `actual`/`estimated` antes do vencimento do
+    `front`, com a folga de 1 sessão do ADR-010).
+13. **liquidez**: `is_liquid` por série (§6.9: `trades ≥ 5` em 5 sessões,
+    `spread_pct ≤ 10`, `bid > 0`, `ask > 0`) — precisa das 5 sessões
+    anteriores do próprio ticker: o pipeline carrega `refdate-5 sessões` para
+    esse cálculo e para o Yang-Zhang (60 sessões), sem gravar nada antes da
+    data pedida.
+14. grava as duas tabelas da data.
+
+### 4.6 `iv_pct_252` de série
+
+Percentil da IV da própria série nas 252 sessões anteriores (inclusive a de
+hoje), **calculado na gravação** com um dicionário `leg_id → deque(maxlen=252)`
+alimentado em ordem cronológica (mesmo `--backfill`) — não é pós-processamento
+SQL (SQL fora de `store/` e `query/` é bug) e não é window do DuckDB.
+
+### 4.7 CLI
+
+```
+b3o metrics --date 2026-11-19 [--config …]      # um dia; imprime resumo de uma tela
+b3o metrics --backfill [--from 2024-01-01] [--to 2026-11-19] [--config …]
+b3o metrics --checks --date 2026-11-19          # (F2) evidência de aceitação em out/
+```
+
+- `--date` sem `--backfill`: recalcula **só** aquele `refdate` (merge na
+  partição). `--backfill` recalcula o intervalo inteiro do lake em ordem
+  **crescente** e substitui as partições dos anos tocados.
+- resumo: `metrics <data> · N papel(is) · M série(s) · K com IV · iv_atm_30d
+  mediana · classes: {rich: x, cheap: y, none: z} · flags principais`.
+- `--checks` (F2) roda e **imprime** a tabela de aceitação do F1 (§4.9) e grava
+  `out/validacao-f1-AAAA-MM-DD.md` (P-T).
+
+### 4.8 Testes obrigatórios do F1
+
+- pipeline sintético ponta a ponta (lake mínimo com 1 papel, 2 vencimentos,
+  5 strikes, curva plana): IV de uma série plantada recupera ±1e-6; `mid` com
+  FATCOT 100 divide por 100; `strike <= 0` fora; `one_sided` quando faltar book.
+- `legs` × raw: série cujo `strike` do leg difere do raw **não** entra (o leg
+  manda) e a linha ganha `leg_mismatch`.
+- sem curva → `no_rates`, `iv = None` e **nada** de DF=1.
+- idempotência: rodar duas vezes o mesmo dia produz o mesmo parquet (sha igual).
+- look-ahead: `vrp_z` de uma data não muda quando o histórico **posterior** é
+  acrescentado (mesma série, +1 dia futuro → mesmo z da data antiga).
+- `--date` num dia já calculado substitui apenas aquele `refdate`.
+
+### 4.9 Evidência de aceitação do F1 (o `--checks` produz)
+
+1. paridade call E × put E, mesmo strike/vencimento, ATM ±10%, com negócio nas
+   duas: mediana de `|iv_call − iv_put|` e P90 (vol points) em PETR4, VALE3,
+   BBAS3, ITUB4, B3SA3 — critério: mediana ≤ 0,5 e P90 ≤ 1,5.
+2. PETR4 contra brapi: **medido em 22/11 que a cadeia/IV saiu do sandbox
+   (HTTP 401)**; a validação externa cai em P-J (registra e segue) — o
+   `--checks` tenta `brapi.dev/api/v2/options/PETR4` uma vez, registra o status
+   e segue.
+3. forward OTM-only vs ITM-only ≤ 0,5% do spot (para cada papel/vencimento).
+4. `r ± 100 bp` → `max|ΔIV| < 0,25` (recalcula IV com a curva deslocada).
+5. ATM 30d sem salto > 2 vol points em dia de rolagem (série de 60 sessões,
+   diferença dia a dia; lista os saltos).
+6. RR25 da PETR4 negativo em ≥ 80% dos dias com `rr25` calculado.
+7. nenhuma série `inconsistent` entra no smile: conta por data e prova com
+   uma assertiva sobre a cadeia usada no ATM.

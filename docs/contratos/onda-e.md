@@ -144,3 +144,106 @@ def check_chain(chain: Sequence[OptionQuote], forward: float | None,
 3. Toda constante com fonte citada no comentário (1,25 do §6.10, tolerâncias).
 4. Commit por pacote `feat(f1/<atm|vrp|skew|dist|checks>): …`; retry index.lock.
 5. Descoberta sobre o dado → resposta.
+
+## 5. Ajustes na abertura da onda — 22/11/2026 (orquestrador)
+
+Furos do contrato acima, fechados antes de o E1 começar. O que não muda continua
+valendo. Registrado em `docs/decisoes.md` (ADR-013).
+
+### 5.1 O tipo de entrada é UM só, e mora em `atm.py`
+
+`OptionQuote`/`CurveInput` não existiam. Fica assim, e `checks.py` **importa**
+este tipo (por isso o E2 roda **depois** do E1 — não em paralelo):
+
+```python
+@dataclass(frozen=True, slots=True)
+class SmilePoint:
+    ticker: str
+    maturity: date
+    strike: int              # centavos
+    t: float                 # anos úteis (du/252) — já calculado pelo pipeline (Onda F)
+    iv_pct: float | None     # % a.a.; None = fora do smile (inconsistente/não invertida)
+    delta: float | None      # por ação, sinal de put; None quando não há IV
+    flags: tuple[str, ...] = ()
+```
+
+### 5.2 `atm_by_expiry` NÃO recebe a curva
+
+`atm_by_expiry(chain: Sequence[SmilePoint], forward: float | None) -> list[ExpiryAtm]`.
+
+A interpolação de ATM é aritmética de smile: `t` já vem no ponto (calculado
+pelo `conventions.py` de quem chamou) e a IV já vem pronta. Passar a curva
+obrigaria `atm.py` a conhecer dias úteis e desconto sem usá-los. `DF` não entra
+na variância total.
+
+Regras fechadas:
+
+- agrupa por `maturity` em ordem crescente; dentro do vencimento usa só pontos
+  com `iv_pct is not None` e `strike > 0`;
+- interpola **linear em `w = (iv/100)² · t` contra `x = ln(K/F)`**; a IV ATM é
+  `100 · sqrt(w_0 / t)` com `w_0` avaliado em `x = 0`;
+- `K = F` exato na grade → usa o ponto (sem interpolar);
+- `F` fora da faixa de strikes do vencimento → `atm_iv=None`, flag
+  `smile_outside_range` (nunca extrapolar);
+- menos de `MIN_STRIKES = 3` pontos válidos → `atm_iv=None`, flag
+  `sparse_chain`;
+- `forward is None` → todos os `atm_iv=None` + flag `no_forward`.
+
+### 5.3 `atm_interpolate_30d`
+
+- alvo `T_30 = 30/252` **exato**;
+- usa só vencimentos com `atm_iv is not None`, ordenados por `t`;
+- `front` = maior `t` ≤ `T_30`, `back` = menor `t` ≥ `T_30`; com os dois,
+  interpola `w` linear em `t` → `method="interpolated"`;
+- `T_30 > back.t` (alvo depois do último vencimento válido) →
+  `iv_atm_30d=None`, `method="extrapolated_blocked"`, flag `iv_extrapolated`;
+- `T_30 < front.t` (grade curta) → `iv_atm_30d=None`, `method="none"`, flag
+  `no_short_expiry` (não inventar vencimento que o papel não tem);
+- nenhum vencimento válido → `method="none"`, flag `no_expiry`.
+
+### 5.4 `vrp.py` — duas estatísticas, dois nomes
+
+`iv_rank_252` e `iv_pct_252` são **métricas diferentes** (a spec §5.3 lista as
+duas) e o contrato só definia uma:
+
+- `iv_rank_252(iv_series) -> float | None` = posição min–max das últimas 252
+  observações (a última é hoje): `100 · (x − min)/(max − min)`; `max == min` →
+  `None`;
+- `iv_percentile_252(iv_series) -> float | None` = percentil inclusivo
+  `100 · #{v ≤ x}/n` das últimas 252 (hoje incluso);
+- `vrp_z(vrp_series, window=252)` = `(x − média)/(desvio AMOSTRAL, n−1)` das
+  últimas `window`, hoje incluso; menos de `window` → `None`;
+- as três fatiam `series[-window:]` internamente; o caller passa o histórico
+  **até a data**, nunca depois.
+
+### 5.5 `skew.py` — banda em delta e interpolação
+
+- `DeltaPoint{delta, iv_pct}` (definido em `skew.py`); `delta` em valor
+  **absoluto** (0,25 = 25Δ), não o Δ assinado;
+- 25Δ por interpolação **linear em Δ** entre vizinhos; sem bracket naquele
+  lado → `rr25=None` + `sparse_chain`;
+- `n_strikes_band` = pontos com `delta` em `[0,20; 0,80]`; **mínimo 5**, senão
+  `rr25` e `bfly25` são `None` com flag `sparse_chain`;
+- `bfly25 = 0,5·(iv25c + iv25p) − atm_iv` (ATM da mesma data e vencimento).
+
+### 5.6 `dist.py`
+
+- `expected_move_1s(straddle_mid, spot)` devolve **fração** (0,0625 = 6,25%);
+  quem serializa multiplica por 100 e o campo leva a unidade no nome;
+- `implied_div_yield(r_pct, forward, spot, t)` em **% a.a.** (mesma unidade do
+  `rate_annual`); `t == 0` ou preço ≤ 0 → `None`.
+
+### 5.7 `checks.py` (E2) — tolerâncias explícitas
+
+- butterfly em **variância total** por trio de strikes **adjacentes** do mesmo
+  vencimento: `w(K_{i+1}) − 2·w(K_i) + w(K_{i−1}) ≥ −tol` com
+  `tol = butterfly_tol · w_atm` e default `butterfly_tol = 0.05` (5% da
+  variância total ATM) — o parâmetro é o multiplicador, não o valor absoluto;
+  documente no comentário;
+- calendário: mesmo strike entre vencimentos adjacentes, `w` não-decrescente
+  com a mesma folga relativa → `calendar_violation`;
+- monotonicidade: por vencimento, IV não-crescente em K (vale para call e para
+  put, por paridade), tolerância 0,05 vol point → `monotonicity_violation`;
+- `ok_smile` = nenhuma violação; série com qualquer violação recebe
+  `inconsistent` (o pipeline a exclui do smile — spec §6.11);
+- comparar com tolerância de ponto flutuante, nunca `==`.

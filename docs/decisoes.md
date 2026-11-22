@@ -110,6 +110,15 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** build do zero medido em **62,8 s** (critério F0: < 5 min), 276 testes e `ruff` verdes em 3.15.2; `duckdb` vem em wheel `abi3 cp312+`, numpy/pyarrow/pydantic-core têm wheel cp315 — nenhum pacote caiu para build de fonte.
 - **Revisar em:** próxima revisão da spec (§4.1 e §10.1).
 
+## ADR-012 — Diagnóstico do `prepare` mora em sidecar (`prepare_state.json`), não no `ingest_state`
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo
+- **Contexto:** o C1 precisava gravar `counts_by_market` (D3), o último erro, as falhas de fonte, o pico de RSS, o retrato de rates/OI/earnings/liquidez e a duração do `prepare`. O `ingest_state.json` da Onda B é schema **fechado** (`store/state.py` recusa chave desconhecida, `unknown = set(raw) - _STATE_KEYS` → erro explícito) e é justamente o arquivo cuja integridade a Onda B testa.
+- **Decisão:** o `prepare` grava dois arquivos em `data/`: `ingest_state.json` (contrato da Onda B, intocado) e `prepare_state.json` (sidecar versionado, `PREPARE_STATE_VERSION = 1`, escrita atômica via `b3o.fsutil.replace_file`). O `health` lê o sidecar para os campos de diagnóstico; ausente/ilegível degrada para `null`, nunca zero.
+- **Por quê:** abrir o schema do state para diagnóstico misturaria "verdade do dado" com "telemetria do job" e obrigaria a reescrever os testes da Onda B. Menor escopo e reversível.
+- **Consequência:** existem dois JSONs de estado (o `health` é a visão única); quem apagar o sidecar perde telemetria, não dado. Consolidar num schema único quando o `ingest_state` for revisto (F2/F3).
+- **Revisar em:** F2 (quando o `screen` passar a ler o universo do state).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

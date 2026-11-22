@@ -17,7 +17,7 @@ Regras que o `health` respeita:
   `None` só aparecem quando são a verdade;
 - `counts_by_market` e `last_error` moram no `prepare_state.json` (sidecar):
   o `ingest_state.json` da Onda B é um schema fechado e recusa chave nova —
-  ADR-016 registra o desvio e o dia em que ele volta para dentro do state;
+  ADR-012 registra o desvio e o dia em que ele volta para dentro do state;
 - `skipped_lines` vem do `ingest_state` (ADR-007: linha torta se conta).
 """
 

@@ -41,7 +41,7 @@ Critérios de desempate, nesta ordem:
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo
 - **Contexto:** precisa de uma imagem para rodar a app e uma para rodar teste/lint, sem levar `pytest` para produção; e um estágio Node para o `web/dist`.
-- **Decisão:** `python:3.12-slim` como base; `uv` copiado de `ghcr.io/astral-sh/uv`; estágios `deps` → `runtime` (sem dev deps) e `dev` (com dev deps); estágio `web` com `node:22-slim` gerando `dist`, que o estágio final copia para `/app/web/dist`. `uv sync --frozen`.
+- **Decisão:** `python:3.15-slim` como base; `uv` copiado de `ghcr.io/astral-sh/uv`; estágios `deps` → `runtime` (sem dev deps) e `dev` (com dev deps); estágio `web` com `node:26-slim` gerando `dist`, que o estágio final copia para `/app/web/dist`. `uv sync --frozen`.
 - **Por quê:** imagem final pequena, um único `uv.lock` manda nas duas, e o build do frontend não exige Node no host.
 - **Consequência:** `uv.lock` é versionado (removido do `.gitignore`). `podman compose run --rm app pytest` **falha de propósito** — teste é no serviço `test`.
 - **Revisar em:** F5.0 (quando o `web/` existir).
@@ -77,7 +77,7 @@ Critérios de desempate, nesta ordem:
 - **Contexto:** o dono definiu como pré-requisito permanente do projeto: bibliotecas e imagens de base sempre atualizadas ("sempre ter as bibliotecas atualizadas").
 - **Decisão:** a cada sessão que mexa em dependências (ou ao abrir fase nova), auditar `pyproject.toml` + `uv.lock` + imagens do `Dockerfile` contra as últimas versões estáveis; subir floors e regerar `uv.lock` (workaround do container — AGENTS.md); rebuild + `pytest`/`ruff` verdes antes de commit. Se uma versão nova quebrar, voltar a floor da culpada e registrar aqui.
 - **Por quê:** diretiva do dono; manutenção contínua evita dívida de upgrade gigante no fim.
-- **Consequência:** `uv.lock` muda com frequência (diff grande e semântico — sempre commit separado `chore(deps): …`); Python permanece 3.12 e Node 22 (convenção/spec — upgrade de linguagem NÃO é "atualização de biblioteca" e é decisão de spec); pacotes que não sobem sem quebrar ficam registrados aqui com o motivo.
+- **Consequência:** `uv.lock` muda com frequência (diff grande e semântico — sempre commit separado `chore(deps): …`); Python sobe para 3.15 (duckdb tem wheel abi3 cp312+, numpy/pyarrow/pydantic-core têm cp315) e Node sobe para 26 (LTS ativa, a mais nova); pacotes que não sobem sem quebrar ficam registrados aqui com o motivo.
 - **Revisar em:** a cada sessão que tocar dependências.
 
 ## ADR-009 — Caminho do lake: `data/<tabela>/year=YYYY` (sem prefixo `lake/`)
@@ -100,6 +100,15 @@ Critérios de desempate, nesta ordem:
   4. `datetime.now(_tz)` em `earnings.py:846` é carimbo de download (`downloaded_at` da meta), mesma exceção documentada do `fetch.py` — o teste de arquitetura ganha whitelist explícita (arquivo: `fetch.py`, `earnings.py`) para a garantia ser real.
 - **Consequência:** dívida de consistência registrada (não bug): `earnings.py` reimplementa ~250 linhas de download condicional do `fetch.py` e mantém `_replace` privado em paralelo ao `b3o.fsutil` — consolidar quando o arquivo for tocado de novo.
 - **Revisar em:** C1 (usa `paths()` e `last_session`), F1b (folga de sessão).
+
+## ADR-011 — Runtime: AGENTS (22/11) supera a spec §4.1 em Python e Node
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** médio (rebaixar imagem)
+- **Contexto:** a spec §4.1 fixa `python:3.12-slim` / `node:22-slim`; o dono editou o `AGENTS.md` em 22/11 exigindo **Python 3.15** e **`node:26-slim`**. As duas fontes conflitam na versão de runtime.
+- **Decisão:** vale o `AGENTS.md` (vontade mais recente do dono). `requires-python = ">=3.15"`, `python:3.15-slim` (3.15.2), `node:26-slim`, `ruff target-version = "py315"`; `uv.lock` regerado no container (workaround do bind). A spec §4.1 fica **desatualizada de propósito** e será corrigida na próxima revisão dela.
+- **Por quê:** runtime não é "atualização de biblioteca" (ADR-008) nem escolha do agente; é diretiva escrita do dono. Um conflito silencioso entre duas fontes de verdade é pior que a divergência declarada.
+- **Consequência:** build do zero medido em **62,8 s** (critério F0: < 5 min), 276 testes e `ruff` verdes em 3.15.2; `duckdb` vem em wheel `abi3 cp312+`, numpy/pyarrow/pydantic-core têm wheel cp315 — nenhum pacote caiu para build de fonte.
+- **Revisar em:** próxima revisão da spec (§4.1 e §10.1).
 
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
@@ -164,5 +173,5 @@ Em qualquer outro caso: adote o default, registre, siga.
 | Fim do F0 | ADR-002/003/005/006 + relatório de liquidez (define o universo real) |
 | Fim do F1b | P-L e o resultado do portão: o sinal segue? |
 | Fim do F3 | ADR-004 (SDK `mcp`), ADR-005 (camadas), formato das respostas |
-| Antes do F5.0 | ADR-003 (volumes do frontend) e a direção visual, se a primeira tela pedir ajuste · **Node**: a spec diz `node:22-slim`, que virou LTS de manutenção (EOL 2027-04); auditoria de 22/11 recomenda `node:26-slim` (LTS ativa) no F5.0 — decisão de spec, dono decide |
+| Antes do F5.0 | ADR-003 (volumes do frontend) e a direção visual, se a primeira tela pedir ajuste · **Node**: resolvido em 22/11/2026 — `node:26-slim` (ADR-008) |
 | 30 dias de uso | todas as provisórias que sobrarem |

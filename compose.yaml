@@ -67,7 +67,7 @@ services:
 
   # build do frontend (inerte até o F5.0 — não tem web/ ainda)
   web:
-    image: node:22-slim
+    image: node:26-slim
     profiles: [build]
     working_dir: /web
     command: ["sh", "-c", "echo 'web build entra no F5.0 (npm ci && npm run build)'; exit 0"]

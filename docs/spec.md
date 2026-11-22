@@ -94,8 +94,8 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 | `dev` | `dev` | `target: dev` | `uvicorn --reload` com `src/`, `tests/` e `config.yaml` montados |
 | `prepare` | `jobs` | `target: runtime` | one-shot `b3o prepare` |
 | `prepare-watch` | `watch` | `target: runtime` | `b3o prepare --watch`, diário às 21:30 BRT |
-| `web` | `build` | `node:22-slim` | `npm ci && npm run build` → `web/dist` (entra no F5.0) |
-| `web-dev` | `dev` | `node:22-slim` | Vite em `127.0.0.1:5173`, proxy de `/api` (entra no F5.0) |
+| `web` | `build` | `node:26-slim` | `npm ci && npm run build` → `web/dist` (entra no F5.0) |
+| `web-dev` | `dev` | `node:26-slim` | Vite em `127.0.0.1:5173`, proxy de `/api` (entra no F5.0) |
 
 Regras do ambiente:
 
@@ -415,7 +415,7 @@ Ticker e Série **não são destinos** — são navegação. Ficam fora da barra
 
 **SPA pura, sem framework full-stack.** O dado é EOD e vem por `/api`; SSR não traria nada a um PWA de um usuário atrás da tailnet. TanStack Start em modo SPA foi descartado (v0.4): só acrescentava a chave de SPA que muda entre versões e a tentação de *server function*. Com Vite + Router puro, não existe servidor no frontend para alguém usar — a regra da `QueryService` única passa a ser garantida pela stack.
 
-**Build sem Node no Windows:** o build oficial roda no container (`node:22-slim`), como no projeto Imoveis; o serviço `web` do compose gera `web/dist`, que o FastAPI serve. Para o ciclo de dev, hot reload de Vite dentro do Podman no Windows sofre com a vigilância de arquivos entre volumes: usar o serviço `web-dev` com `CHOKIDAR_USEPOLLING=1` (ou Node local via `fnm`, opcional e nunca como caminho oficial).
+**Build sem Node no Windows:** o build oficial roda no container (`node:26-slim`), como no projeto Imoveis; o serviço `web` do compose gera `web/dist`, que o FastAPI serve. Para o ciclo de dev, hot reload de Vite dentro do Podman no Windows sofre com a vigilância de arquivos entre volumes: usar o serviço `web-dev` com `CHOKIDAR_USEPOLLING=1` (ou Node local via `fnm`, opcional e nunca como caminho oficial).
 
 Regras:
 - Alvo de toque ≥ 44 px; **nada depende de hover**.

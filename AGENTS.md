@@ -97,7 +97,7 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 ## Convenções de código
 
 - **Golden fixtures são DADO, não código** (`.gitattributes`: `tests/fixtures/*.txt -text`): os bytes originais (CRLF incluído) têm que sobreviver a clone limpo. Sem a regra, o `* text=auto eol=lf` entrega o fixture em LF e **20 testes caem** — bug de reprodutibilidade real, achado na auditoria de deps de 22/11/2026. Ao criar fixture novo: confira com `git archive HEAD <fixture> | tar -xO | ...` que os bytes batem com o original.
-- Python 3.12, `uv`, layout `src/b3o/`.
+- Python 3.15, `uv`, layout `src/b3o/`.
 - **Tudo roda em container** (`compose.yaml`, spec §4.1). Nenhum comando oficial usa `uv`/Python/Node do host: `podman compose run --rm test pytest`, `podman compose run --rm prepare`. Se um comando só funciona no host, ele está errado.
 - Runner: `podman compose` (o host não tem Docker). O `compose.yaml` é compose padrão — nunca usar extensão exclusiva do Podman, para que `docker compose` funcione em outra máquina.
 - `uv.lock` é versionado e a imagem instala com `uv sync --frozen`: sem lock atualizado a build quebra de propósito.
@@ -118,7 +118,7 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 - O backend é um só (FastAPI). Se o frontend ganhar lógica de servidor, a regra da `QueryService` única morre — por isso a stack não tem servidor.
 - Tipos da API em **um** arquivo de contrato (`web/src/lib/api.ts`), gerado ou escrito à mão a partir de `/api/openapi.json`. Divergência entre tipo e resposta é bug de contrato.
 - Gráficos em **SVG inline** (os mesmos do mockup). Não adicionar biblioteca de gráfico.
-- Build oficial **sempre no container** (`node:22-slim`, serviço `web` do compose). No hospedeiro não há Node. Para `npm run dev`, usar o serviço `web-dev` com `CHOKIDAR_USEPOLLING=1` (vigilância de arquivo entre volumes no Windows é lenta).
+- Build oficial **sempre no container** (`node:26-slim`, serviço `web` do compose). No hospedeiro não há Node. Para `npm run dev`, usar o serviço `web-dev` com `CHOKIDAR_USEPOLLING=1` (vigilância de arquivo entre volumes no Windows é lenta).
 - `npm run lint` + `tsc --noEmit` antes de considerar uma tarefa pronta.
 
 ### Tokens de design
@@ -139,7 +139,7 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - Podman 6.1.4, machine Hyper-V, **8 vCPU e 3,7 GiB de RAM**, disco 100 GiB. Ingestão streaming é obrigatória; medir RSS no `health`.
 - Bind mount `C:\…` → container funciona **nos dois sentidos** (testado), mas os arquivos aparecem como `nobody:nobody`, modo `666`. Consequência: nada que dependa de permissão (chave SSH, executável com bit `+x`, `.venv`, `node_modules`) pode viver no bind.
 - `./data:/data` é o único bind mount de dado. Lake, `journal.db` e `raw/` ficam lá; o container roda como root, então arquivo criado no container fica legível no host.
-- Imagem base `python:3.12-slim` com `uv` copiado de `ghcr.io/astral-sh/uv`. `podman` baixa de `docker.io` por padrão — sem prefixo de registry, `node:22-slim` resolve.
+- Imagem base `python:3.15-slim` com `uv` copiado de `ghcr.io/astral-sh/uv`. `podman` baixa de `docker.io` por padrão — sem prefixo de registry, `node:26-slim` resolve.
 - **`uv lock` falha dentro do bind mount:** `failed to rename file … Input/output error (os error 5)`. O `os.replace` comum funciona (testado 20×, inclusive entre diretórios), então escrita atômica de Parquet em `/data` está segura; o problema é só o `uv`. Workaround: `cp -r` do projeto para `/tmp`, `uv lock` lá, copiar `uv.lock` de volta.
   **Correção medida (22/11/2026, pacote B4):** `os.replace` **sobre arquivo que já existe** no bind falha com `PermissionError` (EACCES) — rename para nome NOVO funciona, replace sobre alvo existente não. Quem reescreve partição/meta no segundo `prepare` bate nisso. Use `b3o.fsutil.replace_file` (unlink + rename com fallback; a janela sem arquivo é documentada).
 - `typer` 0.29 colapsa app com **um** comando só em comando único — `b3o health` vira "unexpected extra argument(s)". Sempre declare `@app.callback()` na raiz (ou tenha ≥ 2 comandos). `typer` 0.29 não instala `click`: `import click` quebra, use `typer._click` só se não houver alternativa.

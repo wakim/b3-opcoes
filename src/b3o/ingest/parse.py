@@ -10,8 +10,11 @@ Regras que este arquivo respeita (AGENTS.md + `docs/contratos/onda-a.md`):
 - o `isin` é do **ativo-objeto**, não da série — a chave da série é `(ticker, maturity)`;
 - o arquivo **não está ordenado por data**: nada aqui assume ordem;
 - o estilo da opção vem do **1º token do nome resumido** (`PETRE` × `PETR`), nunca do ticker;
-- linha estruturalmente impossível falha de forma explícita (`SourceError`), nunca é
-  silenciada: a validação global (`validate.py`) roda antes; aqui é a rede de segurança.
+- linha estruturalmente impossível de mercado que a gente guarda falha de forma explícita
+  (`CotahistParseError`, com o `SourceError` dentro), nunca é silenciada: a validação
+  global (`validate.py`) roda antes; aqui é a rede de segurança. Linha de mercado fora do
+  universo é descartada — o arquivo de 2026 tem 1 linha de 246 bytes (mercado `017`), e
+  ela não pode derrubar a ingestão.
 """
 
 from __future__ import annotations

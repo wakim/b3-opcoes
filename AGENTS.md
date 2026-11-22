@@ -34,6 +34,7 @@ Nas linhas de opção, o campo `isin` é o **ISIN do ativo-objeto** (`BRPETRACNP
 
 ### 2. O strike muda no meio da vida, no mesmo ticker
 A B3 ajusta o strike quando há provento. 51.830 tickers (23,5%) têm mais de um strike em 2026; dos que têm dois valores, **98% descendentes** (`ABEVX131`: 12,04 → 12,00 → 11,94) e **698 ascendentes** (não é dividendo — é ajuste de escala).
+**Medido no build do B2 (22/11/2026, classificador no arquivo inteiro):** os proventos de `ABEVX131` (Δ4¢ em 23/06, Δ6¢ em 22/09) são datados por **outras séries do papel** — a própria ABEVX131 é PUT ilíquida e as mudanças dela NÃO são contíguas (15/06→23/06, 18/09→22/09): ela sozinha não data nada. É a armadilha 3 no estado puro. No ano inteiro: **313 eventos** (296 provento, **2 escalas** — SIMH 18/02 ×2 e SBSP 29/04 ×0,2 —, 15 indeterminados; 105 papéis, 139 datas). **AZUL ×75 (27/03) é INCLASSIFICÁVEL por construção**: nenhuma mudança contígua (opções ilíquidas) — violar a regra para "achar" a data ex seria fabricar dado. **SBSP 20/03 é ajuste misto** (Δ ≈ −(R$ 0,69 + 0,16%·K), R² 0,986; nem provento puro nem escala — indeterminado com n≥2 que a spec §6.6 não previa). `distribution_id` muda de verdade (34 tickers; ex.: SBSPJ451 168→169 em 15/09 com strike igual → corta leg com `leg_ambiguity`). A contagem 313 vs "274+13" da spec é de arquivo/calendário — reconciliar na auditoria do C1.
 Consequências:
 - o strike é atributo **por data**, nunca da série;
 - nenhuma métrica (IV, retorno, paridade) atravessa a data do ajuste;

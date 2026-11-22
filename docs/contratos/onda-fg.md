@@ -136,6 +136,7 @@ leg não se atravessa), o preço vem do raw.
 
 | Pacote | Arquivos |
 |---|---|
+| F1a (implementador F1a) | `src/b3o/query/service.py` (só métodos novos de leitura + `health.rates_sessions`/`unexplained_gap`), `src/b3o/store/metrics.py`, `src/b3o/ingest/selic.py`, `src/b3o/cli.py` (só `prepare --year` honesto e `rates --backfill`), `tests/test_query_service.py`, `tests/test_store_metrics.py`, `tests/test_selic.py`, `tests/test_cli_prepare.py` (acréscimos) |
 | F1b (implementador F1b) | `src/b3o/derive/calendar.py`, `src/b3o/derive/signal.py`, `src/b3o/metrics/series.py`, `src/b3o/metrics/underlying.py`, `src/b3o/metrics/pipeline.py`, `src/b3o/metrics/validation.py`, `src/b3o/cli.py` (só o comando `metrics` e o resumo), `tests/test_calendar.py`, `tests/fixtures/sessions_2026.txt`, `tests/test_metrics_series.py`, `tests/test_metrics_underlying.py`, `tests/test_metrics_pipeline.py`, `tests/test_signal.py`, `tests/test_validation.py` |
 | congelado | todo o resto |
 

@@ -1,9 +1,9 @@
 """Validação coletiva do COTAHIST (F0.4).
 
-Roda ANTES do parse (`prepare`: fetch → validate → parse → store). Um arquivo torto
-não entra no lake e o erro não pode ser silencioso, mas também não pode parar na
-primeira linha ruim: **coleta** (primeiras 20 de cada espécie) e devolve relatório;
-`ok` é quem decide o exit code.
+Roda ANTES do parse (`prepare`: fetch → validate → parse → store). Coleta os
+problemas em vez de parar no primeiro e devolve relatório; **fatal é só o que é
+estrutural** (header, contagem do trailer, zip/I-O) — linha torta é registrada,
+pulada na ingestão e contada (ADR-007).
 
 Layout e offsets: `docs/contratos/onda-a.md` §3 (validados em 16.134 linhas de
 19/11/2026, zero violações). Largura: 245 bytes em **toda** linha (00/01/99).
@@ -15,6 +15,7 @@ Leitura em streaming dentro do zip: o arquivo tem ~3,5 M linhas (P-I), nunca em 
 from __future__ import annotations
 
 import hashlib
+import logging
 import zipfile
 from dataclasses import dataclass
 from datetime import date
@@ -22,6 +23,8 @@ from pathlib import Path
 from typing import BinaryIO
 
 from b3o.ingest.errors import SourceError
+
+log = logging.getLogger(__name__)
 
 LINE_WIDTH = 245
 MAX_BAD_LINES = 20
@@ -62,7 +65,7 @@ _CHUNK_BYTES = 1 << 20
 
 @dataclass(frozen=True, slots=True)
 class BadLine:
-    """Uma linha com problema; `line_no` é 1-based no arquivo."""
+    """Linha que o prepare pula e conta (ADR-007); `line_no` é 1-based no arquivo."""
 
     line_no: int
     kind: str  # "width" | "numeric" | "date" | "tipreg"
@@ -71,7 +74,11 @@ class BadLine:
 
 @dataclass(frozen=True, slots=True)
 class ValidationReport:
-    """Veredito do arquivo inteiro; `ok` só é True com header, contagem e campos limpos."""
+    """Veredito do arquivo; `ok` é estrutural: header, contagem e nenhum erro de I/O (ADR-007).
+
+    `bad_width`/`bad_numeric` são problemas por linha: aparecem nas contagens e não
+    derrubam o `ok`; `errors` é só nível I/O/zip (zip ilegível, membro múltiplo).
+    """
 
     ok: bool
     zip_path: Path
@@ -86,7 +93,11 @@ class ValidationReport:
 
 
 def validate_cotahist(zip_path: Path) -> ValidationReport:
-    """Valida o zip do COTAHIST e devolve o relatório (nunca levanta por linha ruim)."""
+    """Valida o zip do COTAHIST e devolve o relatório (nunca levanta por linha ruim).
+
+    Linha torta não é fatal: entra em `bad_width`/`bad_numeric` para o prepare pular
+    e o health contar (ADR-007, spec §11). Fatal: zip/I-O, header e contagem do trailer.
+    """
     path = Path(zip_path)
     try:
         sha256 = sha256_file(path)
@@ -134,17 +145,20 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
     header_ok = False
     trailer_total: int | None = None
     trailer_seen = False
+    trailer_conflict = False
     bad_width: list[BadLine] = []
     bad_numeric: list[BadLine] = []
     errors: list[SourceError] = []
-    suppressed = 0
+    omitted = {"width": 0, "numeric": 0}
 
-    def add_error(message: str) -> None:
-        nonlocal suppressed
-        if len(errors) < MAX_BAD_LINES:
-            errors.append(SourceError(code="bad_data", message=message, hint=_HINT_RESAVE))
+    def add_bad_line(
+        bucket: list[BadLine], counter: str, kind: str, line_no: int, excerpt: str
+    ) -> None:
+        nonlocal omitted
+        if len(bucket) < MAX_BAD_LINES:
+            bucket.append(BadLine(line_no=line_no, kind=kind, excerpt=excerpt))
         else:
-            suppressed += 1
+            omitted[counter] += 1
 
     line_no = 0
     for raw in stream:  # binário: quebra em \n e nunca carrega o arquivo inteiro
@@ -160,64 +174,82 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
             line_count += 1
         elif tipreg == TRAILER_TIPREG:
             if trailer_seen:
-                add_error(f"linha {line_no}: trailer '99' duplicado")
+                # Dois terminadores: a contagem do arquivo deixou de ser confiável.
+                trailer_conflict = True
+                log.warning("%s: linha %d: trailer '99' duplicado", path.name, line_no)
             trailer_seen = True
             trailer_total = _trailer_total(line)
             if trailer_total is None:
                 start, end = TRAILER_TOTAL_OFFSET
-                add_error(
-                    f"linha {line_no}: total do trailer ilegível em "
-                    f"[{start}:{end}] = {line[start:end]!r}"
+                log.warning(
+                    "%s: linha %d: total do trailer ilegível em [%d:%d] = %r",
+                    path.name,
+                    line_no,
+                    start,
+                    end,
+                    line[start:end],
                 )
         elif tipreg != HEADER_TIPREG:
-            add_error(f"linha {line_no}: tipreg desconhecido {tipreg!r}")
+            add_bad_line(
+                bad_numeric,
+                "numeric",
+                "tipreg",
+                line_no,
+                f"tipreg={tipreg!r} {line[:60]}",
+            )
 
         if len(line) != LINE_WIDTH:
-            if len(bad_width) < MAX_BAD_LINES:
-                bad_width.append(BadLine(line_no=line_no, kind="width", excerpt=line[:80]))
+            add_bad_line(bad_width, "width", "width", line_no, line[:80])
             continue
 
         if tipreg != DATA_TIPREG:
             continue
 
         bad_fields = _bad_numeric_fields(line)
-        if bad_fields and len(bad_numeric) < MAX_BAD_LINES:
-            field = bad_fields[0]  # uma linha entra uma vez só, mesmo com vários campos tortos
+        if bad_fields:
+            # Uma linha entra uma vez só, mesmo com vários campos tortos.
+            field = bad_fields[0]
             start, end = _FIELD_BOUNDS[field]
-            bad_numeric.append(
-                BadLine(
-                    line_no=line_no,
-                    kind="numeric",
-                    excerpt=f"{field}=[{line[start:end]}] {line[:80]}",
-                )
+            add_bad_line(
+                bad_numeric,
+                "numeric",
+                "numeric",
+                line_no,
+                f"{field}=[{line[start:end]}] {line[:60]}",
+            )
+            continue
+
+        messages = _bad_date_messages(line)
+        if messages:
+            add_bad_line(
+                bad_numeric,
+                "numeric",
+                "date",
+                line_no,
+                f"{'; '.join(messages)} | {line[:60]}",
             )
 
-        for message in _bad_date_messages(line):
-            add_error(f"linha {line_no}: {message}")
-
+    suppressed = omitted["width"] + omitted["numeric"]
     if suppressed:
-        errors.append(
-            SourceError(
-                code="bad_data",
-                message=f"{suppressed} problema(s) adicional(is) omitido(s) do relatório",
-                hint=_HINT_RESAVE,
-            )
+        # O relatório é limitado a 20 por espécie; o total não pode sumir em silêncio.
+        log.warning(
+            "%s: %d linha(s) torta(s) além das %d registradas (largura=%d, linha=%d)",
+            path.name,
+            suppressed,
+            MAX_BAD_LINES,
+            omitted["width"],
+            omitted["numeric"],
         )
 
     if not trailer_seen:
         count_match: bool | None = None
-    elif trailer_total is None:
+    elif trailer_total is None or trailer_conflict:
         count_match = False
     else:
         count_match = trailer_total == line_count
 
-    ok = (
-        header_ok
-        and count_match is True
-        and not bad_width
-        and not bad_numeric
-        and not errors
-    )
+    # ADR-007: fatal é estrutural; linha torta é registrada e pulada, não reprova o arquivo.
+    ok = header_ok and count_match is True and not errors
 
     return ValidationReport(
         ok=ok,
@@ -297,8 +329,3 @@ def _failed(
         bad_numeric=(),
         errors=(SourceError(code="bad_data", message=message, hint=hint),),
     )
-
-
-_FIELD_BOUNDS: dict[str, tuple[int, int]] = {
-    name: (start, end) for name, start, end in NUMERIC_FIELDS
-}

@@ -4,6 +4,9 @@ As linhas são montadas aqui com 245 bytes exatos (latin-1, `\\r\\n`, como o arq
 da B3) para provar as regras do contrato sem depender do arquivo de 70 MB.
 O número de linhas é conferido à mão: header + N dados + trailer ⇒ `line_count == N`
 e `trailer_total == N`.
+
+ADR-007: `ok` é estrutural (header, trailer, I/O); linha torta entra em
+`bad_width`/`bad_numeric` e **não** reprova o arquivo — o prepare pula e conta.
 """
 
 from __future__ import annotations
@@ -159,7 +162,25 @@ def test_linha_de_largura_244_entra_em_bad_width(tmp_path: Path) -> None:
     assert report.bad_width[0].kind == "width"
     assert report.line_count == 2  # a linha torta continua contando para o trailer
     assert report.count_match is True
-    assert report.ok is False
+    # ADR-007: linha torta é registrada e pulada, não reprova o arquivo.
+    assert report.ok is True
+    assert report.errors == ()
+
+
+def test_uma_linha_torta_nao_reprova_o_arquivo(tmp_path: Path) -> None:
+    """O espírito do ADR-007: 1 linha torta + header/trailer bons ⇒ ok=True, 1 registro."""
+    path = make_zip(
+        tmp_path,
+        [header_line(), data_line(), data_line(open_="00000000043A3"), trailer_line(2)],
+    )
+
+    report = validate_cotahist(path)
+
+    assert report.ok is True
+    assert report.count_match is True
+    assert len(report.bad_width) == 0
+    assert len(report.bad_numeric) == 1
+    assert report.errors == ()
 
 
 def test_campo_numerico_com_letra_entra_em_bad_numeric(tmp_path: Path) -> None:
@@ -174,7 +195,8 @@ def test_campo_numerico_com_letra_entra_em_bad_numeric(tmp_path: Path) -> None:
     assert report.bad_numeric[0].line_no == 2
     assert report.bad_numeric[0].kind == "numeric"
     assert "open" in report.bad_numeric[0].excerpt
-    assert report.ok is False
+    assert report.ok is True
+    assert report.errors == ()
 
 
 def test_linha_real_de_246_bytes_do_arquivo_de_2026_e_acusada(tmp_path: Path) -> None:
@@ -195,10 +217,12 @@ def test_linha_real_de_246_bytes_do_arquivo_de_2026_e_acusada(tmp_path: Path) ->
     assert len(report.bad_width) == 1
     assert report.bad_width[0].line_no == 2
     assert report.bad_width[0].kind == "width"
-    assert report.ok is False
+    # o arquivo real de 2026 continua utilizável (ADR-007)
+    assert report.ok is True
+    assert report.errors == ()
 
 
-def test_data_invalida_entra_em_errors(tmp_path: Path) -> None:
+def test_data_invalida_entra_em_bad_numeric(tmp_path: Path) -> None:
     path = make_zip(
         tmp_path,
         [header_line(), data_line(refdate="20261332"), trailer_line(1)],
@@ -206,14 +230,15 @@ def test_data_invalida_entra_em_errors(tmp_path: Path) -> None:
 
     report = validate_cotahist(path)
 
-    assert len(report.errors) == 1
-    assert report.errors[0].code == "bad_data"
-    assert "date" in report.errors[0].message
-    assert report.errors[0].hint.strip()
-    assert report.ok is False
+    assert len(report.bad_numeric) == 1
+    assert report.bad_numeric[0].line_no == 2
+    assert report.bad_numeric[0].kind == "date"
+    assert "date" in report.bad_numeric[0].excerpt
+    assert report.errors == ()  # data ruim é linha torta, não erro de I/O
+    assert report.ok is True
 
 
-def test_maturity_invalida_entra_em_errors(tmp_path: Path) -> None:
+def test_maturity_invalida_entra_em_bad_numeric(tmp_path: Path) -> None:
     path = make_zip(
         tmp_path,
         [header_line(), data_line(maturity="20261332"), trailer_line(1)],
@@ -221,9 +246,31 @@ def test_maturity_invalida_entra_em_errors(tmp_path: Path) -> None:
 
     report = validate_cotahist(path)
 
-    assert len(report.errors) == 1
-    assert "maturity" in report.errors[0].message
-    assert report.ok is False
+    assert len(report.bad_numeric) == 1
+    assert report.bad_numeric[0].kind == "date"
+    assert "maturity" in report.bad_numeric[0].excerpt
+    assert report.errors == ()
+    assert report.ok is True
+
+
+def test_tipreg_desconhecido_entra_em_bad_numeric(tmp_path: Path) -> None:
+    estranha = data_line()
+    estranha = "77" + estranha[2:]
+    path = make_zip(
+        tmp_path,
+        [header_line(), data_line(), estranha, trailer_line(1)],
+    )
+
+    report = validate_cotahist(path)
+
+    assert report.line_count == 1  # só a linha "01" conta para o trailer
+    assert report.count_match is True
+    assert len(report.bad_numeric) == 1
+    assert report.bad_numeric[0].line_no == 3
+    assert report.bad_numeric[0].kind == "tipreg"
+    assert "77" in report.bad_numeric[0].excerpt
+    assert report.errors == ()
+    assert report.ok is True
 
 
 def test_sem_trailer_count_match_e_none(tmp_path: Path) -> None:
@@ -262,7 +309,8 @@ def test_listas_de_linhas_ruins_ficam_limitadas_a_20(tmp_path: Path) -> None:
     assert len(report.bad_width) == 20
     assert report.bad_width[0].line_no == 2
     assert report.bad_width[-1].line_no == 21
-    assert report.ok is False
+    assert report.ok is True  # estrutura boa; as 25 linhas o prepare pula e conta
+    assert report.errors == ()
 
 
 def test_zip_com_dois_membros_e_erro(tmp_path: Path) -> None:

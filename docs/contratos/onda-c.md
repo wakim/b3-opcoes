@@ -92,7 +92,10 @@ def build_liquidity(rows: Iterable[CotahistRow], oi: Mapping[date, Mapping[str, 
   centavos? não: R$ 1 = 100¢ → R$ 5 M = 5×10^8 ¢ ✓ int64).
 - `days_to_liquidate` (§6.9): `oi / média de volume 20d` — por SÉRIE no
   funil (F2); aqui por PAPEL com o somatório do OI das séries do papel (diga
-  no relatório que é a versão por papel).
+  no relatório que é a versão por papel). **Unidade (descoberta B5, AGENTS):**
+  para OPÇÃO o `oi` é `total_qty` (`Total de posições`) em **ações-objeto**, e o
+  volume 20d do subjacente é em ações — a divisão é coerente sem multiplicador;
+  `OpnIntrst` (contratos) vem vazio para 100% das opções e NÃO é o campo.
 - strike==0 (IBOV órfã, AGENTS) não entra em NENHUMA conta de banda/strike.
 - Saída: relatório Markdown em `out/relatorio-liquidez-AAAA-MM-DD.md`:
   tabela por papel (liquid_days, avg_volume, days_to_liquidate, in_universe),

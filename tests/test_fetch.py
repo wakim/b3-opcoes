@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 import httpx
+import pytest
 
 from b3o.ingest.errors import SourceError
 from b3o.ingest.fetch import BROWSER_UA, fetch_cotahist, meta_path
@@ -94,6 +95,8 @@ def test_meta_com_etag_leva_304_e_nao_toca_no_arquivo(tmp_path: Path) -> None:
     }
     meta_file = meta_path(tmp_path, YEAR)
     meta_file.write_text(json.dumps(old_meta), encoding="utf-8")
+    zip_mtime = target.stat().st_mtime_ns
+    meta_mtime = meta_file.stat().st_mtime_ns
 
     seen: dict[str, object] = {}
 
@@ -122,6 +125,9 @@ def test_meta_com_etag_leva_304_e_nao_toca_no_arquivo(tmp_path: Path) -> None:
 
     assert target.read_bytes() == PAYLOAD
     assert json.loads(meta_file.read_text(encoding="utf-8")) == old_meta
+    # nem conteúdo nem mtime mudam: 304 não reescreve o zip nem a meta (D5a)
+    assert target.stat().st_mtime_ns == zip_mtime
+    assert meta_file.stat().st_mtime_ns == meta_mtime
 
 
 def test_500_tenta_tres_vezes_e_devolve_source_unavailable(tmp_path: Path) -> None:
@@ -215,3 +221,25 @@ def test_304_sem_arquivo_local_e_erro_explicito(tmp_path: Path) -> None:
     assert result.error is not None
     assert result.error.code == "source_unavailable"
     assert result.path is None
+
+
+@pytest.mark.parametrize("base_url", ["", "sem-esquema.br/"])
+def test_base_url_invalida_vira_source_error_sem_rede(tmp_path: Path, base_url: str) -> None:
+    """D1 da revisão: URL sem esquema não pode escapar como ValueError/InvalidURL."""
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        raise AssertionError(f"não deveria haver chamada de rede: {request.url}")
+
+    with _client(handler) as client:
+        result = fetch_cotahist(YEAR, tmp_path, base_url, client=client, retry_delays=(0.0, 0.0))
+
+    assert calls == []  # validação é prévia ao stream
+    assert result.status == "error"
+    assert result.path is None
+    assert isinstance(result.error, SourceError)
+    assert result.error.code == "source_unavailable"
+    assert "base_url" in result.error.message
+    assert result.error.hint.strip()
+    assert list(tmp_path.iterdir()) == []  # nenhum zip, .part ou meta criado

@@ -96,6 +96,11 @@ def fetch_cotahist(
     meta_file = meta_path(dest, year)
     url = f"{base_url}COTAHIST_A{year}.ZIP"
 
+    # Pré-validação: `httpx.InvalidURL` não é `HTTPError` e escaparia do `except` abaixo (D1).
+    problem = _base_url_problem(base_url, url)
+    if problem is not None:
+        return _error_result(problem)
+
     try:
         dest.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
@@ -298,6 +303,30 @@ def _not_modified_result(target: Path, meta: dict[str, object]) -> FetchResult:
 
 def _error_result(error: SourceError) -> FetchResult:
     return FetchResult(status="error", path=None, error=error)
+
+
+def _base_url_problem(base_url: str, url: str) -> SourceError | None:
+    """Confere a URL antes do stream; devolve `SourceError` se ela não for http(s) absoluta."""
+    detail = "não é uma URL absoluta válida"
+    try:
+        parsed = httpx.URL(url)
+    except (httpx.InvalidURL, ValueError):
+        return _bad_base_url(base_url, url, detail)
+    if parsed.scheme not in {"http", "https"} or not parsed.host:
+        return _bad_base_url(base_url, url, "falta esquema http(s) ou host")
+    return None
+
+
+def _bad_base_url(base_url: str, url: str, detail: str) -> SourceError:
+    return SourceError(
+        code="source_unavailable",
+        message=f"base_url inválida: {base_url!r} ({detail}; URL final {url!r})",
+        hint=(
+            "configure cotahist_base_url com esquema https:// "
+            "(ex.: https://bvmf.bmfbovespa.com.br/InstDados/SerHist/)"
+        ),
+    )
+
 
 
 def _declared_length(response: httpx.Response) -> int | None:

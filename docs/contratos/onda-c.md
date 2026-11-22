@@ -19,9 +19,11 @@ entram em F2/F3; nada de SQL além do que `health` precisar (duckdb permitido
 
 ## 1. Defeitos da revisão A que são requisito aqui
 
-- **D2:** o client httpx é criado AQUI, com `httpx.Timeout(connect=10, read=90)`
+- **D2:** o client httpx é criado AQUI, com `httpx.Timeout(connect=10, read=120)`
   e `BROWSER_UA` — e um **teste prova** (assert do timeout no client construído
-  pelo factory do prepare). Sem isso, F0.2 "timeout" fica em docstring.
+  pelo factory do prepare). `read=120` (não 90): medido pelo B5, o servidor de OI
+  estoura leitura com 60 s e já deu `ReadTimeout` até com 170 s sob carga — o
+  retry cobre, mas o timeout não pode ser apertado.
 - **D3:** o parse conta linhas por mercado durante a ingestão (um `Counter`
   no streaming — de graça) e grava em `ingest_state.counts_by_market`; o health
   expõe. ADR-007 sem contagem é silêncio disfarçado.
@@ -50,7 +52,10 @@ entram em F2/F3; nada de SQL além do que `health` precisar (duckdb permitido
    data_dir/strike_events/… — escrita via store/lake.py helper SE o B1 expuser;
    senão escreva direto com pyarrow aqui e REGISTRE)
 7. rates (B3): refdate = última sessão do lake; grava rates_di
-8. earnings (B4): baixa ITR/DFP/FCA do ano corrente (cache com ETag), build, grava
+8. earnings (B4): baixa ITR/DFP/FCA do ano corrente **E DO ANTERIOR**
+   (descoberta B4: o DFP corrente é quase vazio; sem o DFP do ano anterior não
+   existe actual 31-12 nem estimativa — cache com ETag em data_dir/cvm/),
+   build com last_session = última sessão do lake, grava
 9. OI (B5): para as últimas N sessões disponíveis (comece com as do lake), grava
 10. liquidity (aqui, §4) → out/relatorio-liquidez-AAAA-MM-DD.md + universo no state
 11. ingest_state update (etag/sha/trailer/last_session/counts/skipped/RSS pico)

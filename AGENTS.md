@@ -52,6 +52,17 @@ Consequência: **nunca** usar "parei no primeiro registro antigo" como otimizaç
 ### 5. O campo de ticker vem alinhado à direita
 `l[12:24]` pode ser `"     PETRG240"`. Sempre `strip()` antes de comparar.
 
+### 6. O ticker NÃO carrega o estilo — a regra do token tem quatro casos medidos
+O estilo vem do 1º token de `l[27:39]`, mas a relação token × ticker é mais sutil que "PETRE vs PETR" (medido em 22/11/2026 sobre as 3.060.453 linhas de opção):
+- **puts europeias têm ticker com raiz comum** (`PETRV352` com token `PETRE`): olhar só o ticker classificaria errado;
+- **semanais**: `ABEVA140W1` = raiz + mês + strike + `W\d+`; o marcador `W\d+` só existe **depois de dígito** — `W` antes de dígitos é código de mês de put (`BOVAW170` é put de novembro, não semanal);
+- **BRAVA**: o ticker usa raiz `BRAV` (`BRAVD286`), mas o token é `BRAVA`/`BRAVAE` (raiz +1/+2) — daí a "exceção de raiz de 5 letras";
+- **B3SA**: a raiz tem dígito no meio (`B3SAD557` → raiz `B3SA`) — extração "só letras" quebra.
+
+Regra exata (validada: puts 1.508.144 E e **zero** A; calls 818.364 A / 729.416 E; `null`+`style_unknown` em 0,15%, só trimestrais de IBOV, fora do universo de ações):
+`raiz = ticker sem W\d+$ (só se precedido de dígito), sem dígitos finais, sem o último caractere (código de mês)`; `token = 1º token de l[27:39]`; **se `token.startswith(raiz)` e `len(token) ≤ len(raiz)+2`** → `E` se o token termina em `E`, senão `A`; senão `null`.
+Séries com tokens conflitantes entre datas existem (909 raízes, quase só BOVA/índice): o estilo é **por linha** no parse; a série consolida no `legs` com flag de conflito.
+
 ---
 
 ## Outros fatos úteis
@@ -59,6 +70,11 @@ Consequência: **nunca** usar "parei no primeiro registro antigo" como otimizaç
 - Preços no arquivo têm 2 decimais implícitos: `000000000201` = R$ 2,01. Internamente, **centavos inteiros** (`int64`); volume passa de R$ 21 M/dia e estoura `int32`.
 - Mercados: `010` à vista, `020` fracionário, `070` call, `080` put, `012/013` exercício, `017` leilão, `021` lote/bloco. O parser só guarda os seis primeiros.
 - O arquivo anual do ano corrente é atualizado diariamente e vem como **D-1**. `ETag`/`If-Modified-Since` devolvem 304 — usar sempre.
+- **A URL de download do COTAHIST mudou (medido 22/11/2026):** o padrão antigo `arquivos.b3.com.br/dados/pregao/cotahist/…ZIP` está **morto** (404; as páginas de dados públicos e cotações foram desativadas em 31/03/2026, Comunicado Externo 01/2026-VTEC). A URL viva é `https://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_A{AAAA}.ZIP` e **exige User-Agent de browser** — sem UA responde 520/404. `ETag` (formato IIS `"hash:0"`) e `Last-Modified` presentes: GET condicional (304) funciona.
+- **Offsets do layout, validados programaticamente** (16.134 linhas de 19/11/2026: zero violações de `open ≤ high`, `low ≤ open/close`, `avg ∈ [low, high]`): `date[2:10]`, `bdi[10:12]`, `ticker[12:24]`, `market[24:27]`, `corp_name[27:39]`, `spec[39:49]`, `open[56:69]`, `high[69:82]`, `low[82:95]`, `avg[95:108]`, `close[108:121]`, `bid[121:134]`, `ask[134:147]`, `trades[147:152]`, `qty[152:170]`, `volume[170:188]`, `strike[188:201]`, `strike_adj_ind[201:202]`, `maturity[202:210]`, `quote_factor[210:217]`, `strike_pts[217:230]`, `isin[230:242]`, `dist_id[242:245]`. A moeda `R$` mora em `[52:54]`; `[49:52]` é lixo variável (espaço no à vista, `0` em opções) — não usar. Trailer `99`: total de registros em `[32:42]`.
+- **O campo `volume` também segue o `FATCOT`:** `volume = qty × avg ÷ FATCOT` (não `qty × avg` direto). As 106 linhas de opção de 19/11 com "volume que não fecha" são todas IBOV com `FATCOT=100`. Nunca reconstituir volume sem dividir pelo fator.
+- BDI nas linhas de opção: call=`78`, put=`82`; à vista lote padrão=`02`. O lado (C/P) vem do mercado (`070`/`080`), não do BDI.
+- **Open interest:** a tabela regulatória "Quadro analítico das posições em aberto" está no portal **BDI** (`https://arquivos.b3.com.br/bdi/tabelas`) como tabela `AnalyticalFramework2` (capítulo Derivativos > Derivativos de bolsa, publicada desde 30/06/2026). Endpoints do BDI: `/bdi/table/classifications`, `/bdi/table/export/csv?filter=…`, `/bdi/table/workdays?date=…`.
 - Endpoint de preço (não usar em métrica): `cotacao.b3.com.br/mds/api/v1/instrumentQuotation/<TICKER>`, uma série por chamada, sem bid/ask e **sem timestamp**, HTTP 200 com `BizSts.cd = "NOK"` para desconhecido.
 - **O estilo da opção está no COTAHIST, escondido no nome resumido** (`l[27:39]`): o 1º token é a raiz do ticker + `E` para europeia (`PETRE`, `BOVAE`) e a raiz pura para americana (`PETR`). Medido em 2026: **todas as puts são europeias** (110.993 séries, nenhuma americana); calls têm 74.576 séries americanas (66%) e 38.564 europeias (34%) — 55%/45% em número de negócios —, e o mesmo papel tem os dois estilos. Validação: 24% das puts ITM negociaram mais de 1% abaixo do intrínseco, o que é impossível para americana. Exceção: `BRAVA`/`BRAVAE` (raiz de 5 letras). Sufixos como `/EJ` e `/AT` depois do token são marcas de ex-direito, não estilo.
 - `FATCOT` (`l[210:217]`) não é sempre 1: 42.250 linhas de opção com 100, e algumas com 10.000 e 1.000.000. Preço por ação = preço ÷ fator.

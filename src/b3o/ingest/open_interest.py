@@ -40,8 +40,16 @@ O que foi **medido** em 22/11/2026 no arquivo real de 19/11/2026 (35.380 linhas,
   fora do universo de ações.
 - `Preço a termo` é o único campo com **vírgula decimal** (`339.060,6200`), só em
   `EQUITY FORWARD`; nenhuma das colunas que este módulo lê tem vírgula.
-- A janela da fonte é curta (o `AGENTS.md` mede ~10–12 sessões): data fora dela
-  devolve `Nenhum resultado`, que aqui vira `available = False`, não erro.
+- A janela da fonte é de **exatamente 20 sessões** (medido em 22/11/2026: de
+  19/11 até 22/10 com dado; 21/10 e anteriores devolvem `Nenhum resultado` —
+  mais larga que as "10–12" que o `AGENTS.md` supunha). Fora da janela e em dia
+  sem pregão a resposta é 200 com o marcador → `available = False`, nunca erro.
+  A forma do arquivo vazio varia e não segue o dia da semana (medidos: 407 bytes
+  = header + marcador; 759 bytes = preâmbulo + header + marcador) — mais um
+  motivo para achar o header pelo conteúdo.
+- O servidor é lento e o arquivo é grande (2,7 MB em 19/11, 3,7 MB em 18/11):
+  `ReadTimeout` aconteceu com `read=60 s` e com 170 s sob carga, então retry
+  curto é obrigatório e o cliente deve usar leitura longa.
 
 Regra 5 do `AGENTS.md`: falha explícita. Rede/tempo esgotado/parse torto →
 `SourceError(code="source_unavailable")` carregado no `OIResult`; nada de exceção

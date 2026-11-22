@@ -663,3 +663,190 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# Onda F — `prepare --year` honesto e `b3o rates --backfill`
+# --------------------------------------------------------------------------- #
+
+Y2025_A = date(2025, 12, 29)
+Y2025_B = date(2025, 12, 30)
+MATURITY_2025 = date(2026, 1, 16)
+
+
+def _zip_de(lines: list[str], name: str) -> bytes:
+    """Zip do COTAHIST com header `00` e trailer `99` contando as linhas dadas."""
+    header = "00" + " " * 243
+    trailer = "99" + " " * 30 + f"{len(lines):010d}" + " " * 203
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(name, "\r\n".join([header, *lines, trailer]) + "\r\n")
+    return buffer.getvalue()
+
+
+def _cotahist_2025_zip() -> bytes:
+    """Ano fechado sintético com papel DIFERENTE (VALE3) para provar preservação."""
+    lines: list[str] = []
+    for day in (Y2025_A, Y2025_B):
+        lines.append(_data_line(day, "VALE3", "010", close=6_000, bid=5_999, ask=6_001))
+        lines.append(
+            _data_line(
+                day,
+                "VALEX100",
+                "070",
+                bdi="78",
+                corp="VALEE",
+                spec="CALL      ",
+                close=120,
+                bid=119,
+                ask=121,
+                trades=20,
+                qty=500,
+                volume=60_000,
+                strike=6_000,
+                maturity=MATURITY_2025,
+                strike_pts=6_000,
+                distribution_id="168",
+            )
+        )
+    return _zip_de(lines, "COTAHIST_A2025.TXT")
+
+
+class TwoYears(Sources):
+    """Serve o arquivo de 2026 **e** o de 2025 (ano fechado)."""
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        if "COTAHIST_A2025.ZIP" in str(request.url):
+            return httpx.Response(
+                200, content=_cotahist_2025_zip(), headers={"ETag": '"cotahist-2025:0"'}
+            )
+        return super().handler(request)
+
+
+def _config_file(tmp_path: Path) -> Path:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        "\n".join(
+            [
+                f"data_dir: {tmp_path / 'lake'}",
+                "log_level: INFO",
+                "model_version: 1",
+                'cotahist_base_url: "https://test.local/InstDados/SerHist/"',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_prepare_de_ano_fechado_nao_apaga_o_retrato_do_lake(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """§4.4: preparar 2025 depois de 2026 não rejuvenesce `last_session` nem perde datas."""
+    from typer.testing import CliRunner
+
+    monkeypatch.delenv("B3_DATA_DIR", raising=False)
+    sources = TwoYears()
+    assert _prepare(tmp_path, sources).exit_code == 0
+    lake = tmp_path / "lake"
+    before = json.loads((lake / "ingest_state.json").read_text(encoding="utf-8"))
+    assert before["last_session"] == D2.isoformat()
+
+    result = run_prepare(
+        _config(tmp_path),
+        client_factory=sources.client_factory(),
+        year=2025,
+        now=datetime(2026, 11, 22, 9, 0, tzinfo=BRT),
+    )
+    assert result.exit_code == 0, result.lines
+    # o cabeçalho do resumo mostra o ano preparado e a ponta do lake
+    assert any("lake até 2026-11-19" in line for line in result.lines)
+
+    after = json.loads((lake / "ingest_state.json").read_text(encoding="utf-8"))
+    assert after["last_session"] == D2.isoformat()  # segue o maior do lake
+    assert after["etag"] == before["etag"] == ETAG  # retrato do arquivo de 2026
+    assert after["sha256"] == before["sha256"]
+    assert after["trailer_total"] == before["trailer_total"]
+    assert after["skipped_lines"] == before["skipped_lines"]
+    # contagens de 2026 preservadas, 2025 acrescentado
+    assert after["counts_by_date"][D1.isoformat()] == 11
+    assert after["counts_by_date"][D2.isoformat()] == 11
+    assert after["counts_by_date"][Y2025_A.isoformat()] == 2
+    assert after["counts_by_date"][Y2025_B.isoformat()] == 2
+
+    # o sidecar também é do lake inteiro: 2026 não some do mapa por mercado,
+    # e o universo do ano mais novo (PETR4) não é trocado pelo de 2025 (VALE3)
+    prepare_state = load_prepare_state(lake)
+    assert set(prepare_state.counts_by_market) == {"2025", "2026"}
+    assert prepare_state.counts_by_market["2026"] == {"010": 2, "017": 1, "030": 1, "070": 20}
+    assert prepare_state.counts_by_market["2025"] == {"010": 2, "070": 2}
+    assert prepare_state.universe == ("PETR4",)
+    assert prepare_state.universe_session == D2
+
+    # partições independentes: 2025 existe ao lado de 2026
+    assert (lake / "raw_cotahist" / "year=2025" / "part-0.parquet").is_file()
+    assert (lake / "raw_cotahist" / "year=2026" / "part-0.parquet").is_file()
+    assert QueryService(lake).lake_calendar()[-1] == D2
+
+    # comando `health` continua coerente com o state
+    health = CliRunner().invoke(cli.app, ["health", "--config", str(_config_file(tmp_path))])
+    assert health.exit_code == 0, health.output
+    payload = json.loads(health.output)
+    assert payload["last_session"] == D2.isoformat()
+    assert payload["lake_years"] == [2025, 2026]
+    assert payload["age_sessions"] == 0
+
+
+def test_rates_backfill_grava_selic_nas_sessoes_sem_curva(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`b3o rates --backfill`: uma chamada ao SGS; a curva PRE do dia já lá fica."""
+    from typer.testing import CliRunner
+
+    monkeypatch.delenv("B3_DATA_DIR", raising=False)
+    sources = Sources()
+    assert _prepare(tmp_path, sources).exit_code == 0
+    lake = tmp_path / "lake"
+
+    calls = {"sgs": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "bcdata.sgs.11" in str(request.url):
+            calls["sgs"] += 1
+            return httpx.Response(
+                200,
+                json=[
+                    {"data": "18/11/2026", "valor": "0.043739"},
+                    {"data": "19/11/2026", "valor": "0.043739"},
+                ],
+            )
+        return httpx.Response(404)
+
+    monkeypatch.setattr(
+        cli, "build_client", lambda: build_client(transport=httpx.MockTransport(handler))
+    )
+
+    result = CliRunner().invoke(
+        cli.app, ["rates", "--backfill", "--config", str(_config_file(tmp_path))]
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["sgs"] == 1
+    assert "selic_flat" in result.output
+    assert "1 gravada(s)" in result.output
+    assert "1 já com curva" in result.output
+
+    table = pq.read_table(lake / "rates_di" / "year=2026" / "part-0.parquet").to_pydict()
+    by_date: dict[date, list[str]] = {}
+    for day, source in zip(table["refdate"], table["source"], strict=True):
+        by_date.setdefault(day, []).append(source)
+    assert set(by_date[D1]) == {"selic_flat"}  # sessão sem PRE ganhou curva plana
+    assert len(by_date[D1]) == 756
+    assert set(by_date[D2]) == {"b3_reference"}  # PRE da B3 não é sobrescrita
+
+
+def test_rates_sem_backfill_nao_roda_o_lote(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(cli.app, ["rates", "--config", str(_config_file(tmp_path))])
+    assert result.exit_code == 2
+    assert "--backfill" in result.output

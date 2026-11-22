@@ -1,4 +1,4 @@
-"""CLI b3o — `prepare` (pipeline one-shot) e `health` (saúde do lake).
+"""CLI b3o — `prepare` (pipeline one-shot), `health` (saúde do lake) e `rates`.
 
 Contrato: `docs/contratos/onda-c.md` §3 e §5. O `prepare` costura as ondas A e B
 num fluxo reproduzível:
@@ -8,6 +8,15 @@ config → client → COTAHIST → validate → parse (contando por mercado, D3)
        → legs + strike_events → rates → earnings → OI → liquidez → relatório
        → ingest_state → resumo de uma tela (P-G)
 ```
+
+`prepare --year` de um ano fechado é **honesto** (§4.4): a partição daquele ano é
+reconstruída, mas `last_session` continua sendo a maior data do lake inteiro e
+`counts_by_date`/`counts_by_market` são mesclados — preparar 2025 depois de 2026
+não apaga o retrato de 2026. Identidade do arquivo (`etag`/`sha256`/`trailer`/
+`skipped_lines`) só é gravada quando o ano preparado é o mais novo do lake.
+
+`rates --backfill`: preenche a Selic plana (`ingest/selic.py`, uma chamada ao SGS
+11) nas sessões do lake sem curva; a curva PRE da B3 tem precedência.
 
 Regras que este arquivo respeita:
 
@@ -68,10 +77,11 @@ from b3o.ingest.fetch import BROWSER_UA, FetchResult, fetch_cotahist
 from b3o.ingest.open_interest import fetch_open_interest_window
 from b3o.ingest.parse import KEPT_MARKETS, CotahistRow, iter_cotahist
 from b3o.ingest.rates import fetch_rates_di
+from b3o.ingest.selic import backfill_selic_flat
 from b3o.ingest.validate import ValidationReport, validate_cotahist
-from b3o.query.service import PrepareState, QueryService, save_prepare_state
+from b3o.query.service import PrepareState, QueryService, load_prepare_state, save_prepare_state
 from b3o.store.lake import read_cotahist_years, write_cotahist_year
-from b3o.store.state import skipped_lines_from_report, update_ingest_state
+from b3o.store.state import load_ingest_state, skipped_lines_from_report, update_ingest_state
 
 app = typer.Typer(
     help="Opções B3 — dados EOD públicos da B3, cálculo em Python, decisão no humano.",
@@ -279,6 +289,15 @@ def run_prepare(
             return PrepareResult(exit_code=1, lines=lines, failures=failures)
         last_session = sessions[-1]
 
+        # O retrato do estado é do LAKE INTEIRO, não do ano preparado (§4.4): a
+        # maior data de todas as partições é o que `age_sessions` compara.
+        try:
+            lake_sessions = service.lake_calendar()
+        except SourceFailure as exc:
+            failures.append(StageFailure("lake", exc.error))
+            lake_sessions = sessions
+        lake_last = lake_sessions[-1] if lake_sessions else last_session
+
         # 4-5. Legs e eventos de strike (B2, puros) persistidos no padrão do lake.
         legs_summary, legs_error = _stage(
             "legs", lambda: _write_legs(data_dir, reference_year)
@@ -384,8 +403,9 @@ def run_prepare(
                 fetch=fetch,
                 validation=validation,
                 counts_by_date=counts_by_date,
-                last_session=last_session,
+                last_session=lake_last,
                 model_version=config.model_version,
+                prepared_year=reference_year,
             )
         except SourceFailure as exc:
             failures.append(StageFailure("ingest_state", exc.error))
@@ -393,12 +413,20 @@ def run_prepare(
 
         rss_mib = _rss_peak_mib()
         duration = time.perf_counter() - started
+        previous_state = load_prepare_state(data_dir)
+        # preparar um ano fechado não pode apagar o retrato do ano mais novo
+        counts_by_market_sidecar = dict(previous_state.counts_by_market)
+        if counts_by_market:
+            counts_by_market_sidecar[str(reference_year)] = counts_by_market
+        universe_sidecar = tuple(universe)
+        universe_session_sidecar = lake_last
+        if reference_year < lake_last.year and previous_state.universe:
+            universe_sidecar = previous_state.universe
+            universe_session_sidecar = previous_state.universe_session
         prepare_state = PrepareState(
-            counts_by_market={str(reference_year): counts_by_market}
-            if counts_by_market
-            else {},
-            universe=tuple(universe),
-            universe_session=last_session,
+            counts_by_market=counts_by_market_sidecar,
+            universe=universe_sidecar,
+            universe_session=universe_session_sidecar,
             last_error=failures[-1].error.to_dict() if failures else None,
             failures=tuple(failure.to_dict() for failure in failures),
             rss_peak_mib=rss_mib,
@@ -417,7 +445,9 @@ def run_prepare(
 
         lines.insert(
             0,
-            f"prepare {last_session.isoformat()} · {duration:.1f}s · "
+            f"prepare {last_session.isoformat()}"
+            + (f" · lake até {lake_last.isoformat()}" if lake_last != last_session else "")
+            + f" · {duration:.1f}s · "
             f"rss pico {rss_mib:.0f} MiB · "
             f"{len(failures)} falha(s) de fonte",
         )
@@ -892,27 +922,49 @@ def _update_state(
     counts_by_date: Mapping[date, int],
     last_session: date,
     model_version: int,
+    prepared_year: int,
 ) -> None:
-    """Atualiza `ingest_state.json` com o que este prepare viu (P-C/ADR-007)."""
+    """Atualiza `ingest_state.json` com o que este prepare viu (P-C/ADR-007).
+
+    **`prepare --year` honesto (§4.4):**
+
+    - `last_session` é a **maior data do lake inteiro** (todos os anos), não a do
+      ano preparado — preparar 2025 depois de 2026 não pode rejuvenescer o state;
+    - `counts_by_date` é **mesclado**: as datas de `prepared_year` são
+      substituídas (a partição do ano é reconstruída, então data que sumiu do
+      arquivo tem que sumir da contagem) e as dos outros anos ficam intactas;
+    - `trailer_total`/`etag`/`last_modified`/`sha256`/`skipped_lines` descrevem
+      **o arquivo do ano preparado** e só são gravados quando ele é o mais novo
+      do lake (`prepared_year >= last_session.year`); caso contrário, o retrato
+      do arquivo corrente ficaria apontando para um ano fechado.
+    """
+    current = load_ingest_state(data_dir)
     changes: dict[str, object] = {
         "updated_at": stamp,
         "last_session": last_session,
         "model_version": model_version,
     }
-    if fetch is not None and fetch.status != "error":
-        changes.update(
-            etag=fetch.etag,
-            last_modified=fetch.last_modified,
-            sha256=fetch.sha256,
-        )
-    if validation is not None:
-        changes.update(
-            trailer_total=validation.trailer_total,
-            skipped_lines=skipped_lines_from_report(validation),
-        )
-    if counts_by_date:
-        changes["counts_by_date"] = counts_by_date
+    if prepared_year >= last_session.year:
+        if fetch is not None and fetch.status != "error":
+            changes.update(
+                etag=fetch.etag,
+                last_modified=fetch.last_modified,
+                sha256=fetch.sha256,
+            )
+        if validation is not None:
+            changes.update(
+                trailer_total=validation.trailer_total,
+                skipped_lines=skipped_lines_from_report(validation),
+            )
+    merged = {
+        day: count for day, count in current.counts_by_date.items() if day.year != prepared_year
+    }
+    merged.update(counts_by_date)
+    if merged:
+        changes["counts_by_date"] = merged
+        changes["replace_counts"] = True
     update_ingest_state(data_dir, **changes)  # type: ignore[arg-type]
+
 
 
 def _cotahist_summary(
@@ -1049,6 +1101,73 @@ def health(
     # relógio só como carimbo informativo na borda (ADR-010); a idade vem do lake
     payload["now_wall_clock_informative"] = _now().isoformat(timespec="seconds")
     typer.echo(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
+
+
+@app.command()
+def rates(
+    backfill: Annotated[
+        bool,
+        typer.Option(
+            "--backfill",
+            help="preenche a Selic plana em toda sessão do lake que não tem curva",
+        ),
+    ] = False,
+    config: Annotated[
+        Path, typer.Option("--config", help="caminho do config.yaml (chaves planas, P-B)")
+    ] = DEFAULT_CONFIG_PATH,
+) -> None:
+    """Preenche o histórico de taxa com a Selic plana do SGS 11 (uma chamada)."""
+    if not backfill:
+        typer.echo("rates: use --backfill (o lote é o único modo; a curva PRE vem do prepare)")
+        raise typer.Exit(code=2)
+
+    try:
+        settings = load_config(config)
+    except SourceFailure as exc:
+        typer.secho(f"config     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    configure_logging(settings.log_level)
+
+    service = QueryService(settings.data_dir)
+    try:
+        sessions = service.lake_calendar()
+    except SourceFailure as exc:
+        typer.secho(f"lake       {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    if not sessions:
+        typer.echo(f"rates      lake vazio em {settings.data_dir}; rode `b3o prepare` antes")
+        raise typer.Exit(code=1)
+
+    client = build_client()
+    try:
+        summary = backfill_selic_flat(sessions, client=client, data_dir=settings.data_dir)
+    except SourceFailure as exc:
+        typer.secho(f"rates      {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    finally:
+        client.close()
+
+    used = sorted({float(value) for value in summary["selic_pct"].values()})  # type: ignore[union-attr]
+    several = (
+        f"{used[0]:.6f}–{used[-1]:.6f}% a.d." if len(used) > 1 else f"{used[0]:.6f}% a.d."
+    )
+    detail = (
+        f"{len(used)} valor(es), {several}"
+        if used
+        else "nada gravado (todas as sessões já têm curva)"
+    )
+    typer.echo(
+        f"rates      {summary['source']} · {summary['sessions']} sessão(ões) no lake · "
+        f"{summary['written']} gravada(s) · {summary['skipped_existing']} já com curva · "
+        f"Selic {detail}"
+    )
+    errors = summary["errors"]
+    if errors:
+        typer.echo(f"           {len(errors)} erro(s): {errors}")  # type: ignore[arg-type]
+        raise typer.Exit(code=1)
 
 
 def main() -> None:

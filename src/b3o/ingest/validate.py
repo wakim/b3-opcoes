@@ -78,6 +78,8 @@ class ValidationReport:
 
     `bad_width`/`bad_numeric` são problemas por linha: aparecem nas contagens e não
     derrubam o `ok`; `errors` é só nível I/O/zip (zip ilegível, membro múltiplo).
+    `bad_width_count`/`bad_numeric_count` são os TOTAIS sem capo (D2): as listas
+    param em 20 para o relatório caber, a contagem nunca mente.
     """
 
     ok: bool
@@ -90,6 +92,9 @@ class ValidationReport:
     bad_width: tuple[BadLine, ...]
     bad_numeric: tuple[BadLine, ...]
     errors: tuple[SourceError, ...]
+    # Totais sem capo (D2). Defaults para não quebrar quem monta o relatório à mão.
+    bad_width_count: int = 0
+    bad_numeric_count: int = 0
 
 
 def validate_cotahist(zip_path: Path) -> ValidationReport:
@@ -149,16 +154,21 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
     bad_width: list[BadLine] = []
     bad_numeric: list[BadLine] = []
     errors: list[SourceError] = []
-    omitted = {"width": 0, "numeric": 0}
+    bad_width_count = 0
+    bad_numeric_count = 0
 
-    def add_bad_line(
-        bucket: list[BadLine], counter: str, kind: str, line_no: int, excerpt: str
-    ) -> None:
-        nonlocal omitted
-        if len(bucket) < MAX_BAD_LINES:
-            bucket.append(BadLine(line_no=line_no, kind=kind, excerpt=excerpt))
-        else:
-            omitted[counter] += 1
+    def add_width(line_no: int, line: str) -> None:
+        """Conta SEMPRE; a lista para nas 20 primeiras (D2: a contagem não mente)."""
+        nonlocal bad_width_count
+        bad_width_count += 1
+        if len(bad_width) < MAX_BAD_LINES:
+            bad_width.append(BadLine(line_no=line_no, kind="width", excerpt=line[:80]))
+
+    def add_problem(kind: str, line_no: int, excerpt: str) -> None:
+        nonlocal bad_numeric_count
+        bad_numeric_count += 1
+        if len(bad_numeric) < MAX_BAD_LINES:
+            bad_numeric.append(BadLine(line_no=line_no, kind=kind, excerpt=excerpt))
 
     line_no = 0
     for raw in stream:  # binário: quebra em \n e nunca carrega o arquivo inteiro
@@ -190,16 +200,10 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
                     line[start:end],
                 )
         elif tipreg != HEADER_TIPREG:
-            add_bad_line(
-                bad_numeric,
-                "numeric",
-                "tipreg",
-                line_no,
-                f"tipreg={tipreg!r} {line[:60]}",
-            )
+            add_problem("tipreg", line_no, f"tipreg={tipreg!r} {line[:60]}")
 
         if len(line) != LINE_WIDTH:
-            add_bad_line(bad_width, "width", "width", line_no, line[:80])
+            add_width(line_no, line)
             continue
 
         if tipreg != DATA_TIPREG:
@@ -210,35 +214,24 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
             # Uma linha entra uma vez só, mesmo com vários campos tortos.
             field = bad_fields[0]
             start, end = _FIELD_BOUNDS[field]
-            add_bad_line(
-                bad_numeric,
-                "numeric",
-                "numeric",
-                line_no,
-                f"{field}=[{line[start:end]}] {line[:60]}",
-            )
+            add_problem("numeric", line_no, f"{field}=[{line[start:end]}] {line[:60]}")
             continue
 
         messages = _bad_date_messages(line)
         if messages:
-            add_bad_line(
-                bad_numeric,
-                "numeric",
-                "date",
-                line_no,
-                f"{'; '.join(messages)} | {line[:60]}",
-            )
+            add_problem("date", line_no, f"{'; '.join(messages)} | {line[:60]}")
 
-    suppressed = omitted["width"] + omitted["numeric"]
-    if suppressed:
+    omitted_width = bad_width_count - len(bad_width)
+    omitted_numeric = bad_numeric_count - len(bad_numeric)
+    if omitted_width or omitted_numeric:
         # O relatório é limitado a 20 por espécie; o total não pode sumir em silêncio.
         log.warning(
             "%s: %d linha(s) torta(s) além das %d registradas (largura=%d, linha=%d)",
             path.name,
-            suppressed,
+            omitted_width + omitted_numeric,
             MAX_BAD_LINES,
-            omitted["width"],
-            omitted["numeric"],
+            omitted_width,
+            omitted_numeric,
         )
 
     if not trailer_seen:
@@ -262,6 +255,8 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
         bad_width=tuple(bad_width),
         bad_numeric=tuple(bad_numeric),
         errors=tuple(errors),
+        bad_width_count=bad_width_count,
+        bad_numeric_count=bad_numeric_count,
     )
 
 

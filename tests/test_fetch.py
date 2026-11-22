@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -225,7 +226,7 @@ def test_304_sem_arquivo_local_e_erro_explicito(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("base_url", ["", "sem-esquema.br/"])
 def test_base_url_invalida_vira_source_error_sem_rede(tmp_path: Path, base_url: str) -> None:
-    """D1 da revisão: URL sem esquema não pode escapar como ValueError/InvalidURL."""
+    """D1: URL sem esquema não pode escapar como ValueError/InvalidURL."""
     calls: list[str] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -243,3 +244,50 @@ def test_base_url_invalida_vira_source_error_sem_rede(tmp_path: Path, base_url: 
     assert "base_url" in result.error.message
     assert result.error.hint.strip()
     assert list(tmp_path.iterdir()) == []  # nenhum zip, .part ou meta criado
+
+
+def test_republicacao_publica_zip_e_meta_via_replace_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1: no bind, `os.replace` sobre alvo existente dá EACCES — publicar via fsutil."""
+    old_payload = b"PK\x03\x04 versao antiga do zip"
+    new_payload = b"PK\x03\x04 versao republicada pela B3 no dia seguinte"
+
+    def first(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=old_payload, headers={"ETag": '"v1:0"'})
+
+    with _client(first) as client:
+        first_result = fetch_cotahist(
+            YEAR, tmp_path, BASE_URL, client=client, retry_delays=(0.0,)
+        )
+    assert first_result.status == "downloaded"
+
+    # bind do Windows: rename para nome NOVO passa; replace sobre existente é recusado
+    real_replace = os.replace
+    refused: list[str] = []
+
+    def replace_eacces(a: object, b: object) -> None:
+        target = Path(str(b))
+        if target.exists():
+            refused.append(target.name)
+            raise PermissionError(13, "Permission denied (bind)")
+        real_replace(a, b)
+
+    monkeypatch.setattr(os, "replace", replace_eacces)
+
+    def second(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=new_payload, headers={"ETag": '"v2:0"'})
+
+    with _client(second) as client:
+        result = fetch_cotahist(YEAR, tmp_path, BASE_URL, client=client, retry_delays=(0.0,))
+
+    assert result.status == "downloaded"
+    assert result.error is None
+    assert result.etag == '"v2:0"'
+    assert (tmp_path / f"COTAHIST_A{YEAR}.ZIP").read_bytes() == new_payload
+    meta = json.loads(meta_path(tmp_path, YEAR).read_text(encoding="utf-8"))
+    assert meta["sha256"] == hashlib.sha256(new_payload).hexdigest()
+    assert meta["etag"] == '"v2:0"'
+    # o fallback do replace_file foi exercido nas DUAS publicações: zip e meta
+    assert sorted(refused) == [f"COTAHIST_A{YEAR}.ZIP", f"COTAHIST_A{YEAR}.ZIP.meta.json"]
+    assert not list(tmp_path.glob("*.part"))

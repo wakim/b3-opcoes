@@ -5,7 +5,7 @@ Contrato: `docs/contratos/onda-a.md` §2. Regras que vêm do dado medido:
 - `BROWSER_UA` é obrigatório: sem User-Agent de browser a B3 responde 520/404.
 - O arquivo anual do ano corrente é republicado **inteiro** todo dia, então o GET
   condicional (`ETag` + `If-Modified-Since`) é o caminho normal: 304 custa zero byte.
-- 200 → streaming para `tmp-*.part`, sha256 calculado no fluxo, `os.replace` e meta
+- 200 → streaming para `tmp-*.part`, sha256 calculado no fluxo, `fsutil.replace_file` e meta
   nova. Nada de arquivo pela metade no nome final e nada de meta inconsistente.
 - Retry só em `httpx.TransportError` e 5xx, no máximo `1 + len(retry_delays)`
   tentativas; 4xx é permanente (re-tentar não conserta URL errada nem 404).
@@ -18,7 +18,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, tzinfo
@@ -28,6 +27,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
+from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError
 
 log = logging.getLogger(__name__)
@@ -248,7 +248,7 @@ def _download(
         )
 
     try:
-        os.replace(part, target)
+        replace_file(part, target)
     except OSError as exc:
         part.unlink(missing_ok=True)
         return _error_result(
@@ -363,10 +363,10 @@ def _read_meta(path: Path) -> dict[str, object] | None:
 
 
 def _write_meta(path: Path, meta: dict[str, object]) -> None:
-    """Grava a meta de forma atômica (tmp + os.replace)."""
+    """Grava a meta de forma atômica (tmp + `fsutil.replace_file`, D1)."""
     tmp = path.with_name(f"{path.name}.part")
     tmp.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    replace_file(tmp, path)
 
 
 def _as_str(value: object) -> str | None:
@@ -375,4 +375,5 @@ def _as_str(value: object) -> str | None:
 
 def _now_iso() -> str:
     """Instante do download, ISO 8601 com offset de America/Sao_Paulo (P-D)."""
+    # carimbo de download (excecao documentada, ADR-010) — data de referencia NUNCA sai daqui
     return datetime.now(_TZ).isoformat(timespec="seconds")

@@ -115,6 +115,8 @@ def test_zip_valido_confere_contagem_do_trailer(tmp_path: Path) -> None:
     assert report.count_match is True
     assert report.bad_width == ()
     assert report.bad_numeric == ()
+    assert report.bad_width_count == 0
+    assert report.bad_numeric_count == 0
     assert report.errors == ()
     assert report.sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -158,6 +160,7 @@ def test_linha_de_largura_244_entra_em_bad_width(tmp_path: Path) -> None:
     report = validate_cotahist(path)
 
     assert len(report.bad_width) == 1
+    assert report.bad_width_count == 1
     assert report.bad_width[0].line_no == 3  # header é 1, primeira data é 2
     assert report.bad_width[0].kind == "width"
     assert report.line_count == 2  # a linha torta continua contando para o trailer
@@ -192,6 +195,7 @@ def test_campo_numerico_com_letra_entra_em_bad_numeric(tmp_path: Path) -> None:
     report = validate_cotahist(path)
 
     assert len(report.bad_numeric) == 1
+    assert report.bad_numeric_count == 1
     assert report.bad_numeric[0].line_no == 2
     assert report.bad_numeric[0].kind == "numeric"
     assert "open" in report.bad_numeric[0].excerpt
@@ -297,7 +301,7 @@ def test_sem_header_header_ok_false(tmp_path: Path) -> None:
 
 
 def test_listas_de_linhas_ruins_ficam_limitadas_a_20(tmp_path: Path) -> None:
-    # 25 linhas tortas: relatório guarda as 20 primeiras, mas conta as 25 no trailer.
+    # 25 linhas tortas: relatório guarda as 20 primeiras, mas a contagem total não mente (D2).
     tortas = [data_line()[:244] for _ in range(25)]
     path = make_zip(tmp_path, [header_line(), *tortas, trailer_line(25)])
 
@@ -306,10 +310,12 @@ def test_listas_de_linhas_ruins_ficam_limitadas_a_20(tmp_path: Path) -> None:
     assert report.line_count == 25
     assert report.trailer_total == 25
     assert report.count_match is True
-    assert len(report.bad_width) == 20
+    assert len(report.bad_width) == 20  # lista bounded (o relatório cabe numa tela)
+    assert report.bad_width_count == 25  # contagem total, sem capo (D2)
+    assert report.bad_numeric_count == 0
     assert report.bad_width[0].line_no == 2
     assert report.bad_width[-1].line_no == 21
-    assert report.ok is True  # estrutura boa; as 25 linhas o prepare pula e conta
+    assert report.ok is True  # estrutura boa; contagem de linha não é fatal
     assert report.errors == ()
 
 

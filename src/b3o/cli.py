@@ -79,6 +79,7 @@ from b3o.ingest.parse import KEPT_MARKETS, CotahistRow, iter_cotahist
 from b3o.ingest.rates import fetch_rates_di
 from b3o.ingest.selic import backfill_selic_flat
 from b3o.ingest.validate import ValidationReport, validate_cotahist
+from b3o.metrics.pipeline import run_metrics
 from b3o.query.service import PrepareState, QueryService, load_prepare_state, save_prepare_state
 from b3o.store.lake import read_cotahist_years, write_cotahist_year
 from b3o.store.state import load_ingest_state, skipped_lines_from_report, update_ingest_state
@@ -1168,6 +1169,87 @@ def rates(
     if errors:
         typer.echo(f"           {len(errors)} erro(s): {errors}")  # type: ignore[arg-type]
         raise typer.Exit(code=1)
+
+
+@app.command()
+def metrics(
+    config: Annotated[
+        Path, typer.Option("--config", help="caminho do config.yaml (chaves planas, P-B)")
+    ] = DEFAULT_CONFIG_PATH,
+    date_: Annotated[
+        date | None,
+        typer.Option("--date", help="recalcula só esta sessão (merge na partição)"),
+    ] = None,
+    backfill: Annotated[
+        bool,
+        typer.Option("--backfill", help="recalcula o intervalo do lake em ordem crescente"),
+    ] = False,
+    from_: Annotated[
+        date | None, typer.Option("--from", help="primeira sessão do --backfill")
+    ] = None,
+    to: Annotated[
+        date | None, typer.Option("--to", help="última sessão do --backfill")
+    ] = None,
+) -> None:
+    """Calcula `metrics_series` e `metrics_underlying` (IV, gregas, ATM, VRP, classe).
+
+    `--date AAAA-MM-DD` recalcula **só** aquela sessão e faz merge na partição;
+    `--backfill` percorre o intervalo em ordem crescente (a janela de 252 sessões
+    do z/percentil usa só o passado). Resumo de uma tela (P-G); exit ≠ 0 só em
+    falha estrutural (sem lake, partição ausente, data sem sessão).
+    """
+    try:
+        settings = load_config(config)
+    except SourceFailure as exc:
+        typer.secho(f"config     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    configure_logging(settings.log_level)
+
+    if date_ is None and not backfill:
+        typer.echo("metrics: use --date AAAA-MM-DD ou --backfill [--from/--to]")
+        raise typer.Exit(code=2)
+
+    service = QueryService(settings.data_dir)
+    try:
+        lake = service.lake_calendar()
+    except SourceFailure as exc:
+        typer.secho(f"lake       {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    if not lake:
+        typer.echo(
+            f"metrics    lake vazio em {settings.data_dir}; rode `b3o prepare` antes"
+        )
+        raise typer.Exit(code=1)
+
+    if date_ is not None:
+        dates: list[date] = [date_]
+    else:
+        start = from_ or lake[0]
+        end = to or lake[-1]
+        dates = [day for day in lake if start <= day <= end]
+        if not dates:
+            typer.echo(
+                f"metrics    nenhuma sessão do lake no intervalo {start}→{end} "
+                f"(lake: {lake[0]}→{lake[-1]})"
+            )
+            raise typer.Exit(code=1)
+
+    try:
+        summary = run_metrics(settings, dates=dates, backfill=backfill)
+    except SourceFailure as exc:
+        typer.secho(f"metrics    {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    for line in summary.render():
+        typer.echo(line)
+    if summary.series_sha256:
+        typer.echo(
+            f"partição   metrics_series sha256 {summary.series_sha256[:12]}… · "
+            f"metrics_underlying sha256 {summary.underlying_sha256[:12]}…"
+        )
 
 
 def main() -> None:

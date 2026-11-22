@@ -95,6 +95,9 @@ class ValidationReport:
     # Totais sem capo (D2). Defaults para não quebrar quem monta o relatório à mão.
     bad_width_count: int = 0
     bad_numeric_count: int = 0
+    #: `True` quando o trailer conta as linhas físicas (registros + header + trailer),
+    #: convenção medida no arquivo de 2024; `False` quando conta só registros (2026).
+    trailer_includes_header: bool = False
 
 
 def validate_cotahist(zip_path: Path) -> ValidationReport:
@@ -236,10 +239,17 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
 
     if not trailer_seen:
         count_match: bool | None = None
+        trailer_includes_header = False
     elif trailer_total is None or trailer_conflict:
         count_match = False
+        trailer_includes_header = False
     else:
-        count_match = trailer_total == line_count
+        # Duas convenções medidas no arquivo real (AGENTS.md):
+        #   2026: trailer = número de registros "01";
+        #   2024: trailer = registros + header + trailer (as linhas físicas).
+        # A diferença é exatamente 2; qualquer outro valor continua divergência fatal.
+        trailer_includes_header = trailer_total == line_count + 2
+        count_match = trailer_total == line_count or trailer_includes_header
 
     # ADR-007: fatal é estrutural; linha torta é registrada e pulada, não reprova o arquivo.
     ok = header_ok and count_match is True and not errors
@@ -252,6 +262,7 @@ def _scan(path: Path, sha256: str, stream: BinaryIO) -> ValidationReport:
         header_ok=header_ok,
         trailer_total=trailer_total,
         count_match=count_match,
+        trailer_includes_header=trailer_includes_header,
         bad_width=tuple(bad_width),
         bad_numeric=tuple(bad_numeric),
         errors=tuple(errors),

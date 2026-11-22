@@ -333,7 +333,7 @@ cd C:\Users\wakim\Projects\b3-opcoes
 podman compose config                                    # valida o compose
 podman compose build                                     # imagem runtime + dev
 podman compose run --rm test b3o health                     # saúde do lake (o serviço `test` é o container de ferramentas; não há testes — ADR-019)
-podman compose run --rm test ruff check src tests         # lint
+podman compose run --rm test ruff check src                  # lint
 podman compose run --rm prepare                          # baixa e deriva
 podman compose run --rm app b3o health                    # saúde do lake
 podman compose up -d app                                  # 127.0.0.1:8080 (HTTP + /mcp)

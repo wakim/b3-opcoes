@@ -1,0 +1,19 @@
+# Contexto de build: só o que a imagem precisa (o `data/` tem centenas de MB e
+# era enviado ao daemon em toda construção — medido em 295 MB, achado da revisão do F0).
+data/
+out/
+docs/
+.git/
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+*.parquet
+*.zip
+*.db
+*.sqlite
+*.md
+!README.md
+.env
+.pytest_cache/
+.ruff_cache/

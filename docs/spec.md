@@ -90,7 +90,7 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 | Serviço | Profile | Imagem | Para quê |
 |---|---|---|---|
 | `app` | — | `target: runtime` | FastAPI + `/mcp`, `127.0.0.1:8080`, sem deps de dev |
-| `test` | — | `target: dev` | `pytest`, `ruff`, `tsc --noEmit`: é aqui que se valida |
+| `test` | — | `target: dev` | container de ferramentas: `b3o …`, `python`, `ruff` (não há suíte de testes — ADR-019) |
 | `dev` | `dev` | `target: dev` | `uvicorn --reload` com `src/`, `tests/` e `config.yaml` montados |
 | `prepare` | `jobs` | `target: runtime` | one-shot `b3o prepare` |
 | `prepare-watch` | `watch` | `target: runtime` | `b3o prepare --watch`, diário às 21:30 BRT |
@@ -438,7 +438,7 @@ Offline: precache do shell; *network-first* para `/api` com fallback ao cache da
 - Ano corrente: reparsear o arquivo anual inteiro e **substituir a partição** do ano. Anos fechados são imutáveis. Escrita atômica: `tmp/` → `os.replace`; nunca substituir antes de validar.
 - Se uma data já carregada mudar de conteúdo (sha por data em `ingest_state`), registrar em `health` — a substituição já cuidou do dado.
 - `model_version` sobe a cada mudança de fórmula; recálculo grava em `model=vN/` e troca o ponteiro.
-- **Testes** (`podman compose run --rm test pytest`): golden file do parser, classificação de ajuste de strike, Black-76/IV, Yang-Zhang, ausência de look-ahead no backtest, payoff das estruturas, contrato MCP × HTTP, cobertura do glossário. Rodam antes de qualquer troca de `model_version`.
+- **Validação (sem suíte de testes — ADR-019):** cada fórmula e o parser são conferidos **no dado real** e por um caminho independente (contagem por fora, valor recalculado à mão); a medição fica registrada no `AGENTS.md`. Antes de qualquer troca de `model_version`, rodar o pipeline no histórico e comparar com a medição registrada.
 - **Agendamento:** o serviço `prepare` roda no `compose up` (one-shot) e o serviço `prepare-watch` (profile `watch`) repete diariamente às 21:30 BRT. Sem `watch`, o dado envelhece com o container ligado; `health` acusa a idade.
 - **Sem Python no host:** nenhum passo do pipeline depende de `uv`/Python/Node instalados fora do container. O host precisa de Podman e `git`.
 - `health()` reporta: última sessão, idade, contagem por data, `rate_source`, fontes ausentes, inconsistências, último erro.

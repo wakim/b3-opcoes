@@ -3,9 +3,9 @@
 Contrato: `docs/contratos/onda-fg.md` §4.3 (schema exato) e ADR-009
 (`data/<tabela>/year=YYYY/part-0.parquet`). Este módulo é **só escrita** — quem
 calcula é `b3o/metrics/` (pacote F1b), que não pode importar `duckdb` nem
-`pyarrow` para I/O de tabela; a leitura das métricas já gravadas (histórico de
-`iv_pct_252`, `vrp_z_252`) também passa por aqui, mas pelo lado de leitura do
-DuckDB, que é `query/service.py`.
+`pyarrow` para I/O de tabela. A leitura do histórico já gravado (`iv_pct_252`,
+`vrp_z_252`) fica **aqui** (`read_metrics_underlying`/`read_metrics_series`):
+é `store/`, então DuckDB é permitido, e o pipeline não abre SQL.
 
 Regras que este arquivo respeita:
 
@@ -32,11 +32,12 @@ import shutil
 import time
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
@@ -240,18 +241,21 @@ def write_metrics_series(
     data_dir: Path,
     *,
     refdate_replaced: date | None = None,
+    refdates_replaced: Collection[date] | None = None,
 ) -> WriteStats:
     """Grava `metrics_series` (uma linha por `(refdate, ticker)`).
 
-    `refdate_replaced is None` → **substitui** a partição do(s) ano(s) das linhas
-    (`--backfill`). Com uma data → **merge**: lê a partição do ano, remove as
-    linhas daquele `refdate`, concatena as novas, ordena por `(refdate, ticker)`
-    e regrava. Nesse modo todas as linhas precisam ter `refdate == refdate_replaced`
-    (o cálculo é de um dia por vez; misturar datas numa mesclagem é bug de chamada).
+    `refdates_replaced is None` e `refdate_replaced is None` → **substitui** a
+    partição do(s) ano(s) das linhas (`--backfill`). Com datas → **merge**: lê a
+    partição do ano, remove as linhas daquelas datas, concatena as novas, ordena
+    por `(refdate, ticker)` e regrava. `refdate_replaced` (uma data) continua
+    valendo como antes; `refdates_replaced` é a forma de lote do `--backfill`
+    (blocos de até 20 sessões numa escrita só).
 
     Unidades: `strike`/`mid` em **centavos por ação** (`mid = (bid+ask)/2 / FATCOT`
-    já resolvido pelo chamador), `t` em dias úteis / 252, IV e gregas como no
-    contrato §4.3. `None` só nas colunas que o contrato declara `|null`.
+    já resolvido pelo chamador — ADR-017: na prática é o `close / FATCOT`), `t` em
+    dias úteis / 252, IV e gregas como no contrato §4.3. `None` só nas colunas
+    que o contrato declara `|null`.
     """
     return _write(
         rows,
@@ -262,7 +266,7 @@ def write_metrics_series(
         schema=METRICS_SERIES_SCHEMA,
         sort_keys=_SERIES_SORT_KEYS,
         path_for=metrics_series_path,
-        refdate_replaced=refdate_replaced,
+        merge_days=_merge_days(refdate_replaced, refdates_replaced),
     )
 
 
@@ -271,6 +275,7 @@ def write_metrics_underlying(
     data_dir: Path,
     *,
     refdate_replaced: date | None = None,
+    refdates_replaced: Collection[date] | None = None,
 ) -> WriteStats:
     """Grava `metrics_underlying` (uma linha por `(refdate, underlying)`).
 
@@ -292,8 +297,21 @@ def write_metrics_underlying(
         schema=METRICS_UNDERLYING_SCHEMA,
         sort_keys=_UNDERLYING_SORT_KEYS,
         path_for=metrics_underlying_path,
-        refdate_replaced=refdate_replaced,
+        merge_days=_merge_days(refdate_replaced, refdates_replaced),
     )
+
+
+def _merge_days(
+    refdate_replaced: date | None,
+    refdates_replaced: Collection[date] | None,
+) -> frozenset[date] | None:
+    """Une as duas formas de "substituir só estas datas"; `None` = partição inteira."""
+    if refdates_replaced is None and refdate_replaced is None:
+        return None
+    days = set(refdates_replaced or ())
+    if refdate_replaced is not None:
+        days.add(refdate_replaced)
+    return frozenset(days)
 
 
 def _write(
@@ -306,19 +324,19 @@ def _write(
     schema: pa.Schema,
     sort_keys: list[tuple[str, str]],
     path_for,
-    refdate_replaced: date | None,
+    merge_days: frozenset[date] | None,
 ) -> WriteStats:
     """Núcleo dos dois escritores: valida, agrupa por ano e publica por partição."""
     started = time.perf_counter()
     payload = _validated(rows, table=table, columns=columns, spec=spec)
 
-    if refdate_replaced is not None:
-        wrong = sorted({row["refdate"] for row in payload if row["refdate"] != refdate_replaced})
+    if merge_days is not None:
+        wrong = sorted({row["refdate"] for row in payload if row["refdate"] not in merge_days})
         if wrong:
             raise _bad_row(
                 table,
-                f"merge de um dia recebeu refdate(s) {wrong} além de {refdate_replaced}",
-                hint="passe refdate_replaced=None para substituir a partição inteira",
+                f"merge de datas recebeu refdate(s) {wrong} fora de {sorted(merge_days)}",
+                hint="passe refdates_replaced=None para substituir a partição inteira",
             )
 
     by_year: dict[int, list[dict[str, object]]] = defaultdict(list)
@@ -336,7 +354,7 @@ def _write(
             target,
             schema=schema,
             sort_keys=sort_keys,
-            merge_day=refdate_replaced,
+            merge_days=merge_days,
         )
         total_rows += rows_in_partition
         last_path = target
@@ -354,17 +372,22 @@ def _publish(
     *,
     schema: pa.Schema,
     sort_keys: list[tuple[str, str]],
-    merge_day: date | None,
+    merge_days: frozenset[date] | None,
 ) -> tuple[int, str]:
-    """Escreve uma partição (substituindo o ano ou mesclando um `refdate`).
+    """Escreve uma partição (substituindo o ano ou mesclando as datas pedidas).
 
     Devolve `(linhas_no_arquivo, sha256)` — em merge, `linhas_no_arquivo` é o
     tamanho final da partição (as linhas preservadas também contam).
     """
     new = pa.Table.from_pylist(rows, schema=schema)
-    if merge_day is not None and target.is_file():
+    if merge_days and target.is_file():
         existing = _read_partition(target, schema)
-        keep = pc.invert(pc.equal(existing.column("refdate"), pa.scalar(merge_day, pa.date32())))
+        keep = pc.invert(
+            pc.is_in(
+                existing.column("refdate"),
+                value_set=pa.array(sorted(merge_days), type=pa.date32()),
+            )
+        )
         table = pa.concat_tables([existing.filter(keep), new])
     else:
         table = new
@@ -442,6 +465,103 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+# --------------------------------------------------------------------------- #
+# Leitores do histórico já gravado (janelas de 252, look-ahead nunca)
+# --------------------------------------------------------------------------- #
+
+
+def read_metrics_underlying(
+    data_dir: Path,
+    years: Sequence[int] | None = None,
+) -> list[dict[str, object]]:
+    """Linhas de `metrics_underlying` como dicts, ordenadas por `(refdate, underlying)`.
+
+    `years is None` lê todas as partições. Sem partição devolve `[]` — um lake
+    onde o `metrics` nunca rodou não é erro, é ausência de histórico (quem
+    consome trata `None` + flag de aquecimento). Parquet ilegível levanta
+    `SourceFailure(storage_error)`: partição corrompida não vira lista vazia.
+    """
+    paths = _metric_partitions(data_dir, METRICS_UNDERLYING_TABLE, years)
+    if not paths:
+        return []
+    return _read_dicts(
+        "SELECT * FROM read_parquet(?) ORDER BY refdate, underlying",
+        [[str(path) for path in paths]],
+    )
+
+
+def read_metrics_series(
+    data_dir: Path,
+    *,
+    leg_ids: Collection[str] | None = None,
+    until: date | None = None,
+) -> list[dict[str, object]]:
+    """`(refdate, leg_id, iv)` do histórico já gravado, em ordem cronológica.
+
+    Só serve para semear as janelas de `iv_pct_252` (deque por `leg_id`) quando
+    o cálculo começa no meio do histórico (`--date`, `--from`). `until` corta em
+    `refdate < until` — a data que está sendo calculada **não** entra no
+    histórico (ela vem do cálculo de hoje); nada posterior entra por construção.
+    Sem `leg_ids` devolve `[]` (nunca a tabela inteira: 3 M linhas não cabem).
+    """
+    wanted = sorted({str(leg_id) for leg_id in (leg_ids or ())})
+    if not wanted:
+        return []
+    paths = _metric_partitions(data_dir, METRICS_SERIES_TABLE, None)
+    if not paths:
+        return []
+    sql = (
+        "SELECT refdate, leg_id, iv FROM read_parquet(?) "
+        "WHERE iv IS NOT NULL AND leg_id IN (SELECT unnest(?::VARCHAR[]))"
+    )
+    params: list[object] = [[str(path) for path in paths], wanted]
+    if until is not None:
+        sql += " AND refdate < ?"
+        params.append(until)
+    sql += " ORDER BY refdate, leg_id"
+    return _read_dicts(sql, params)
+
+
+def _metric_partitions(
+    data_dir: Path,
+    table: str,
+    years: Sequence[int] | None,
+) -> list[Path]:
+    """Partições `data/<table>/year=*/part-0.parquet` (um ano ou todos, ordenadas)."""
+    root = Path(data_dir) / table
+    if not root.is_dir():
+        return []
+    if years is None:
+        directories = sorted(root.glob("year=*"))
+    else:
+        directories = [root / f"year={int(year):04d}" for year in sorted(set(years))]
+    return [
+        directory / PARTITION_FILE
+        for directory in directories
+        if (directory / PARTITION_FILE).is_file()
+    ]
+
+
+def _read_dicts(sql: str, params: Sequence[object]) -> list[dict[str, object]]:
+    """Executa a consulta e devolve `list[dict]`; erro de leitura é `storage_error`."""
+    try:
+        with duckdb.connect() as connection:
+            cursor = connection.execute(sql, list(params))
+            names = [column[0] for column in cursor.description]
+            return [dict(zip(names, row, strict=True)) for row in cursor.fetchall()]
+    except duckdb.Error as exc:
+        raise SourceFailure(
+            SourceError(
+                code="storage_error",
+                message=f"falha ao ler o histórico de métricas: {exc}",
+                hint=(
+                    "partição corrompida ou schema antigo: rode `b3o metrics --backfill` "
+                    "para reconstruir; se persistir, apague a partição do ano"
+                ),
+            )
+        ) from exc
 
 
 # --------------------------------------------------------------------------- #
@@ -588,6 +708,8 @@ __all__ = [
     "SIGNAL_CLASSES",
     "metrics_series_path",
     "metrics_underlying_path",
+    "read_metrics_series",
+    "read_metrics_underlying",
     "write_metrics_series",
     "write_metrics_underlying",
 ]

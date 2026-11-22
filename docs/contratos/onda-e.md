@@ -218,8 +218,9 @@ duas) e o contrato só definia uma:
 
 ### 5.5 `skew.py` — banda em delta e interpolação
 
-- `DeltaPoint{delta, iv_pct}` (definido em `skew.py`); `delta` em valor
-  **absoluto** (0,25 = 25Δ), não o Δ assinado;
+- `DeltaPoint{delta, iv_pct}` (definido em `skew.py`); `delta` é o Δ **assinado**
+  do Black-76 (call > 0, put < 0) — sem o sinal não há como separar a asa de
+  call da asa de put. A banda e a interpolação usam `|Δ|` (0,25 = 25Δ);
 - 25Δ por interpolação **linear em Δ** entre vizinhos; sem bracket naquele
   lado → `rr25=None` + `sparse_chain`;
 - `n_strikes_band` = pontos com `delta` em `[0,20; 0,80]`; **mínimo 5**, senão

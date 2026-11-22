@@ -143,5 +143,5 @@ Em qualquer outro caso: adote o default, registre, siga.
 | Fim do F0 | ADR-002/003/005/006 + relatório de liquidez (define o universo real) |
 | Fim do F1b | P-L e o resultado do portão: o sinal segue? |
 | Fim do F3 | ADR-004 (SDK `mcp`), ADR-005 (camadas), formato das respostas |
-| Antes do F5.0 | ADR-003 (volumes do frontend) e a direção visual, se a primeira tela pedir ajuste |
+| Antes do F5.0 | ADR-003 (volumes do frontend) e a direção visual, se a primeira tela pedir ajuste · **Node**: a spec diz `node:22-slim`, que virou LTS de manutenção (EOL 2027-04); auditoria de 22/11 recomenda `node:26-slim` (LTS ativa) no F5.0 — decisão de spec, dono decide |
 | 30 dias de uso | todas as provisórias que sobrarem |

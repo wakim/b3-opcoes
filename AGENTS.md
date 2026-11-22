@@ -94,6 +94,7 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 
 ## Convenções de código
 
+- **Golden fixtures são DADO, não código** (`.gitattributes`: `tests/fixtures/*.txt -text`): os bytes originais (CRLF incluído) têm que sobreviver a clone limpo. Sem a regra, o `* text=auto eol=lf` entrega o fixture em LF e **20 testes caem** — bug de reprodutibilidade real, achado na auditoria de deps de 22/11/2026. Ao criar fixture novo: confira com `git archive HEAD <fixture> | tar -xO | ...` que os bytes batem com o original.
 - Python 3.12, `uv`, layout `src/b3o/`.
 - **Tudo roda em container** (`compose.yaml`, spec §4.1). Nenhum comando oficial usa `uv`/Python/Node do host: `podman compose run --rm test pytest`, `podman compose run --rm prepare`. Se um comando só funciona no host, ele está errado.
 - Runner: `podman compose` (o host não tem Docker). O `compose.yaml` é compose padrão — nunca usar extensão exclusiva do Podman, para que `docker compose` funcione em outra máquina.

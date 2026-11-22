@@ -296,8 +296,24 @@ def update_ingest_state(
 
 
 def skipped_lines_from_report(report: ValidationReport) -> SkippedLines:
-    """Converte o `ValidationReport` da Onda A nas contagens de linhas puladas (ADR-007)."""
-    return SkippedLines(width=len(report.bad_width), numeric=len(report.bad_numeric))
+    """Converte o `ValidationReport` da Onda A nas contagens de linhas puladas (ADR-007).
+
+    Usa as contagens **totais** (`bad_width_count`/`bad_numeric_count`, contrato Onda A §2,
+    revisão D2): as listas `bad_width`/`bad_numeric` são limitadas a 20 amostras e reportar
+    `len()` delas subnotificaria um arquivo com 25 linhas tortas. Durante a janela em que um
+    relatório antigo (sem os campos de contagem) ainda circula, cai para `len()` das listas —
+    é o melhor que o objeto antigo oferece, e o teste cobre os dois caminhos.
+    """
+    width = getattr(report, "bad_width_count", None)
+    numeric = getattr(report, "bad_numeric_count", None)
+    return SkippedLines(
+        width=_count(width, "ValidationReport", "bad_width_count")
+        if width is not None
+        else len(report.bad_width),
+        numeric=_count(numeric, "ValidationReport", "bad_numeric_count")
+        if numeric is not None
+        else len(report.bad_numeric),
+    )
 
 
 def _state_from_json(raw: object, path: Path) -> IngestState:

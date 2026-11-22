@@ -11,11 +11,12 @@ import json
 import os
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from b3o.ingest.errors import SourceFailure
-from b3o.ingest.validate import BadLine, ValidationReport
+from b3o.ingest.validate import BadLine
 from b3o.store.state import (
     MODEL_VERSION,
     IngestState,
@@ -270,18 +271,21 @@ def test_data_dir_que_e_arquivo_falha_explicito(tmp_path: Path) -> None:
     assert excinfo.value.code == "bad_data"
 
 
-def test_skipped_lines_from_report_mapeia_o_validador() -> None:
-    """ADR-007: o que a validação pulou vira contagem explícita, não silêncio."""
-    report = ValidationReport(
-        ok=True,
-        zip_path=Path("COTAHIST_A2026.ZIP"),
-        sha256=SHA,
-        line_count=12,
-        header_ok=True,
-        trailer_total=10,
-        count_match=True,
-        bad_width=(BadLine(1, "width", "curta"), BadLine(2_087_780, "width", "246 bytes")),
+def test_skipped_lines_from_report_usa_contagens_totais() -> None:
+    """Listas são capped em 20: a contagem tem que vir dos totais do relatório (D2)."""
+    report = SimpleNamespace(
+        bad_width_count=25,
+        bad_numeric_count=7,
+        bad_width=tuple(BadLine(line, "width", "curta") for line in range(1, 21)),
+        bad_numeric=(BadLine(99, "numeric", "open"),),
+    )
+    assert skipped_lines_from_report(report) == SkippedLines(width=25, numeric=7)
+
+
+def test_skipped_lines_from_report_antigo_cai_para_len() -> None:
+    """Relatório sem os campos de contagem (versão anterior): melhor esforço = len()."""
+    report = SimpleNamespace(
+        bad_width=(BadLine(1, "width", "curta"), BadLine(2, "width", "246 bytes")),
         bad_numeric=(BadLine(7, "numeric", "open"),),
-        errors=(),
     )
     assert skipped_lines_from_report(report) == SkippedLines(width=2, numeric=1)

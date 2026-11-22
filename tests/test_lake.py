@@ -347,6 +347,86 @@ def test_particao_ausente_falha_explicito(tmp_path: Path) -> None:
     assert "2024" in str(excinfo.value)
 
 
+def test_erro_de_disco_ao_criar_tmp_vira_storage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`OSError` no meio da escrita não escapa cru: vira `storage_error` e limpa o tmp."""
+    path = write_cotahist_year([_spot()], 2026, tmp_path).path
+    before = path.read_bytes()
+    real_mkdir = Path.mkdir
+
+    def full_disk(self: Path, *args: object, **kwargs: object) -> None:
+        if "cotahist-" in self.name:
+            raise OSError(28, "No space left on device", str(self))
+        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", full_disk)
+    with pytest.raises(SourceFailure) as excinfo:
+        write_cotahist_year([_spot()], 2026, tmp_path)
+
+    assert excinfo.value.code == "storage_error"
+    assert isinstance(excinfo.value.__cause__, OSError)
+    assert path.read_bytes() == before
+    assert _tmp_leftovers(tmp_path) == []
+
+
+def test_erro_de_disco_na_publicacao_vira_storage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Disco cheio no replace final: `storage_error`, partição anterior intacta, tmp limpo."""
+    path = write_cotahist_year([_spot()], 2026, tmp_path).path
+    before = path.read_bytes()
+
+    def full_disk(*args: object, **kwargs: object) -> None:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(os, "replace", full_disk)
+    with pytest.raises(SourceFailure) as excinfo:
+        write_cotahist_year([_spot(refdate=D18)], 2026, tmp_path)
+
+    assert excinfo.value.code == "storage_error"
+    assert "disco" in str(excinfo.value)
+    assert path.read_bytes() == before
+    assert _tmp_leftovers(tmp_path) == []
+
+
+def test_data_dir_sem_permissao_vira_storage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`mkdir` recusado no diretório raiz (permissão) também é `storage_error`."""
+    target = tmp_path / "sem_permissao"
+    real_mkdir = Path.mkdir
+
+    def denied(self: Path, *args: object, **kwargs: object) -> None:
+        if self == target:
+            raise PermissionError(13, "Permission denied", str(self))
+        real_mkdir(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "mkdir", denied)
+    with pytest.raises(SourceFailure) as excinfo:
+        write_cotahist_year([_spot()], 2026, target)
+
+    assert excinfo.value.code == "storage_error"
+    assert isinstance(excinfo.value.__cause__, OSError)
+
+
+def test_erro_de_disco_na_leitura_vira_storage_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """I/O na abertura da partição é `storage_error`; Parquet corrompido segue `bad_data`."""
+    write_cotahist_year([_spot()], 2026, tmp_path)
+
+    def denied(*args: object, **kwargs: object) -> None:
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(pq, "ParquetFile", denied)
+    with pytest.raises(SourceFailure) as excinfo:
+        list(read_cotahist_years(tmp_path, [2026]))
+
+    assert excinfo.value.code == "storage_error"
+    assert isinstance(excinfo.value.__cause__, OSError)
+
+
 def test_parquet_corrompido_falha_explicito(tmp_path: Path) -> None:
     path = cotahist_partition_path(tmp_path, 2026)
     path.parent.mkdir(parents=True)

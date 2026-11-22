@@ -15,7 +15,9 @@ Contrato: `docs/contratos/onda-b.md` §2 (P-A, spec §5.1 e §11). Regras que es
   (volume de série quente passa de R$ 21 M/dia e estoura `int32`); datas são `date32`;
   `style`/`side`/`maturity` são nulos de verdade (`NullArray` desnecessário: coluna nullable);
 - **falha explícita**: diretório inválido, lote vazio, `refdate` de outro ano, partição ausente
-  ou Parquet corrompido → `SourceFailure` com `SourceError` {code, message, hint}.
+  ou Parquet corrompido → `SourceFailure` com `SourceError` {code, message, hint}. Erro de
+  disco (permissão, volume cheio, I/O) em escrita **ou** leitura vira
+  `code="storage_error"` — nunca traceback cru de `OSError` escapando do módulo.
 
 Os bytes do Parquet são determinísticos para o mesmo lote (medido no teste de idempotência):
 o writer do pyarrow não embute timestamp, e cada `write_batch` de `WRITE_BATCH_ROWS` vira
@@ -138,6 +140,10 @@ RAW_COTAHIST_SCHEMA = pa.schema(
 """Schema do Parquet: `date32` em `refdate`/`maturity`, `int64` em todo número, string no resto."""
 
 _HINT_DIR = "confira B3_DATA_DIR (no container é /data) e se o caminho é um diretório gravável"
+_HINT_DISK = (
+    "confira espaço e permissão do volume de dados do container (B3_DATA_DIR, /data); "
+    "a partição anterior não foi tocada"
+)
 _HINT_PREPARE = "rode `b3o prepare` para o ano correspondente antes de ler o lake"
 
 
@@ -243,6 +249,10 @@ def write_cotahist_year(rows: Iterable[CotahistRow], year: int, data_dir: Path) 
         # (unlink + rename, janela documentada em AGENTS.md/fsutil)
         replace_file(tmp_path, partition_path)
         _remove_stale_parts(partition_dir)
+    except OSError as exc:
+        # permissão, disco cheio, I/O: vira SourceError explícito (padrão de rates/OI)
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise _storage_failure("gravar a partição", partition_path, exc) from exc
     except BaseException:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise
@@ -268,7 +278,8 @@ def read_cotahist_years(
 
     O filtro `markets` é defensivo: o lake já só guarda `KEPT_MARKETS`, mas quem lê não
     deve depender disso. Partição ausente e Parquet corrompido falham de forma explícita
-    (`SourceFailure`); nada é devolvido pela metade em silêncio.
+    (`SourceFailure`); nada é devolvido pela metade em silêncio. Erro de disco na leitura
+    (permissão, I/O) vira `storage_error`; arquivo corrompido continua `bad_data`.
     """
     root = Path(data_dir)
     if root.exists() and not root.is_dir():
@@ -292,7 +303,9 @@ def read_cotahist_years(
         try:
             parquet = pq.ParquetFile(path)
             names = tuple(parquet.schema_arrow.names)
-        except (OSError, pa.ArrowException) as exc:
+        except OSError as exc:
+            raise _storage_failure("ler a partição", path, exc) from exc
+        except pa.ArrowException as exc:
             raise SourceFailure(
                 SourceError(
                     code="bad_data",
@@ -333,7 +346,9 @@ def _iter_rows(
                 row = CotahistRow(*values)
                 if row.tpmerc in markets:
                     yield row
-    except (OSError, pa.ArrowException) as exc:
+    except OSError as exc:
+        raise _storage_failure("ler a partição", path, exc) from exc
+    except pa.ArrowException as exc:
         raise SourceFailure(
             SourceError(
                 code="bad_data",
@@ -375,6 +390,22 @@ def _remove_stale_parts(partition_dir: Path) -> None:
             log.info("lake removeu parte obsoleta %s", path)
 
 
+def _storage_failure(action: str, path: Path, exc: OSError) -> SourceFailure:
+    """Erro de disco com o formato do projeto: código `storage_error`, mensagem e dica.
+
+    Mesmo padrão de `ingest/rates.py` e `ingest/open_interest.py`: um `OSError` (permissão,
+    volume cheio, I/O) interrompe, mas nunca escapa cru — a borda (prepare/health) precisa
+    de `{code, message, hint}`, não de traceback.
+    """
+    return SourceFailure(
+        SourceError(
+            code="storage_error",
+            message=f"falha de disco ao {action} {path}: {exc}",
+            hint=_HINT_DISK,
+        )
+    )
+
+
 def _ensure_dir(data_dir: Path, *, action: str) -> Path:
     """Cria `data_dir` se preciso; recusa caminho que é arquivo ou não pode ser criado."""
     root = Path(data_dir)
@@ -389,13 +420,7 @@ def _ensure_dir(data_dir: Path, *, action: str) -> Path:
     try:
         root.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        raise SourceFailure(
-            SourceError(
-                code="bad_data",
-                message=f"não foi possível {action} em {root}: {exc}",
-                hint=_HINT_DIR,
-            )
-        ) from exc
+        raise _storage_failure(f"{action} em", root, exc) from exc
     return root
 
 

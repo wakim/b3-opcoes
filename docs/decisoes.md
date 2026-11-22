@@ -71,6 +71,15 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** um teste de arquitetura (`test_sem_sql_fora_do_service`) varre `src/` procurando `duckdb.connect`/`execute(` fora de `store/` e `query/service.py` e falha se achar. Isso entra no F0.1b, antes de existir SQL — barato agora, caro depois.
 - **Revisar em:** F3.
 
+## ADR-008 — Dependências sempre na última versão estável
+
+- **Data:** 2026-11-22 · **Status:** ratificada pelo dono (diretiva na sessão) · **Custo de reverter:** baixo
+- **Contexto:** o dono definiu como pré-requisito permanente do projeto: bibliotecas e imagens de base sempre atualizadas ("sempre ter as bibliotecas atualizadas").
+- **Decisão:** a cada sessão que mexa em dependências (ou ao abrir fase nova), auditar `pyproject.toml` + `uv.lock` + imagens do `Dockerfile` contra as últimas versões estáveis; subir floors e regerar `uv.lock` (workaround do container — AGENTS.md); rebuild + `pytest`/`ruff` verdes antes de commit. Se uma versão nova quebrar, voltar a floor da culpada e registrar aqui.
+- **Por quê:** diretiva do dono; manutenção contínua evita dívida de upgrade gigante no fim.
+- **Consequência:** `uv.lock` muda com frequência (diff grande e semântico — sempre commit separado `chore(deps): …`); Python permanece 3.12 e Node 22 (convenção/spec — upgrade de linguagem NÃO é "atualização de biblioteca" e é decisão de spec); pacotes que não sobem sem quebrar ficam registrados aqui com o motivo.
+- **Revisar em:** a cada sessão que tocar dependências.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

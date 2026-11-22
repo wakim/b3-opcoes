@@ -481,7 +481,7 @@ def build_earnings(
         ticker = raw.strip().upper()
         if not ticker:
             continue
-        cnpj = ticker_to_cnpj.get(ticker)
+        cnpj = ticker_to_cnpj.get(ticker) or ticker_to_cnpj.get(ticker[:-1])
         cd = cnpj_to_cd.get(cnpj) if cnpj else None
         if cd is None:
             # Sem correspondência no FCA/ITR: fora da lista (flag é do C1).
@@ -545,29 +545,67 @@ def _parse_company_ids(paths: Sequence[Path]) -> dict[str, str]:
 
 
 def _parse_fca(paths: Sequence[Path]) -> dict[str, str]:
-    """`Codigo_Negociacao -> CNPJ` dos papéis negociados na Bolsa e ainda ativos.
+    """`Codigo_Negociacao -> CNPJ` do FCA, com as quatro tolerâncias medidas.
 
     O FCA é reenviado com outra `Data_Referencia`; vale a versão mais recente por
-    papel. Se a versão mais recente diz que o papel saiu da Bolsa
-    (`Data_Fim_Negociacao` preenchido), o papel não é mapeado.
+    papel (e a linha "ativa" — mercado `Bolsa` sem `Data_Fim_Negociacao` — vence a
+    inativa). Medido no arquivo real (22/11/2026) e por isso tolerado:
+
+    1. **`Mercado` vazio** é papel de Bolsa sem mercado preenchido (`MLAS3`);
+       antes a linha era descartada e a empresa ficava sem resultado.
+    2. **`Data_Fim_Negociacao` velho** não significa "não negocia hoje"
+       (`CEAB3` traz 2019-10-28, data do IPO): a linha inativa é usada quando não
+       há ativa para o código.
+    3. **Código sem o dígito de classe** (`OBTC` para `OBTC3`): o resgate do
+       ticker tenta `ticker[:-1]` em `build_earnings`.
+    4. **Unit/BDR**: `Composicao_BDR_Unit` ("1 KLBN3 + 4 KLBN4") expande os
+       componentes para o mesmo CNPJ — é o único jeito de achar `KLBN4`, que não
+       tem linha própria.
+
+    O que a fonte **não** liga continua de fora, honestamente: `CSNA3` aparece com
+    `Codigo_Negociacao="4030"`, `MBRF3` como `"ADR"` e `CMIN3` não aparece em
+    nenhum dos dois anos do FCA — esses ficam `earnings_unmapped` (nunca data
+    inventada).
     """
-    latest: dict[str, tuple[date, int, str, bool]] = {}
+    best: dict[str, tuple[tuple[int, int, int], str]] = {}
+    components: list[tuple[str, str, tuple[int, int, int]]] = []
     for path in paths:
         for row in _iter_csv(path, member=_fca_member(path)):
-            ticker = _field(row, "Codigo_Negociacao").upper()
+            code = _field(row, "Codigo_Negociacao").upper()
             cnpj = _digits(_field(row, "CNPJ_Companhia"))
-            if not ticker or not cnpj:
+            if not cnpj:
                 continue
+            market = _field(row, "Mercado").lower()
             reference = _parse_date(row.get("Data_Referencia")) or date.min
             version = _to_int(row.get("Versao")) or 0
-            active = (
-                _field(row, "Mercado").lower() == "bolsa"
-                and not _field(row, "Data_Fim_Negociacao")
-            )
-            current = latest.get(ticker)
-            if current is None or (reference, version) >= (current[0], current[1]):
-                latest[ticker] = (reference, version, cnpj, active)
-    return {ticker: value[2] for ticker, value in latest.items() if value[3]}
+            active = market in ("bolsa", "") and not _field(row, "Data_Fim_Negociacao")
+            rank = (1 if active else 0, reference.toordinal(), version)
+            if code:
+                current = best.get(code)
+                if current is None or rank > current[0]:
+                    best[code] = (rank, cnpj)
+            composition = _field(row, "Composicao_BDR_Unit")
+            if composition:
+                for token in _composition_codes(composition):
+                    if token != code:
+                        components.append((token, cnpj, rank))
+
+    mapping = {code: value[1] for code, value in best.items()}
+    for code, cnpj, rank in components:
+        current = best.get(code)
+        if current is None or rank > current[0]:
+            best[code] = (rank, cnpj)
+            mapping[code] = cnpj
+    return mapping
+
+
+def _composition_codes(text: str) -> list[str]:
+    """Códigos de papel dentro de `Composicao_BDR_Unit` (`1 KLBN3 + 4 KLBN4`)."""
+    codes: list[str] = []
+    for token in text.upper().replace("+", " ").replace(",", " ").split():
+        if 4 <= len(token) <= 6 and any(ch.isalpha() for ch in token) and token.isalnum():
+            codes.append(token)
+    return codes
 
 
 def _iter_csv(path: Path, *, member: str | None = None) -> Iterator[dict[str, str]]:

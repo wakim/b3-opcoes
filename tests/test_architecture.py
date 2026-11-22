@@ -23,8 +23,9 @@ CLOCK_PATTERN = re.compile(r"\b(?:datetime\.)?(?:now|today)\s*\(")
 ALLOWED_PREFIXES = ("b3o/store/",)
 ALLOWED_FILES = ("b3o/query/service.py",)
 
-# ADR-010: carimbos de download (downloaded_at da meta) — não são data de referência.
-CLOCK_ALLOWED_FILES = ("b3o/ingest/fetch.py", "b3o/ingest/earnings.py")
+# ADR-010: carimbos de borda (downloaded_at da meta, updated_at do state e agenda
+# do watch na CLI) — não são data de referência.
+CLOCK_ALLOWED_FILES = ("b3o/ingest/fetch.py", "b3o/ingest/earnings.py", "b3o/cli.py")
 CLOCK_MARKER = "carimbo de download"
 
 

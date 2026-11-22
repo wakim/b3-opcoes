@@ -152,6 +152,15 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** feriado municipal/atípico futuro (ou 20/11/2026, ainda não verificável) desloca `T` em 1 dia — o pipeline marca `t_estimated` nas maturities depois da última sessão do lake, para o número não se passar por exato. Teste de referência: fixture com as 221 datas de 2026.
 - **Revisar em:** próximo `prepare` (confirmar 20/11) e na virada de ano (feriados móveis de 2027).
 
+## ADR-016 — Repositório no GitHub e push por pacote (diretiva do dono, 22/11/2026)
+
+- **Data:** 2026-11-22 · **Status:** ratificada pelo dono na sessão · **Custo de reverter:** baixo
+- **Contexto:** o termo da sessão dizia "sem push (não há remote)". O dono criou `github.com/wakim/b3-opcoes` e pediu o envio do que existe e a manutenção do plano atualizado.
+- **Decisão:** `origin = git@github.com:wakim/b3-opcoes.git`, branch `master`, autenticação por SSH (`id_ed25519` do perfil, já autorizada — `ssh -T git@github.com` devolve `Hi wakim!`). Push depois de cada pacote verde; `data/` e `out/` continuam ignorados (dado e relatório não versionam).
+- **Por quê:** pedido explícito do dono; o motivo original do "sem push" (ausência de remote) deixou de existir.
+- **Consequência:** o `PLAN.md`, este log e o `AGENTS.md` passam a ser a memória pública do projeto; segredo continua só em `.env` (fora do git) e não há credencial em arquivo versionado.
+- **Revisar em:** se o dono quiser outro fluxo (branch por sessão, PR).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

@@ -143,6 +143,15 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** `prepare` passa a fazer uma chamada ao BCB (só dias úteis, série pública sem token); `rate_source` vira atributo **por sessão** em `metrics_underlying`; recalcular `model_version` implica refazer o histórico inteiro (`--backfill`).
 - **Revisar em:** F2 (quando o `screen` consumir as tabelas) e no portão (a Selic plana pode explicar parte do erro de forward/IV).
 
+## ADR-015 — Calendário futuro: dia útil menos feriado (validado contra 221/221 sessões de 2026)
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo · **Revisar em:** primeiro `prepare` com sessão de 20/11/2026
+- **Contexto:** `TradingCalendar` é derivado das sessões do lake (P-C) e por isso **só conhece o passado**. O arquivo termina em 19/11/2026 e há vencimentos até **17/11/2028**; sem extensão, todo vencimento futuro devolveria `business_days = 0` → `T = 0` → `iv_expired` em 100% da grade. Aproximar por dias corridos erraria ~4% em T de 30d (≈0,7 vol point), grande o bastante para contaminar o VRP do portão.
+- **Decisão:** `derive/calendar.py` (puro) calcula as sessões de um intervalo: usa as datas conhecidas quando existem e, fora delas, **dia útil menos feriado**. Feriados: fixos (01/01, 21/04, 01/05, 07/09, 12/10, 02/11, 15/11, 20/11, 25/12) + móveis derivados da Páscoa (Carnaval −48/−47, Sexta Santa −2, Corpus Christi +60) + dias sem negócio (24/12, 31/12). `easter_sunday` pelo algoritmo de Meeus (puro, testável).
+- **Por quê:** a regra foi **medida**, não suposta: entre 02/01 e 19/11/2026 ela reproduz as 221 sessões do arquivo com zero divergência (nem sobra nem falta). É o único caminho que não exige manter tabela de feriados por ano nem aproximar tempo por dias corridos.
+- **Consequência:** feriado municipal/atípico futuro (ou 20/11/2026, ainda não verificável) desloca `T` em 1 dia — o pipeline marca `t_estimated` nas maturities depois da última sessão do lake, para o número não se passar por exato. Teste de referência: fixture com as 221 datas de 2026.
+- **Revisar em:** próximo `prepare` (confirmar 20/11) e na virada de ano (feriados móveis de 2027).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

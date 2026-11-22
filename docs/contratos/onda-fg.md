@@ -136,8 +136,7 @@ leg não se atravessa), o preço vem do raw.
 
 | Pacote | Arquivos |
 |---|---|
-| F1 (implementador F1) | `src/b3o/metrics/__init__.py`, `src/b3o/metrics/series.py`, `src/b3o/metrics/underlying.py`, `src/b3o/metrics/pipeline.py`, `src/b3o/store/metrics.py`, `src/b3o/ingest/selic.py`, `src/b3o/query/service.py` (só **métodos novos** de leitura), `src/b3o/cli.py` (só o comando `metrics`), `tests/test_metrics_series.py`, `tests/test_metrics_underlying.py`, `tests/test_metrics_pipeline.py`, `tests/test_selic.py` |
-| F2 (implementador F2, na mesma onda, depois do F1) | `src/b3o/derive/signal.py`, `src/b3o/metrics/validation.py`, `tests/test_signal.py`, `tests/test_validation.py`, `src/b3o/cli.py` (só o subcomando `metrics --checks`) |
+| F1b (implementador F1b) | `src/b3o/derive/calendar.py`, `src/b3o/derive/signal.py`, `src/b3o/metrics/series.py`, `src/b3o/metrics/underlying.py`, `src/b3o/metrics/pipeline.py`, `src/b3o/metrics/validation.py`, `src/b3o/cli.py` (só o comando `metrics` e o resumo), `tests/test_calendar.py`, `tests/fixtures/sessions_2026.txt`, `tests/test_metrics_series.py`, `tests/test_metrics_underlying.py`, `tests/test_metrics_pipeline.py`, `tests/test_signal.py`, `tests/test_validation.py` |
 | congelado | todo o resto |
 
 Regra de SQL (teste de arquitetura): `duckdb` continua **proibido** em
@@ -296,7 +295,28 @@ b3o metrics --checks --date 2026-11-19          # (F2) evidência de aceitação
   acrescentado (mesma série, +1 dia futuro → mesmo z da data antiga).
 - `--date` num dia já calculado substitui apenas aquele `refdate`.
 
-### 4.9 Evidência de aceitação do F1 (o `--checks` produz)
+### 4.9 Calendário: o lake só conhece o passado (furo medido)
+
+O arquivo termina em 19/11/2026 e há vencimentos até **17/11/2028**. Com o
+calendário feito só das sessões do lake, **todo** vencimento futuro daria
+`business_days = 0` → `T = 0` → `iv_expired` em 100% da grade.
+
+Medido: os **221** pregões de 2026 (02/01→19/11) são **exatamente** os dias
+úteis do intervalo menos 11 feriados — zero sobra, zero falta. Logo:
+
+- `derive/calendar.py` (puro): `easter_sunday(year)` (Meeus), `b3_holidays(year)`
+  = fixos `01/01, 21/04, 01/05, 07/09, 12/10, 02/11, 15/11, 20/11, 25/12` +
+  `24/12, 31/12` (sem negócio) + móveis `Páscoa−48`, `Páscoa−47`, `Páscoa−2`,
+  `Páscoa+60`; `trading_sessions(start, end, known)` = datas conhecidas ∪
+  (dias úteis − feriados) no intervalo, ordenado e sem repetição;
+- teste de referência: fixture `tests/fixtures/sessions_2026.txt` com as **221**
+  datas do lake → `trading_sessions(2026-01-01, 2026-11-19, known=())` tem que
+  devolvê-las **todas, sem sobra** (é o que valida a regra);
+- `t_estimated`: vencimento **depois** da última sessão do lake → `T` vem de
+  dias úteis/feriado (não do arquivo), e a série/papel ganha a flag
+  `t_estimated` — o número não se passa por medido.
+
+### 4.10 Evidência de aceitação do F1 (o `--checks` produz)
 
 1. paridade call E × put E, mesmo strike/vencimento, ATM ±10%, com negócio nas
    duas: mediana de `|iv_call − iv_put|` e P90 (vol points) em PETR4, VALE3,

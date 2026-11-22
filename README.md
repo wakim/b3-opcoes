@@ -11,7 +11,7 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 | | |
 |---|---|
 | Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões (ADR-001…018) |
-| Código | 🟡 **F0 completo** e F1 em curso (núcleo de precificação, realizada, superfície, pipeline de métricas) |
+| Código | 🟡 **F0 completo e aceito** · F1 a ~80% (`b3o metrics` roda no dado real; em correção da revisão) |
 | Fase atual | F1 (derivadas essenciais) → F1b (portão) |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |

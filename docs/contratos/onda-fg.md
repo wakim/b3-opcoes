@@ -193,17 +193,24 @@ rate_source str, signal_class str ("premium_rich"|"premium_cheap"|
 
 Medido: `data/rates_di` tem **1 data** (2026-11-19). O proxy da B3 só publica as
 últimas 20 sessões, então 2024/2025 e quase todo o 2026 ficariam sem taxa.
-Decisão: `src/b3o/ingest/selic.py` busca a **Selic diária do BCB** (SGS 11,
-`api.bcb.gov.br/dados/serie/bcdata.sgs.11/dados?formato=json&dataInicial=&dataFinal=`,
-uma chamada devolve o intervalo inteiro; série publica só em dia útil → dia sem
-ponto = último anterior) e materializa **uma curva plana por sessão** do lake:
-nós `du ∈ {1, 21, 42, 63, 126, 252, 504}` com `rate_annual` = Selic anualizada
-`(1+t/100)^252 − 1` em **% a.a.**, `source="bcb_selic_flat"`. A curva PRE da B3
-(`b3_reference`) continua tendo precedência nas datas em que existe.
-`prepare` ganha o estágio (uma chamada HTTP por intervalo, não por data) e o
-`health` mostra `rates_sessions` (nº de sessões com curva) e a última `source`.
+
+O `ingest/rates.py` da Onda B **já tem** o fallback `selic_flat` (SGS 11 do BCB,
+anualizada, curva plana de nós `du = 1…756`), mas ele busca **uma data por
+chamada** (`SGS_LOOKBACK_DAYS=30`) e o `prepare` só busca a última sessão do ano.
+Falta o preenchimento em lote: `src/b3o/ingest/selic.py` faz **uma** chamada ao
+SGS para o intervalo inteiro (`dataInicial`/`dataFinal`), anualiza
+`(1+t/100)^252 − 1` (em **% a.a.**), e para cada sessão do lake **sem** curva
+grava a curva plana (`source="selic_flat"`) com `write_rates_partition` (reusa o
+escritor da Onda B). A curva PRE da B3 (`b3_reference`) tem precedência: só as
+datas sem curva são preenchidas. Sessão cujo dia não tem ponto no SGS (feriado)
+usa o último valor anterior — o SGS só publica em dia útil.
 Sem nenhuma fonte de taxa para a data → `df = 1.0` **não** é permitido: a série
 sai com `None` + flag `no_rates` e não entra em IV/forward.
+
+`prepare --year` (ano fechado) tem que continuar honesto: `last_session` do
+`ingest_state` passa a ser **a maior data do lake inteiro** (não a do ano
+preparado) e `counts_by_date` é **mesclado**, não substituído — senão preparar
+2024 apaga o retrato de 2026.
 
 ### 4.5 Pipeline (F1) — ordem por data, tudo em memória para um dia
 
@@ -213,6 +220,9 @@ Para cada `refdate` (em ordem crescente; `--backfill` itera 2024→2026):
 
 1. **spot**: linha `010` (senão `020`) do papel; `spot` em ¢/ação = `close`
    (o `010` não tem FATCOT; `020` também não). Papel sem negócio no dia → fora.
+   **Só papéis com ao menos uma linha de opção (`070`/`080`) no dia entram em
+   `metrics_underlying`** — o resto do universo aparece no `screen` do F2 com
+   motivo de exclusão (`no_options`), não como linha de métrica vazia.
 2. **séries**: linhas `070`/`080` do dia, juntadas ao leg persistido por
    `(ticker, refdate)` com `strike` igual ao do leg; `strike <= 0` sai (IBOV
    órfã); `mid`/`one_sided` por `bid>0 e ask>0`, senão `close` + `one_sided`.

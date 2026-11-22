@@ -134,7 +134,7 @@ Critérios de desempate, nesta ordem:
 - **Contexto:** ao abrir a Onda F quatro furos apareceram: (1) `legs` não carrega preço nem `underlying`, e `ticker → papel` só existia em memória; (2) `rates_di` tem **uma** data (o proxy da B3 publica 20 sessões) e o backtest precisa de 2024–2026; (3) o portão depende das **classes de sinal** que o PLAN põe no F2; (4) `mid`/preço por ação precisa decidir onde o `FATCOT` entra.
 - **Decisão:**
   1. `metrics_*` re-juntam `legs` × `raw_cotahist` por `(ticker, refdate)` e resolvem o papel pelo ISIN contra o spot do mesmo dia; `strike`/`distribution_id` do leg persistido vencem (fronteira de leg).
-  2. Curva por sessão: PRE da B3 quando existe; senão **Selic do BCB (SGS 11) em curva plana** (`du ∈ {1,21,42,63,126,252,504}`, `source="bcb_selic_flat"`), buscada em uma chamada por intervalo. Sem curva → `iv=None` + `no_rates` (nunca `DF=1`).
+  2. Curva por sessão: PRE da B3 quando existe; senão o fallback **Selic plana** que o `ingest/rates.py` do B3 já implementa (`selic_flat`, SGS 11 anualizada, nós `du = 1…756`), preenchido **em lote** por `ingest/selic.py` com **uma** chamada ao SGS para o intervalo. Sem curva → `iv=None` + `no_rates` (nunca `DF=1`). `prepare --year` de ano fechado não pode clobber `last_session`/`counts_by_date` do lake inteiro.
   3. `derive/signal.py` (classes da §6.9) entra no **F1**, não no F2: sem classe não há portão.
   4. Preço por ação = preço ÷ `quote_factor` (FATCOT) no pipeline; a tabela guarda ¢/ação e IV em %; o R$ de contrato fica para o F4.
   5. `iv_pct_252` da série é calculado na gravação com `leg_id → deque(252)` cronológico (window SQL violaria a regra de consulta única).

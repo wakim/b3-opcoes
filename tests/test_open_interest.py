@@ -24,6 +24,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 
+from b3o.ingest.errors import SourceFailure
 from b3o.ingest.fetch import BROWSER_UA
 from b3o.ingest.open_interest import (
     BDI_EXPORT_URL,
@@ -461,6 +462,57 @@ def test_ano_diferente_vai_para_particao_diferente(tmp_path: Path) -> None:
 
 def test_salvar_lote_vazio_nao_cria_arquivo(tmp_path: Path) -> None:
     assert save_open_interest([], tmp_path) is None
+    assert not (tmp_path / OI_TABLE).exists()
+    # Nada gravado é "nunca baixado", não "vazio": a leitura tem que gritar (D3).
+    with pytest.raises(SourceFailure) as exc:
+        read_open_interest(tmp_path)
+    assert exc.value.error.code == "oi_missing"
+
+
+def test_particao_ausente_e_oi_missing_na_chamada(tmp_path: Path) -> None:
+    """D3: `"OI nunca foi baixado"` ≠ `"OI sem linhas"` — falha antes do gerador."""
+    with pytest.raises(SourceFailure) as exc:
+        read_open_interest(tmp_path)
+
+    assert exc.value.error.code == "oi_missing"
+    assert "prepare" in exc.value.error.hint
+    assert str(tmp_path) in exc.value.error.message
+
+
+def test_particao_ausente_para_o_ano_pedido_tambem_falha(tmp_path: Path) -> None:
+    save_open_interest(
+        [OIRow(refdate=DATE, ticker="PETRPZ26", oi=12_651_200, covered_qty=None,
+               uncovered_qty=None, total_qty=None)],
+        tmp_path,
+    )
+
+    with pytest.raises(SourceFailure) as exc:
+        read_open_interest(tmp_path, years=[2019])
+
+    assert exc.value.error.code == "oi_missing"
+    assert "2019" in exc.value.error.message
+
+
+def test_leiitura_com_particao_continua_gerador(tmp_path: Path) -> None:
+    save_open_interest(
+        [OIRow(refdate=DATE, ticker="PETRPZ26", oi=12_651_200, covered_qty=None,
+               uncovered_qty=None, total_qty=None)],
+        tmp_path,
+    )
+
+    stream = read_open_interest(tmp_path)
+
+    assert hasattr(stream, "__next__")  # gerador de verdade, não lista
+    assert [row.ticker for row in stream] == ["PETRPZ26"]
+    assert list(stream) == []  # esgotado, sem reabrir o parquet
+
+
+def test_particao_existente_porem_vazia_nao_falha(tmp_path: Path) -> None:
+    """Parquet com zero linhas é "vazio", não "faltou" — a exceção é só de ausência."""
+    path = open_interest_path(tmp_path, 2026)
+    path.parent.mkdir(parents=True)
+    pq.write_table(OI_SCHEMA.empty_table(), path)
+
     assert list(read_open_interest(tmp_path)) == []
 
 

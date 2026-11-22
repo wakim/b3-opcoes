@@ -53,9 +53,12 @@ O que foi **medido** em 22/11/2026 no arquivo real de 19/11/2026 (35.380 linhas,
 
 Regra 5 do `AGENTS.md`: falha explícita. Rede/tempo esgotado/parse torto →
 `SourceError(code="source_unavailable")` carregado no `OIResult`; nada de exceção
-escapando de `fetch_open_interest` (a única exceção que sai deste módulo é
-`OSError` de gravação, convertido em `SourceError(code="storage_error")` pelo
-próprio `fetch`, como faz `b3o.ingest.rates`).
+escapando de `fetch_open_interest` (o `OSError` de gravação é convertido em
+`SourceError(code="storage_error")` pelo próprio `fetch`, como faz
+`b3o.ingest.rates`). A leitura é o outro lado da regra: `read_open_interest`
+levanta `SourceFailure(code="oi_missing")` **na chamada** quando a partição não
+existe — "OI nunca baixado" não pode ser confundido com "OI sem linhas" (D3 da
+revisão da Onda B).
 """
 
 from __future__ import annotations
@@ -76,7 +79,7 @@ import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from b3o.fsutil import replace_file
-from b3o.ingest.errors import SourceError
+from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.ingest.fetch import BROWSER_UA
 
 log = logging.getLogger(__name__)
@@ -544,11 +547,25 @@ def save_open_interest(rows: Iterable[OIRow], data_dir: Path) -> Path | None:
 
 
 def read_open_interest(data_dir: Path, years: Iterable[int] | None = None) -> Iterator[OIRow]:
-    """Lê as partições (streaming por parquet, sem duckdb fora de `store/`)."""
+    """Abre as partições de OI; falha **na chamada** se elas não existem (D3).
+
+    `"OI nunca foi baixado"` e `"OI sem linhas"` não podem ser a mesma coisa: o C1
+    precisa da diferença para ligar `oi_unavailable` honestamente (P-N — a flag
+    exige saber que faltou). Por isso a checagem de existência acontece aqui,
+    antes de devolver o gerador, e não na primeira iteração: partição ausente
+    levanta `SourceFailure(code="oi_missing")` mesmo que ninguém itere.
+
+    Partição que existe e está vazia (ou com zero linhas) é outra coisa: aí o
+    gerador simplesmente não produz linhas — o arquivo é a prova de que houve
+    coleta. O streaming em si continua preguiçoso (`iter_batches`), sem carregar
+    o ano em memória (sem duckdb fora de `store/`).
+    """
     root = Path(data_dir) / OI_TABLE
     if not root.is_dir():
-        return
+        raise _missing_partition(root, years)
     wanted = None if years is None else {int(year) for year in years}
+
+    paths: list[Path] = []
     for directory in sorted(root.glob("year=*")):
         try:
             year = int(directory.name.split("=", 1)[1])
@@ -557,9 +574,33 @@ def read_open_interest(data_dir: Path, years: Iterable[int] | None = None) -> It
             continue
         if wanted is not None and year not in wanted:
             continue
-        for path in sorted(directory.glob("*.parquet")):
-            for batch in pq.ParquetFile(path).iter_batches(batch_size=100_000):
-                yield from _batch_rows(batch)
+        paths.extend(sorted(directory.glob("*.parquet")))
+
+    if not paths:
+        raise _missing_partition(root, years)
+    return _iter_partitions(paths)
+
+
+def _iter_partitions(paths: Sequence[Path]) -> Iterator[OIRow]:
+    """Gerador de verdade: abre um parquet por vez, um lote por vez."""
+    for path in paths:
+        for batch in pq.ParquetFile(path).iter_batches(batch_size=100_000):
+            yield from _batch_rows(batch)
+
+
+def _missing_partition(root: Path, years: Iterable[int] | None) -> SourceFailure:
+    """`oi_missing`: sem partição não há como distinguir "faltou" de "vazio"."""
+    requested = "qualquer ano" if years is None else f"ano(s) {sorted(int(y) for y in years)}"
+    return SourceFailure(
+        SourceError(
+            code="oi_missing",
+            message=(
+                f"não existe partição de posições em aberto em {root} "
+                f"({requested} pedido)"
+            ),
+            hint="rode b3o prepare (baixa a janela de OI)",
+        )
+    )
 
 
 def _batch_rows(batch: pa.RecordBatch) -> Iterator[OIRow]:

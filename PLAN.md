@@ -20,11 +20,11 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões |
-| Código | **nenhum** |
-| Dados baixados | verificação pontual do COTAHIST 2026 (3.570.794 registros) em pasta temporária |
-| Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8) funcionando, bind mount `C:\` ↔ container verificado; Python 3.12 e uv no host (não são o caminho oficial); Tailscale instalado |
-| Pasta | `C:\Users\wakim\Projects\b3-opcoes` (docs criados; sem git) |
+| Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…018) |
+| Código | **F0 completo** (fetch+validação, lake parquet, legs+eventos de strike, curva DI, calendário CVM, OI, liquidez, CLI `prepare`/`health`/`rates`) e **F1 em curso** (convenções/forward/IV/gregas, realizada+eventos, ATM/VRP/skew/dist, validadores de smile, pipeline `metrics`). Sem UI. |
+| Dados baixados | COTAHIST 2026 (221 sessões, 3.537.186 linhas dos 6 mercados), OI (10 sessões), curva DI (1 sessão; Selic plana em lote para o histórico), CVM ITR/DFP/FCA 2025+2026 |
+| Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
+| Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
 
 **Stack decidida:** backend Python (uv) + Parquet/DuckDB · MCP montado no FastAPI · frontend **Vite + React + TypeScript + TanStack Router/Query** (SPA pura), build em container Node, servido pelo FastAPI. **Tudo em container** (`compose.yaml`, spec §4.1); o runner no host é `podman compose`.
 

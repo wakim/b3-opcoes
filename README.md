@@ -10,12 +10,13 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões |
-| Código | ⛔ nenhum |
-| Fase atual | F0 (ingestão) — não iniciada |
+| Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões (ADR-001…018) |
+| Código | 🟡 **F0 completo** e F1 em curso (núcleo de precificação, realizada, superfície, pipeline de métricas) |
+| Fase atual | F1 (derivadas essenciais) → F1b (portão) |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
+| Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
-O trabalho começa em [`PLAN.md`](PLAN.md), tarefa `F0.0`.
+O trabalho segue o [`PLAN.md`](PLAN.md), fase por fase. O caminho oficial de execução é `podman compose`; a única coisa que precisa existir no host é Podman e `git`.
 
 ---
 
@@ -70,5 +71,3 @@ podman compose run --rm web     # gera web/dist, que o FastAPI serve
 ```
 
 Os serviços e as regras do ambiente estão na spec (§4.1) e em [`PLAN.md`](PLAN.md#ambiente).
-
-Nada disso existe ainda — está em `PLAN.md`, fase por fase.

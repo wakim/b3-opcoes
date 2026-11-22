@@ -1,5 +1,10 @@
 * text=auto eol=lf
 
+# golden files são DADO (bytes originais do arquivo da B3, CRLF incluído):
+# nunca normalizar — clone limpo tem que entregar os mesmos bytes
+tests/fixtures/*.txt -text
+tests/fixtures/**/*.txt -text
+
 # binários (o repo de código não deve carregar dado, mas se algum dia entrar, não normaliza)
 *.png binary
 *.jpg binary

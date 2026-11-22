@@ -14,7 +14,7 @@ app = typer.Typer(
 
 
 @app.callback()
-def main() -> None:
+def root() -> None:
     """b3o — Opções B3.
 
     Toda métrica é calculada em Python sobre dados EOD; nenhum número nasce de LLM.

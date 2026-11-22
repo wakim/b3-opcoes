@@ -94,7 +94,17 @@ class ValidationReport:
 def validate_cotahist(zip_path: Path) -> ValidationReport: ...
 ```
 
-- `ok = header_ok and count_match is True and not bad_width and not bad_numeric and not errors`.
+- `ok = header_ok and count_match is True and not errors`.
+  **Semântica (ADR-007):** `ok` significa "o arquivo é utilizável" — só header
+  ausente, trailer ausente/divergente ou zip ilegível são fatais. Problema de
+  **linha** (largura, numérico, data, tipreg) NÃO é fatal: entra em
+  `bad_width`/`bad_numeric` (com `kind` certo), é **pulado na ingestão e contado**,
+  e o prepare expõe as contagens no health (spec §11: "rejeitar linha torta
+  contando, não silenciando"; o arquivo real de 2026 tem 1 linha de 246 bytes —
+  mercado 017, que nem é ingestado).
+- Problemas por linha: `kind` ∈ `"width" | "numeric" | "date" | "tipreg"`;
+  `bad_width` recebe `width`, `bad_numeric` recebe os três demais (a espécie
+  distingue). `errors` é só nível I/O/zip.
 - **Coleta, não explode:** nenhuma linha ruim levanta exceção; tudo entra nas listas
   (limitadas às primeiras 20 por espécie) e o resultado decide o exit code.
 - Zip com membro único; `sha256` do zip inteiro.

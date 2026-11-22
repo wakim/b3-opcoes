@@ -63,6 +63,9 @@ Regra exata (validada: puts 1.508.144 E e **zero** A; calls 818.364 A / 729.416 
 `raiz = ticker sem W\d+$ (só se precedido de dígito), sem dígitos finais, sem o último caractere (código de mês)`; `token = 1º token de l[27:39]`; **se `token.startswith(raiz)` e `len(token) ≤ len(raiz)+2`** → `E` se o token termina em `E`, senão `A`; senão `null`.
 Séries com tokens conflitantes entre datas existem (909 raízes, quase só BOVA/índice): o estilo é **por linha** no parse; a série consolida no `legs` com flag de conflito.
 
+### 7. O arquivo de 2026 tem UMA linha de 246 bytes (UTF-8 dentro do latin-1)
+Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `017`, `corp_name` = `FROTA OCEÂNICA` com `Â` codificado em **UTF-8** (`\xc3\x82`) num arquivo latin-1 — 1 byte a mais e **todos os offsets a partir de `[27:39]` deslocados**. A linha é impossível de parsear por offset fixo; nem precisa ser (mercado 017 é filtrado). Consequência: validação que trate linha torta como fatal reprova o arquivo inteiro para sempre — linha torta se **pula e se conta** (ADR-007), e as contagens vão para o `health`. Teste de regressão com os bytes reais da linha existe em `tests/test_validate.py`.
+
 ---
 
 ## Outros fatos úteis

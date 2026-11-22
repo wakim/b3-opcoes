@@ -82,19 +82,19 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F0.12 | CLI `b3o prepare` e `b3o health` | 1 h |
 | F0.13 | Testes: golden file do parser (10 linhas reais), trailer, strike right-aligned, estilo pelo nome, classificação de ajuste com LOGG (provento grande), SBSP (desdobramento) e SIMH (grupamento) | 1 h |
 
-**Aceitação F0**
-- [ ] `podman compose config` válido e a imagem constrói do zero (sem cache) em < 5 min
-- [ ] `prepare` e `pytest` rodam **só** por `podman compose`; nenhum passo documentado exige Python/Node no host
-- [ ] rodar `podman compose run --rm prepare` duas vezes seguidas produz o mesmo lake (idempotência) e a segunda roda mais rápido (304)
-- [ ] contagem de linhas por `refdate` bate com um `GROUP BY` independente feito direto no TXT
-- [ ] trailer confere; nenhuma linha de largura errada passa
-- [ ] **legs conferidas à mão em 5 tickers com ajuste conhecido** (ex.: `ABEVX131`: 12,04 → 12,00 → 11,94), incluindo **SBSP 29/04/2026 (×0,2)** e **SIMH 18/02/2026 (×2)**, que **não** aparecem em `dividends_implied`, e **LOGG 06/2026 (R$ 2,86)**, que aparece
-- [ ] estilo das opções bate com o medido no `AGENTS.md` (puts 100% europeias; calls ~66/34 por série)
-- [ ] OI e curva DI presentes **ou** flag explícita (`oi_unavailable`, `rate_source`)
-- [ ] relatório de liquidez define o **universo real** (número de papéis) e entra no `AGENTS.md`
-- [ ] `core.earnings` cobre todos os papéis do universo líquido; datas `actual` de 2025 conferidas à mão em 3 papéis (RI da empresa); `estimated` de 2026 conferida contra a data que de fato saiu
-- [ ] `pytest` verde
-- [ ] `health` mostra: última sessão, idade, contagem por data, fontes, último erro
+**Aceitação F0** — parecer da revisão independente de 22/11/2026 (cada item com a evidência no `out/relatorio-sessao.md`)
+- [x] `podman compose config` válido e a imagem constrói do zero (sem cache) em < 5 min — **69,4 s**
+- [x] `prepare` e `pytest` rodam **só** por `podman compose`; nenhum passo documentado exige Python/Node no host — (o `pytest` foi depois revogado: ADR-019)
+- [x] rodar `podman compose run --rm prepare` duas vezes seguidas produz o mesmo lake (idempotência) e a segunda roda mais rápido (304) — **170,0 s, 304, sha do parquet idêntico**
+- [x] contagem de linhas por `refdate` bate com um `GROUP BY` independente feito direto no TXT — **221 datas, 3.537.186 linhas, 0 divergência**
+- [x] trailer confere; nenhuma linha de largura errada passa — **trailer 3.570.794; a linha de 246 B é pulada e contada** (a convenção do trailer muda em 2024, medido)
+- [x] **legs conferidas à mão em 5 tickers com ajuste conhecido** (ex.: `ABEVX131`: 12,04 → 12,00 → 11,94), incluindo **SBSP 29/04/2026 (×0,2)** e **SIMH 18/02/2026 (×2)**, que **não** aparecem em `dividends_implied`, e **LOGG 06/2026 (R$ 2,86)**, que aparece — **SBSP factor 0,2000043 / SIMH 2,0 / LOGG Δ286 ¢; escala não vira dividendo**
+- [x] estilo das opções bate com o medido no `AGENTS.md` (puts 100% europeias; calls ~66/34 por série) — **puts 107.990 E / 0 A; calls 57,6% A — o 66/34 do texto era erro, corrigido no AGENTS**
+- [x] OI e curva DI presentes **ou** flag explícita (`oi_unavailable`, `rate_source`) — **10 datas de OI; 722 sessões com curva (1 PRE + 721 Selic plana)**
+- [x] relatório de liquidez define o **universo real** (número de papéis) e entra no `AGENTS.md` — **289 papéis, 15 com grade líquida**
+- [x] `core.earnings` cobre todos os papéis do universo líquido; datas `actual` de 2025 conferidas à mão em 3 papéis (RI da empresa); `estimated` de 2026 conferida contra a data que de fato saiu — **13/15 (os 2 são ETF); VALE3 24/04, ITUB4 08/05, PETR4 12/05 de 2025 conferidos; `estimated` de 2026 é só de 2027 e não é conferível (o actual substitui)**
+- [x] `pytest` verde — **critério revogado pelo dono em 22/11 (ADR-019: sem suíte); na data da revisão eram 523 verdes**
+- [x] `health` mostra: última sessão, idade, contagem por data, fontes, último erro — **20 campos, idade contra a sessão esperada (D-1), 165 gaps inexplicados**
 
 **Entregável:** `b3o prepare` roda de ponta a ponta, `health` responde e sabemos o tamanho do universo útil.
 

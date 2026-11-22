@@ -1,0 +1,73 @@
+# Compose padrão (ADR-001): roda igual em `docker compose` e em `podman compose`.
+# Neste host o runner é `podman compose` (o host não tem Docker).
+
+x-runtime: &runtime-base
+  build:
+    context: .
+    target: runtime
+  environment: &runtime-env
+    B3_DATA_DIR: /data
+    TZ: America/Sao_Paulo
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  env_file:
+    - path: .env
+      required: false
+  volumes:
+    # único bind mount de dado (ADR-003); o lake sobrevive a `compose down`
+    - ./data:/data
+
+services:
+  # FastAPI + /mcp (entra no F3). Até lá o serviço valida mas não sobe.
+  app:
+    <<: *runtime-base
+    ports:
+      - "127.0.0.1:8080:8080"
+    command: ["uvicorn", "b3o.api:app", "--host", "0.0.0.0", "--port", "8080"]
+
+  # É aqui que se valida: pytest, ruff (deps de dev, image dev).
+  test:
+    build:
+      context: .
+      target: dev
+    environment: *runtime-env
+    volumes:
+      - ./data:/data
+      # código bind para iteração rápida; .venv vive na imagem, nunca no bind (ADR-003)
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./config.yaml:/app/config.yaml
+    command: ["pytest"]
+
+  # backend com --reload (profile dev)
+  dev:
+    <<: *runtime-base
+    build:
+      context: .
+      target: dev
+    profiles: [dev]
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data
+      - ./src:/app/src
+      - ./config.yaml:/app/config.yaml
+    command: ["uvicorn", "b3o.api:app", "--reload", "--host", "0.0.0.0", "--port", "8080"]
+
+  # one-shot: baixa e deriva (b3o prepare)
+  prepare:
+    <<: *runtime-base
+    profiles: [jobs]
+    command: ["b3o", "prepare"]
+
+  # diário às 21:30 BRT (b3o prepare --watch)
+  prepare-watch:
+    <<: *runtime-base
+    profiles: [watch]
+    command: ["b3o", "prepare", "--watch"]
+
+  # build do frontend (inerte até o F5.0 — não tem web/ ainda)
+  web:
+    image: node:22-slim
+    profiles: [build]
+    working_dir: /web
+    command: ["sh", "-c", "echo 'web build entra no F5.0 (npm ci && npm run build)'; exit 0"]

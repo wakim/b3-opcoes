@@ -1,0 +1,16 @@
+# config.yaml — chaves planas, nomes iguais aos campos do código (P-B).
+# Segredo nunca aqui: APP_TOKEN mora no .env.
+
+# Onde o lake vive dentro do container (bind ./data:/data).
+data_dir: /data
+
+# Log em JSON, uma linha por evento (P-F).
+log_level: INFO
+
+# Sobe a cada mudança de fórmula; histórico recalculado inteiro. Começa em 1.
+model_version: 1
+
+# Fonte do COTAHIST (medido em 22/11/2026 — ver AGENTS.md):
+# o padrão antigo arquivos.b3.com.br/dados/pregao/cotahist/ está morto (404);
+# a URL viva é bvmf.bmfbovespa.com.br/InstDados/SerHist/ e EXIGE User-Agent de browser.
+cotahist_base_url: "https://bvmf.bmfbovespa.com.br/InstDados/SerHist/"

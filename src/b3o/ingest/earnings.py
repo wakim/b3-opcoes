@@ -57,6 +57,7 @@ import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
 
 log = logging.getLogger(__name__)
@@ -90,9 +91,9 @@ _HINT_PERMANENT = (
 )
 
 try:
-    _TZ: tzinfo = ZoneInfo("America/Sao_Paulo")
+    _tz: tzinfo = ZoneInfo("America/Sao_Paulo")
 except ZoneInfoNotFoundError:  # imagem sem tzdata; Brasil não tem horário de verão desde 2019
-    _TZ = timezone(timedelta(hours=-3))
+    _tz = timezone(timedelta(hours=-3))
 
 
 # --------------------------------------------------------------------------- #
@@ -388,7 +389,7 @@ def _download(
         )
 
     try:
-        _replace(part, target)
+        replace_file(part, target)
     except OSError as exc:
         part.unlink(missing_ok=True)
         return DatasetFetch(
@@ -677,7 +678,7 @@ def earnings_path(data_dir: Path) -> Path:
 
 
 def write_earnings(rows: Iterable[EarningsDate], data_dir: Path) -> Path:
-    """Grava `earnings/part-0.parquet` de forma atômica (tmp + `os.replace`)."""
+    """Grava `earnings/part-0.parquet` de forma atômica (tmp + `fsutil.replace_file`)."""
     data = sorted(rows, key=lambda r: (r.ticker, r.ref_period, r.kind))
     for row in data:
         if row.kind not in KINDS:
@@ -699,7 +700,7 @@ def write_earnings(rows: Iterable[EarningsDate], data_dir: Path) -> Path:
     tmp = tmp_dir / f"earnings-part-0-{os.getpid()}.parquet"
     try:
         pq.write_table(table, tmp, compression="zstd")
-        _replace(tmp, target)
+        replace_file(tmp, target)
     finally:
         tmp.unlink(missing_ok=True)
     return target
@@ -819,23 +820,7 @@ def _read_meta(path: Path) -> dict[str, object] | None:
 def _write_meta(path: Path, meta: dict[str, object]) -> None:
     tmp = path.with_name(f"{path.name}.part")
     tmp.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    _replace(tmp, path)
-
-
-def _replace(tmp: Path, target: Path) -> None:
-    """Publica `tmp` em `target`; tolera o bind mount do Windows.
-
-    Medido em 22/11/2026 no `./data:/data` (Hyper-V): `os.replace` sobre um
-    arquivo **que já existe** falha com `PermissionError` (EACCES), inclusive no
-    mesmo diretório — renomear para um nome novo funciona. Nesse caso apaga o
-    alvo e renomeia: no Linux o rename continua atômico; no bind sobra uma janela
-    sem arquivo, coberta pelo próximo `prepare` (o tmp já está no disco).
-    """
-    try:
-        os.replace(tmp, target)
-    except PermissionError:
-        target.unlink(missing_ok=True)
-        os.replace(tmp, target)
+    replace_file(tmp, path)
 
 
 def _as_str(value: object) -> str | None:
@@ -843,4 +828,4 @@ def _as_str(value: object) -> str | None:
 
 
 def _now_iso() -> str:
-    return datetime.now(_TZ).isoformat(timespec="seconds")
+    return datetime.now(_tz).isoformat(timespec="seconds")  # carimbo de download (excecao documentada, ADR-010) — data de referencia NUNCA sai daqui  # noqa: E501

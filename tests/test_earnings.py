@@ -11,7 +11,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-import os
 import zipfile
 from collections.abc import Callable, Sequence
 from datetime import date
@@ -400,36 +399,44 @@ def test_parquet_round_trip(tmp_path: Path, cvm: dict[str, object]) -> None:
     assert table.schema.names == ["ticker", "ref_period", "date", "kind"]
 
 
-def test_regravar_sobre_arquivo_existente_tolera_eacces(
+def test_publicacao_usa_replace_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cvm: dict[str, object]
+) -> None:
+    """A publicação passa pelo `fsutil.replace_file` (fallback de EACCES do bind)."""
+    from b3o.ingest import earnings as earnings_module
+
+    real_replace = earnings_module.replace_file
+    calls: list[tuple[str, str]] = []
+
+    def spy(src: Path | str, dst: Path | str) -> None:
+        assert Path(src).is_file()  # o tmp já foi escrito
+        calls.append((Path(src).name, Path(dst).name))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(earnings_module, "replace_file", spy)
+
+    rows = _build(cvm, ["PETR4"], date(2026, 11, 21))
+    write_earnings(rows, tmp_path)
+    write_earnings(rows, tmp_path)  # segundo prepare: reescreve o alvo existente
+
+    assert [dst for _, dst in calls] == ["part-0.parquet", "part-0.parquet"]
+    assert all(src.startswith("earnings-part-0-") for src, _ in calls)
+    assert read_earnings(tmp_path) == rows
+
+
+def test_regravar_sobre_arquivo_existente_publica(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No bind do Windows `os.replace` sobre arquivo existente dá EACCES (medido)."""
-    write_earnings([], tmp_path)
-    first = write_earnings(
+    """Reescrever o alvo existente (segundo prepare) publica a tabela nova."""
+    write_earnings(
         [EarningsDate("PETR4", date(2026, 3, 31), date(2026, 5, 11), "actual")], tmp_path
     )
-    real_replace = os.replace
-    calls: list[str] = []
-
-    def flaky_replace(src, dst):  # type: ignore[no-untyped-def]
-        calls.append(str(dst))
-        if len(calls) == 1:
-            raise PermissionError(13, "Permission denied", str(dst))
-        return real_replace(src, dst)
-
-    monkeypatch.setattr(os, "replace", flaky_replace)
-    write_earnings(
-        [
-            EarningsDate("PETR4", date(2026, 3, 31), date(2026, 5, 11), "actual"),
-            EarningsDate("PETR4", date(2026, 6, 30), date(2026, 8, 6), "actual"),
-        ],
-        tmp_path,
-    )
-    monkeypatch.undo()
-
-    assert calls  # passou pelo caminho que falhou
-    assert len(read_earnings(tmp_path)) == 2  # e a tabela nova foi publicada
-    assert first.exists()
+    second = [
+        EarningsDate("PETR4", date(2026, 3, 31), date(2026, 5, 11), "actual"),
+        EarningsDate("PETR4", date(2026, 6, 30), date(2026, 8, 6), "actual"),
+    ]
+    write_earnings(second, tmp_path)
+    assert read_earnings(tmp_path) == second
 
 
 def test_kind_invalido_falha_explicito(tmp_path: Path) -> None:

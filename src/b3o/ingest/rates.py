@@ -43,7 +43,6 @@ import binascii
 import json
 import logging
 import math
-import os
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -54,6 +53,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
+from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.ingest.fetch import BROWSER_UA
 
@@ -201,6 +201,9 @@ def fetch_rates_di(date_ref: date, *, client: httpx.Client, data_dir: Path) -> R
 def write_rates_partition(points: Iterable[RatePoint], data_dir: Path) -> Path:
     """Grava/atualiza `data_dir/rates_di/year=YYYY/part-0.parquet` (atômico).
 
+    Publicação via `b3o.fsutil.replace_file`: no bind do Windows o `os.replace`
+    sobre arquivo existente dá EACCES e o helper troca para unlink + rename.
+
     A partição do ano é reconstruída a partir do que já está lá: as linhas do
     `refdate` do lote são substituídas e o resto é preservado — chamar duas
     vezes para o mesmo dia dá o mesmo arquivo (idempotência), chamar para um
@@ -241,7 +244,8 @@ def write_rates_partition(points: Iterable[RatePoint], data_dir: Path) -> Path:
         written = pq.read_metadata(tmp).num_rows
         if written != table.num_rows:
             raise OSError(f"parquet gravado tem {written} linhas, esperado {table.num_rows}")
-        os.replace(tmp, target)
+        # EACCES do bind no segundo prepare: replace_file tem o fallback (AGENTS.md).
+        replace_file(tmp, target)
     except OSError:
         tmp.unlink(missing_ok=True)
         raise

@@ -299,6 +299,34 @@ def test_parquet_round_trip_tipos_valores_e_idempotencia(tmp_path: Path) -> None
     assert not list(target.parent.glob("*.tmp"))
 
 
+def test_publicacao_usa_replace_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A publicação passa pelo `fsutil.replace_file` (fallback de EACCES do bind)."""
+    from b3o.ingest import rates as rates_module
+
+    real_replace = rates_module.replace_file
+    calls: list[tuple[str, str]] = []
+
+    def spy(src: Path | str, dst: Path | str) -> None:
+        assert Path(src).is_file()  # o tmp já foi escrito e conferido
+        calls.append((Path(src).name, Path(dst).name))
+        real_replace(src, dst)
+
+    monkeypatch.setattr(rates_module, "replace_file", spy)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=_csv_b64("DI x pré;1;4;13,65"))
+
+    with _client(handler) as client:
+        fetch_rates_di(DATE, client=client, data_dir=tmp_path)
+        fetch_rates_di(DATE, client=client, data_dir=tmp_path)  # segundo prepare
+
+    assert calls == [
+        ("part-0.parquet.tmp", "part-0.parquet"),
+        ("part-0.parquet.tmp", "part-0.parquet"),
+    ]
+    assert _partition(tmp_path).is_file()
+
+
 def test_golden_real_da_curva_pre_de_19_11_2026(tmp_path: Path) -> None:
     """Números baixados de verdade do proxy (contrato §8): 1/21/41 du."""
 

@@ -8,8 +8,9 @@ Contrato: `docs/contratos/onda-b.md` §2 (P-A, spec §5.1 e §11). Regras que es
 - **streaming**: os 3,5 M de linhas do arquivo anual nunca cabem juntos em RAM (o runtime tem
   3,7 GiB). Escreve em lotes de `WRITE_BATCH_ROWS` e lê em lotes de `READ_BATCH_ROWS`;
 - **escrita atômica**: grava em `data_dir/tmp/…`, confere a contagem do Parquet recém-escrito,
-  e só então `os.replace` sobre a partição. Falha no meio do iterável deixa a partição antiga
-  intacta e não deixa `tmp/` órfão;
+  e só então publica a partição (`fsutil.replace_file`: `os.replace` puro; no bind do Windows,
+  onde replace sobre arquivo existente dá EACCES, unlink + rename com janela documentada).
+  Falha no meio do iterável deixa a partição antiga intacta e não deixa `tmp/` órfão;
 - **nada de arredondamento**: preços, volume, strike e `strike_pts` são `int64` em centavos
   (volume de série quente passa de R$ 21 M/dia e estoura `int32`); datas são `date32`;
   `style`/`side`/`maturity` são nulos de verdade (`NullArray` desnecessário: coluna nullable);
@@ -37,6 +38,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.ingest.parse import KEPT_MARKETS, CotahistRow
 
@@ -237,7 +239,9 @@ def write_cotahist_year(rows: Iterable[CotahistRow], year: int, data_dir: Path) 
 
         sha256 = _sha256_file(tmp_path)
         partition_dir.mkdir(parents=True, exist_ok=True)
-        os.replace(tmp_path, partition_path)
+        # bind do Windows: `os.replace` sobre arquivo existente dá EACCES → `replace_file`
+        # (unlink + rename, janela documentada em AGENTS.md/fsutil)
+        replace_file(tmp_path, partition_path)
         _remove_stale_parts(partition_dir)
     except BaseException:
         shutil.rmtree(tmp_dir, ignore_errors=True)

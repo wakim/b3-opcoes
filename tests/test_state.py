@@ -8,6 +8,7 @@ chave desconhecida, tipo errado, `updated_at` sem offset, contagem negativa).
 from __future__ import annotations
 
 import json
+import os
 from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -119,6 +120,29 @@ def test_escrita_atomica_substitui_sem_deixar_tmp(tmp_path: Path) -> None:
     assert raw["etag"] == '"outro"'
     assert raw["updated_at"] == "2026-11-23T07:05:00+00:00"
     assert before != ingest_state_path(tmp_path).read_text(encoding="utf-8")
+
+
+def test_segunda_gravacao_sobrevive_ao_eacces_do_bind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No bind do Windows, replace sobre arquivo existente dá EACCES (medido 22/11/2026).
+
+    `save_ingest_state` publica via `b3o.fsutil.replace_file`; o teste simula a recusa do bind
+    e prova que o segundo `prepare` atualiza o estado (unlink + rename) sem deixar tmp.
+    """
+    save_ingest_state(tmp_path, _state())
+    real_replace = os.replace
+
+    def bind_replace(src: object, dst: object, *args: object, **kwargs: object) -> None:
+        if Path(str(dst)).exists():
+            raise PermissionError(13, "simulando bind do Windows", str(dst))
+        real_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "replace", bind_replace)
+    save_ingest_state(tmp_path, _state(etag='"outro"', updated_at=T2))
+
+    assert load_ingest_state(tmp_path).etag == '"outro"'
+    assert _tmp_leftovers(tmp_path) == []
 
 
 def test_update_incremental_preserva_chaves_existentes(tmp_path: Path) -> None:

@@ -14,8 +14,9 @@ Regras:
 
 - **sem relógio**: `updated_at` é parâmetro de quem grava (P-C); este módulo nunca chama
   `date.today`/`datetime.now` (o teste de arquitetura garante);
-- **escrita atômica**: `data_dir/tmp/ingest_state-*.json` → `os.replace`; um crash no meio
-  não deixa JSON pela metade;
+- **escrita atômica**: `data_dir/tmp/ingest_state-*.json` e publicação via
+  `fsutil.replace_file` (no bind do Windows, `os.replace` sobre arquivo existente dá EACCES —
+  medido 22/11/2026); um crash no meio não deixa JSON pela metade;
 - **update incremental**: `update_ingest_state` lê-modifica-grava e só toca os campos
   informados; o resto do estado é preservado (reparsar 2026 não apaga 2025);
 - **falha explícita**: JSON corrompido, chave desconhecida, tipo errado, `updated_at` sem
@@ -48,6 +49,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 from pathlib import Path
 
+from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.ingest.validate import ValidationReport
 
@@ -199,7 +201,8 @@ def save_ingest_state(data_dir: Path, state: IngestState) -> Path:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(tmp_path, path)
+        # bind do Windows: `os.replace` sobre arquivo existente dá EACCES → `replace_file`
+        replace_file(tmp_path, path)
     except OSError as exc:
         raise SourceFailure(
             SourceError(

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import inspect
+import os
 from collections.abc import Iterator
 from dataclasses import fields
 from datetime import date
@@ -186,6 +187,30 @@ def test_idempotencia_e_provada_pelos_bytes(tmp_path: Path) -> None:
     assert second.path.read_bytes() == first_bytes
     # e o conteúdo lido é igual, na mesma ordem
     assert list(read_cotahist_years(tmp_path, [2026])) == [_spot(), _call(), _put()]
+
+
+def test_segunda_escrita_sobrevive_ao_eacces_do_bind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No bind do Windows, replace sobre arquivo existente dá EACCES (medido 22/11/2026).
+
+    O lake publica via `b3o.fsutil.replace_file`; o teste simula a recusa do bind e prova que
+    o segundo `prepare` funciona (unlink + rename), sem perder determinismo nem a partição.
+    """
+    first = write_cotahist_year([_spot(), _call()], 2026, tmp_path)
+    real_replace = os.replace
+
+    def bind_replace(src: object, dst: object, *args: object, **kwargs: object) -> None:
+        if Path(str(dst)).exists():
+            raise PermissionError(13, "simulando bind do Windows", str(dst))
+        real_replace(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(os, "replace", bind_replace)
+    second = write_cotahist_year([_spot(), _call()], 2026, tmp_path)
+
+    assert second.sha256 == first.sha256
+    assert path_rows(tmp_path, 2026) == [_spot(), _call()]
+    assert _tmp_leftovers(tmp_path) == []
 
 
 def test_escrita_atomica_falha_no_meio_preserva_particao(tmp_path: Path) -> None:

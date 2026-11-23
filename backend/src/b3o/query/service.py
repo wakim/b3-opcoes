@@ -35,15 +35,16 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
 
 from b3o.derive.calendar import trading_sessions
+from b3o.derive.liquidity import DAYS_WINDOW, VOLUME_MIN_CENTS
 from b3o.derive.realized import DEFAULT_GAP_THRESHOLD, flag_unexplained
 from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
@@ -481,6 +482,113 @@ class UnderlyingMetricRow:
     model_version: int
 
 
+@dataclass(frozen=True, slots=True)
+class ScreenRow:
+    """Uma linha do painel descritivo (F2d = contrato onda-h §2).
+
+    **Descritivo, não preditivo** (ADR-023/ADR-024): a linha só repete o que o
+    lake já calculou. `signal_class` não é lido em lugar nenhum desta onda.
+
+    Unidades: `spot_brl`/`forward_30d` em **R$** (o parquet guarda centavos e a
+    conversão acontece aqui, na borda de serialização); IV e RV em **% a.a.**;
+    `vrp`/`rr25`/`bfly25`/`ts_slope_30_90` em **pontos de vol**; `iv_rank_252`
+    em 0–100; `iv_pct_252` em 0–100; `exp_move_1s_30d` em **fração** do spot.
+    """
+
+    underlying: str
+    """Ticker do papel (o ISIN resolveu opção→papel, nunca o prefixo do ticker)."""
+
+    status: str
+    """`ok` (linha em `metrics_underlying`) ou `excluded`."""
+
+    exclusion: str | None
+    """Motivo do §1 do contrato quando `status = "excluded"`."""
+
+    as_of_session: date
+    """Sessão de referência do lake (nunca o relógio, P-C)."""
+
+    model_version: int
+    """Versão do cálculo que produziu a linha (`metrics_underlying`)."""
+
+    spot_brl: float | None
+    iv_atm_30d: float | None
+    iv_rank_252: float | None
+    iv_pct_252: float | None
+    rv20: float | None
+    rv30: float | None
+    rv60: float | None
+    vrp: float | None
+    vrp_z_252: float | None
+    rr25: float | None
+    bfly25: float | None
+    ts_slope_30_90: float | None
+    exp_move_1s_30d: float | None
+    implied_div_yield_30d: float | None
+    forward_30d: float | None
+    days_to_liquidate: float | None
+    rate_source: str | None
+    n_series: int
+    n_liquid_series: int
+    n_expiries: int
+    earnings_next_date: date | None
+    earnings_next_kind: str | None
+    """`actual` (confirmado) ou `estimated` (previsto)."""
+    earnings_before_expiry: bool
+    flags: list[str]
+    """União das flags do papel, em ordem alfabética (não viram nota)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ScreenBundle:
+    """`screen()` + o contexto que o relatório precisa e as linhas não carregam.
+
+    `outside_universe` são os papéis **com métrica** na sessão mas fora do corte
+    de volume (§1 do contrato): ficam de fora do recorte e o relatório diz isso
+    em voz alta, em vez de sumirem.
+
+    `earnings_coverage_start` é a **primeira data** do calendário da CVM no lake.
+    Sessão anterior a ela não tem "próximo resultado" (o campo sai `None`), e o
+    relatório avisa — em vez de mostrar o primeiro documento conhecido como se
+    fosse o próximo (P-N).
+    """
+
+    session: date
+    model_version: int
+    rows: list[ScreenRow]
+    outside_universe: list[str]
+    earnings_coverage_start: date | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ScreenMetrics:
+    """Colunas de `metrics_underlying` que o painel lê (uma linha por papel).
+
+    Tipo interno: o painel é descritivo e repassa os valores como estão; nada
+    aqui é recalculado (contrato §4). `forward_cents` em centavos, como no lake.
+    """
+
+    underlying: str
+    spot_cents: float | None
+    iv_atm_30d: float | None
+    iv_rank_252: float | None
+    iv_pct_252: float | None
+    rv20: float | None
+    rv30: float | None
+    rv60: float | None
+    vrp: float | None
+    vrp_z_252: float | None
+    rr25: float | None
+    bfly25: float | None
+    ts_slope_30_90: float | None
+    exp_move_1s_30d: float | None
+    implied_div_yield_30d: float | None
+    days_to_liquidate: float | None
+    forward_cents: float | None
+    rate_source: str | None
+    flags: tuple[str, ...]
+    model_version: int
+
+
 class QueryService:
     """Leitura do lake: uma classe, um arquivo, nenhuma query fora daqui."""
 
@@ -585,7 +693,7 @@ class QueryService:
         """
         raw_paths = self._partitions(refdate.year)
         if not raw_paths:
-            raise _missing_lake_item(self.data_dir)
+            raise _missing_lake_failure(self.data_dir)
         leg_paths = self._legs_partitions(refdate.year)
         if not leg_paths:
             raise SourceFailure(
@@ -955,6 +1063,316 @@ class QueryService:
             )
             for row in rows
         ]
+
+    # ----------------------- painel descritivo (F2) ---------------------- #
+
+    def screen(
+        self, date: date | None = None, max_rows: int | None = None
+    ) -> list[ScreenRow]:
+        """Uma linha por papel do universo líquido da sessão (contrato onda-h §2).
+
+        **Descritivo** (ADR-024): repete o que o lake já calculou; `signal_class`
+        não é lido. A ordem é **alfabética por papel**; `max_rows=None` devolve
+        todas e `max_rows=N` as N primeiras (nunca "as melhores"). `max_rows=0`
+        é lista vazia **na API** — o CLI traduz `--max-rows 0` para "todas".
+        Data sem sessão no lake é `SourceFailure(no_session)` — nunca relatório
+        vazio.
+        """
+        rows = self.screen_bundle(date).rows
+        if max_rows is None:
+            return list(rows)
+        return list(rows[: max(0, int(max_rows))])
+
+    def screen_bundle(self, date: date | None = None) -> ScreenBundle:
+        """Mesma computação de `screen`, com a sessão e os papéis fora do universo.
+
+        O cabeçalho do relatório precisa de dois fatos que não cabem em
+        `ScreenRow`: a sessão (para o nome do arquivo) e a lista de papéis **com
+        métrica mas fora do corte de volume** (contrato §1: não entram no recorte
+        e isso é dito em voz alta). Calcular isso aqui evita reler a janela de 20
+        sessões duas vezes.
+
+        Universo (§6.9, idêntico ao `build_liquidity`): mercado `010` (com `020`
+        de fallback no dia em que o papel não tem lote padrão), janela das 20
+        sessões do lake que terminam na data, média dividindo pelo número de
+        sessões da janela (`len(window)`, até 20 — sessão sem negócio conta zero;
+        janela curta no começo do lake divide pelo que existe) e corte de
+        `VOLUME_MIN_CENTS` (R$ 5 M em centavos). Medido em 19/11/2026: **289**
+        papéis, igual ao `prepare_state.universe`.
+
+        O vínculo opção→papel é **pelo ISIN** (`isin_underlying` da opção contra
+        a linha `010`/`020` do mesmo dia), como o pipeline faz: prefixo de
+        ticker não identifica papel (PETR3 e PETR4 compartilham prefixo —
+        AGENTS, armadilha 1).
+        """
+        lake = self.lake_calendar()
+        if not lake:
+            raise _missing_lake_failure(self.data_dir)
+        if date is None:
+            session = lake[-1]
+        else:
+            session = date
+            if session not in lake:
+                raise SourceFailure(
+                    SourceError(
+                        code="no_session",
+                        message=f"sessão {session.isoformat()} não existe no lake",
+                        hint=(
+                            f"o lake tem {len(lake)} sessão(ões), de "
+                            f"{lake[0].isoformat()} a {lake[-1].isoformat()} — use uma "
+                            "data desse intervalo ou rode `b3o prepare`"
+                        ),
+                    )
+                )
+        window = [day for day in lake if day <= session][-DAYS_WINDOW:]
+
+        volumes = self._screen_volumes(window)
+        universe = sorted(
+            ticker
+            for ticker, total in volumes.items()
+            if total // len(window) >= VOLUME_MIN_CENTS
+        )
+        spot_close, isin_to_ticker = self._screen_spots(session)
+        option_map = self._screen_option_map(session, isin_to_ticker)
+        options_by_paper = Counter(option_map.values())
+        series_counts = self._screen_series_counts(session, option_map)
+        metrics = self._screen_metrics(session)
+        earnings, earnings_coverage_start = self._screen_next_earnings(session)
+        model_version = (
+            max(row.model_version for row in metrics.values())
+            if metrics
+            else load_ingest_state(self.data_dir).model_version
+        )
+
+        rows: list[ScreenRow] = []
+        for paper in universe:
+            metric = metrics.get(paper)
+            earnings_date, earnings_kind = earnings.get(paper, (None, None))
+            base = _screen_base_row(
+                paper,
+                session=session,
+                model_version=model_version,
+                spot_brl=spot_close[paper] / 100.0 if paper in spot_close else None,
+                earnings=(earnings_date, earnings_kind),
+            )
+            if paper not in spot_close:
+                rows.append(replace(base, exclusion="no_trade"))
+                continue
+            if options_by_paper.get(paper, 0) == 0:
+                rows.append(replace(base, exclusion="no_options"))
+                continue
+            if metric is None:
+                rows.append(replace(base, exclusion="no_metrics"))
+                continue
+            reason = _screen_empty_metric_reason(metric)
+            if reason is not None:
+                rows.append(replace(base, exclusion=reason))
+                continue
+            n_series, n_liquid, n_expiries = series_counts.get(paper, (0, 0, 0))
+            rows.append(
+                replace(
+                    base,
+                    status="ok",
+                    exclusion=None,
+                    spot_brl=(
+                        None if metric.spot_cents is None else metric.spot_cents / 100.0
+                    ),
+                    iv_atm_30d=metric.iv_atm_30d,
+                    iv_rank_252=metric.iv_rank_252,
+                    iv_pct_252=metric.iv_pct_252,
+                    rv20=metric.rv20,
+                    rv30=metric.rv30,
+                    rv60=metric.rv60,
+                    vrp=metric.vrp,
+                    vrp_z_252=metric.vrp_z_252,
+                    rr25=metric.rr25,
+                    bfly25=metric.bfly25,
+                    ts_slope_30_90=metric.ts_slope_30_90,
+                    exp_move_1s_30d=metric.exp_move_1s_30d,
+                    implied_div_yield_30d=metric.implied_div_yield_30d,
+                    forward_30d=(
+                        None if metric.forward_cents is None else metric.forward_cents / 100.0
+                    ),
+                    days_to_liquidate=metric.days_to_liquidate,
+                    rate_source=metric.rate_source,
+                    n_series=n_series,
+                    n_liquid_series=n_liquid,
+                    n_expiries=n_expiries,
+                    earnings_before_expiry="earnings_before_expiry" in metric.flags,
+                    flags=list(metric.flags),
+                )
+            )
+        return ScreenBundle(
+            session=session,
+            model_version=model_version,
+            rows=rows,
+            outside_universe=sorted(set(metrics) - set(universe)),
+            earnings_coverage_start=earnings_coverage_start,
+        )
+
+    def _screen_volumes(self, window: Sequence[date]) -> dict[str, int]:
+        """`ticker -> volume financeiro somado` na janela (centavos, `010` antes de `020`)."""
+        if not window:
+            return {}
+        paths = [
+            path
+            for year in range(window[0].year, window[-1].year + 1)
+            for path in self._partitions(year)
+        ]
+        if not paths:
+            raise _missing_lake_failure(self.data_dir)
+        rows = self._fetch(
+            "WITH bars AS ("
+            "  SELECT refdate, ticker, volume,"
+            "         row_number() OVER (PARTITION BY refdate, isin_underlying"
+            "                            ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END)"
+            "           AS rn"
+            "  FROM read_parquet(?)"
+            "  WHERE tpmerc IN ('010', '020') AND refdate BETWEEN ? AND ?"
+            "    AND isin_underlying <> ''"
+            ") SELECT ticker, sum(volume) FROM bars WHERE rn = 1 GROUP BY 1",
+            paths,
+            window[0],
+            window[-1],
+        )
+        return {str(ticker): int(total) for ticker, total in rows}
+
+    def _screen_spots(self, session: date) -> tuple[dict[str, int], dict[str, str]]:
+        """`ticker -> close` e `isin -> ticker` do dia (`010` antes de `020`)."""
+        paths = self._partitions(session.year)
+        if not paths:
+            raise _missing_lake_failure(self.data_dir)
+        rows = self._fetch(
+            "WITH spot AS ("
+            "  SELECT ticker, close, isin_underlying,"
+            "         row_number() OVER (PARTITION BY isin_underlying"
+            "                            ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END)"
+            "           AS rn"
+            "  FROM read_parquet(?)"
+            "  WHERE refdate = ? AND tpmerc IN ('010', '020')"
+            "    AND isin_underlying <> ''"
+            ") SELECT ticker, close, isin_underlying FROM spot WHERE rn = 1",
+            paths,
+            session,
+        )
+        close_by_ticker = {str(ticker): int(close) for ticker, close, _isin in rows}
+        ticker_by_isin = {str(isin): str(ticker) for ticker, _close, isin in rows}
+        return close_by_ticker, ticker_by_isin
+
+    def _screen_option_map(
+        self, session: date, ticker_by_isin: Mapping[str, str]
+    ) -> dict[str, str]:
+        """`ticker da opção -> papel`, resolvido **pelo ISIN** (nunca pelo prefixo)."""
+        paths = self._partitions(session.year)
+        if not paths:
+            raise _missing_lake_failure(self.data_dir)
+        rows = self._fetch(
+            "SELECT DISTINCT ticker, isin_underlying FROM read_parquet(?)"
+            " WHERE refdate = ? AND tpmerc IN ('070', '080')"
+            "   AND isin_underlying <> ''",
+            paths,
+            session,
+        )
+        mapping: dict[str, str] = {}
+        for ticker, isin in rows:
+            paper = ticker_by_isin.get(str(isin))
+            if paper is not None:
+                mapping[str(ticker)] = paper
+        return mapping
+
+    def _screen_series_counts(
+        self, session: date, option_map: Mapping[str, str]
+    ) -> dict[str, tuple[int, int, int]]:
+        """`papel -> (séries, séries líquidas, vencimentos)` de `metrics_series`."""
+        paths = self._partitions_for("metrics_series", session.year)
+        if not paths:
+            return {}
+        rows = self._fetch(
+            "SELECT ticker, maturity, is_liquid FROM read_parquet(?) WHERE refdate = ?",
+            paths,
+            session,
+        )
+        counts: dict[str, list[int]] = {}
+        expiries: dict[str, set[date]] = defaultdict(set)
+        for ticker, maturity, is_liquid in rows:
+            paper = option_map.get(str(ticker))
+            if paper is None:
+                continue
+            bucket = counts.setdefault(paper, [0, 0])
+            bucket[0] += 1
+            if is_liquid:
+                bucket[1] += 1
+            expiries[paper].add(maturity)
+        return {
+            paper: (bucket[0], bucket[1], len(expiries[paper]))
+            for paper, bucket in counts.items()
+        }
+
+    def _screen_metrics(self, session: date) -> dict[str, _ScreenMetrics]:
+        """Linhas de `metrics_underlying` da sessão, indexadas por papel."""
+        paths = self._partitions_for("metrics_underlying", session.year)
+        if not paths:
+            return {}
+        rows = self._fetch(
+            "SELECT underlying, spot, iv_atm_30d, iv_rank_252, iv_pct_252, rv20, rv30,"
+            " rv60, vrp, vrp_z_252, rr25, bfly25, ts_slope_30_90, exp_move_1s_30d,"
+            " implied_div_yield_30d, days_to_liquidate, forward_30d, rate_source,"
+            " flags, model_version FROM read_parquet(?) WHERE refdate = ?",
+            paths,
+            session,
+        )
+        metrics: dict[str, _ScreenMetrics] = {}
+        for row in rows:
+            metrics[str(row[0])] = _ScreenMetrics(
+                underlying=str(row[0]),
+                spot_cents=_float_or_none(row[1]),
+                iv_atm_30d=_float_or_none(row[2]),
+                iv_rank_252=_float_or_none(row[3]),
+                iv_pct_252=_float_or_none(row[4]),
+                rv20=_float_or_none(row[5]),
+                rv30=_float_or_none(row[6]),
+                rv60=_float_or_none(row[7]),
+                vrp=_float_or_none(row[8]),
+                vrp_z_252=_float_or_none(row[9]),
+                rr25=_float_or_none(row[10]),
+                bfly25=_float_or_none(row[11]),
+                ts_slope_30_90=_float_or_none(row[12]),
+                exp_move_1s_30d=_float_or_none(row[13]),
+                implied_div_yield_30d=_float_or_none(row[14]),
+                days_to_liquidate=_float_or_none(row[15]),
+                forward_cents=_float_or_none(row[16]),
+                rate_source=None if row[17] is None else str(row[17]),
+                flags=tuple(str(flag) for flag in (row[18] or ())),
+                model_version=int(row[19]),
+            )
+        return metrics
+
+    def _screen_next_earnings(
+        self, session: date
+    ) -> tuple[dict[str, tuple[date, str]], date | None]:
+        """Próximo resultado **≥ sessão** por papel (`actual` ganha empate de data).
+
+        Devolve também a **primeira data** do calendário no lake. Sessão anterior
+        a ela não tem "próximo resultado" que o dado sustente: o mapa sai vazio e
+        o relatório avisa, em vez de mostrar o primeiro documento da CVM como se
+        fosse o resultado seguinte daquele papel (P-N).
+        """
+        rows = self.earnings_rows()
+        coverage_start = min((row.date for row in rows), default=None)
+        if coverage_start is None or session < coverage_start:
+            return {}, coverage_start
+        next_by_ticker: dict[str, tuple[tuple[date, int], date, str]] = {}
+        for row in rows:
+            if row.date < session:
+                continue
+            key = (row.date, 0 if row.kind == "actual" else 1)
+            current = next_by_ticker.get(row.ticker)
+            if current is None or key < current[0]:
+                next_by_ticker[row.ticker] = (key, row.date, row.kind)
+        return (
+            {ticker: (value[1], value[2]) for ticker, value in next_by_ticker.items()},
+            coverage_start,
+        )
 
     # ------------------------------ health ------------------------------ #
 
@@ -1497,12 +1915,92 @@ def _expected_last_session(today: date) -> date | None:
 
 def _missing_lake_item(data_dir: Path) -> dict[str, object]:
     """Erro explícito de lake ausente (nunca "0 sessões" como se fosse verdade)."""
-    return _error_item(
+    return _error_item(_missing_lake_failure(data_dir))
+
+
+def _missing_lake_failure(data_dir: Path) -> SourceFailure:
+    """Mesmo erro de lake ausente, como `SourceFailure` (para `raise`, não para o health)."""
+    return SourceFailure(
         SourceError(
             code="lake_missing",
             message=f"nenhuma partição do COTAHIST em {Path(data_dir) / 'raw_cotahist'}",
             hint=_HINT_DATA_DIR,
         )
+    )
+
+
+_GRID_REASONS: tuple[str, ...] = ("no_rates", "no_forward", "sparse_chain", "no_expiry")
+"""Motivos de grade do contrato §1, na ordem de precedência.
+
+Só excluem quando a linha de `metrics_underlying` **não diz nada**: nenhum de
+`iv_atm_30d`/`rv20`/`rv30`/`rv60`/`vrp` preenchido (`_screen_empty_metric_reason`).
+Flag de grade num papel que tem número **não** exclui: `no_forward`/`sparse_chain`
+aparecem em 97/65 dos 172 papéis de 19/11/2026 e o contrato mediu **163 `ok`**
+nesse dia — excluir por flag reduziria o painel a ~10 papéis e contradiria a
+contagem medida. A flag explica a célula `—`, não tira o papel do recorte.
+"""
+
+
+def _screen_empty_metric_reason(metric: _ScreenMetrics) -> str | None:
+    """Motivo quando a linha existe mas nenhum número de IV/RV/VRP é legível.
+
+    O contrato §1 manda cair em `no_metrics` nesse caso (há linha no parquet, mas
+    nada que o painel possa mostrar); se houver flag de grade, ela é o motivo mais
+    informativo e tem precedência.
+    """
+    readable = (metric.iv_atm_30d, metric.rv20, metric.rv30, metric.rv60, metric.vrp)
+    if any(value is not None for value in readable):
+        return None
+    for reason in _GRID_REASONS:
+        if reason in metric.flags:
+            return reason
+    return "no_metrics"
+
+
+def _screen_base_row(
+    underlying: str,
+    *,
+    session: date,
+    model_version: int,
+    spot_brl: float | None,
+    earnings: tuple[date | None, str | None],
+) -> ScreenRow:
+    """Linha `excluded` sem motivo: cada ramo do `screen` só troca o que sabe.
+
+    `spot_brl` existe para papel que negociou no dia mesmo sem métrica (a linha à
+    vista é lida no mesmo recorte do universo); `earnings` não é métrica e vale
+    para o papel inteiro.
+    """
+    return ScreenRow(
+        underlying=underlying,
+        status="excluded",
+        exclusion=None,
+        as_of_session=session,
+        model_version=model_version,
+        spot_brl=spot_brl,
+        iv_atm_30d=None,
+        iv_rank_252=None,
+        iv_pct_252=None,
+        rv20=None,
+        rv30=None,
+        rv60=None,
+        vrp=None,
+        vrp_z_252=None,
+        rr25=None,
+        bfly25=None,
+        ts_slope_30_90=None,
+        exp_move_1s_30d=None,
+        implied_div_yield_30d=None,
+        forward_30d=None,
+        days_to_liquidate=None,
+        rate_source=None,
+        n_series=0,
+        n_liquid_series=0,
+        n_expiries=0,
+        earnings_next_date=earnings[0],
+        earnings_next_kind=earnings[1],
+        earnings_before_expiry=False,
+        flags=[],
     )
 
 
@@ -1574,6 +2072,8 @@ __all__ = [
     "PrepareState",
     "QueryService",
     "RateNode",
+    "ScreenBundle",
+    "ScreenRow",
     "SeriesDay",
     "SpotBar",
     "UnderlyingMetricRow",

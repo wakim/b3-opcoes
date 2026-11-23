@@ -254,6 +254,20 @@ Critérios de desempate, nesta ordem:
 - **Consequência (ratificada):** `PLAN.md` F1b marcado `[x]` com a evidência (medição + decisão registrada); `AGENTS.md` registra "o sinal NÃO PASSA — parar no portão" (não "passou"). O relatório completo está em `data/out/backtest.md` (fora do git). **F2 em diante fica suspenso** até a tese ser repensada; nenhum funil/ranking é construído sobre o sinal falsificado.
 - **Revisar em:** se o dono quiser retomar o produto preditivo (estudo de momentum fora da amostra, pré-registrado às cegas) ou redefinir o produto como painel descritivo.
 
+## ADR-024 — F2 descritivo: sem classe de sinal, sem ranking preditivo
+
+- **Data:** 2026-11-23 · **Status:** ratificada pelo dono (pedido para iniciar o F2 na modalidade descritiva) · **Custo de reverter:** baixo (é uma tela/relatório; não toca fórmula nem `model_version`)
+- **Contexto:** o ADR-023 (Opção 1) suspendeu o F2+ preditivo e autorizou seguir como painel descritivo. O F2 do PLAN, como escrito, dependia das classes de sinal (`premium_rich`/`premium_cheap`/…) e da taxa histórica da classe — tudo falsificado pelo portão. Construí-lo literalmente violaria a decisão.
+- **Decisão:**
+  1. O F2 passa a ser **descritivo**: `QueryService.screen(date)` devolve uma linha por papel do universo líquido com IV ATM 30d, IV rank/percentil, RV20/30/60, VRP, z, RR25, BFLY25, exp. move, `days_to_liquidate`, nº de séries líquidas, próximo resultado (`actual`/`estimated`) e flags; papel sem dado sai com **motivo** explícito.
+  2. **`signal_class`, taxa de acerto e qualquer rótulo preditivo não aparecem** na saída (CLI nem relatório). O campo continua gravado em `metrics_underlying` por compatibilidade do lake; a tela simplesmente não o usa.
+  3. A ordenação é **determinística e neutra** (alfabética por papel). Não há score, nota nem posição de ranking; "componentes por coluna" valem como leitura, não como pontuação.
+  4. `b3o screen --date` grava `data/out/screen-AAAA-MM-DD.md` (P-T) com tabela + ficha por papel.
+  5. As tarefas e a aceitação do F2 foram reescritas no `PLAN.md` (F2d.1–F2d.4); o F2 original fica preservado em bloco suspenso.
+- **Por quê:** é o caminho já ratificado no ADR-023; entrega valor de leitura (o que o dado diz hoje) sem repetir a alegação que o portão derrubou.
+- **Consequência:** F3 (MCP) passa a expor `screen` descritivo; o `signal_backtest` continua existindo como registro histórico do portão, **não** como coluna do funil. Qualquer reintrodução de ranking preditivo exige novo ADR e novo portão.
+- **Revisar em:** quando o painel estiver no F5 (UI) ou se o dono decidir retomar o produto preditivo (estudo de momentum fora da amostra).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

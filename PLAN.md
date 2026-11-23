@@ -22,8 +22,8 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Item | Situação |
 |---|---|
 | Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…023) |
-| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2+ suspenso**: nenhum funil/ranking é construído sobre o sinal falsificado. Sem UI. |
-| Retomar em | Decisão do dono sobre o produto (ADR-023): redefinir como **painel descritivo** (o F2 precisa ser reescrito **sem** classes de sinal e sem ranking preditivo) ou estudar **momentum fora da amostra**, pré-registrado às cegas. O F2 como está escrito não é executável. |
+| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. Sem UI. |
+| Retomar em | **F3 — MCP mínimo**: expor o `screen` descritivo e as leituras da `QueryService` (spec §7/§8), com `max_rows`, teto de 200 KB e erro `{code,message,hint}`. Pendência conhecida fora do F2: o `health` mostra o `model_version` do `ingest_state` (**1**) enquanto as métricas estão em **2** (o `screen` lê 2 do parquet; corrigir `health`/`_update_state` numa tarefa própria). |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -158,12 +158,33 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 ---
 
-# F2 — Funil
+# F2 — Painel descritivo
 
-> **Suspenso (ADR-023, ratificado em 23/11/2026).** O F2 abaixo depende das classes de sinal que o portão falsificou; ele só volta **reescrito como painel descritivo**, sem classe e sem ranking preditivo. Nada aqui é executável como está.
+> **Redefinido em 23/11/2026 (ADR-023 Opção 1 + ADR-024).** O funil preditivo original está **suspenso** e fica registrado abaixo, sem execução. O F2 passa a ser um **painel descritivo**: mostra o que o dado diz (IV, RV, VRP, z, skew, liquidez, próximo resultado) **sem classe de sinal, sem taxa de acerto e sem ranking preditivo**.
+
+**Objetivo:** do universo líquido para uma leitura diária completa, com motivo de inclusão/exclusão — descritiva, auditável, sem alegação de previsão.
+**Estimativa:** 1 sessão · **Depende de:** F1 (F1b não é mais pré-requisito do descritivo, mas segue como registro do portão)
+
+| ID | Tarefa | Est. |
+|---|---|---|
+| F2d.1 | `QueryService.screen(date=None, max_rows=None)` — uma linha por papel do universo líquido, só leitura sobre `metrics_underlying`/`metrics_series` + liquidez + earnings; papel excluído traz o **motivo** (`no_options`, `no_metrics`, `no_rates`, `sparse_chain`, …) | 2 h |
+| F2d.2 | Qualidade da grade por papel: nº de séries líquidas no dia, vencimentos com cadeia, flags agregadas (sem transformar em nota) | 1 h |
+| F2d.3 | `b3o screen --date AAAA-MM-DD [--max-rows N]`: imprime a tabela (uma tela) e grava `data/out/screen-AAAA-MM-DD.md` (P-T) com a tabela + ficha por papel (spot, ATM, RV, VRP, z, skew, exp. move, liquidez, próximo resultado `actual`/`estimated`, flags) | 2 h |
+| F2d.4 | Revisão manual de uma semana de relatórios + 1 número conferido à mão por caminho independente (ex.: `iv_atm_30d` de PETR4 em 19/11) | 1 h |
+
+**Aceitação F2 (descritivo)** — parecer independente em `docs/relatorios/2026-11-23-revisao-f2.md` (APROVADO COM RESSALVAS; ressalvas corrigidas e reconfirmadas).
+- [x] todo papel do universo líquido aparece: com métricas, ou excluído com motivo explícito — **19/11: 289 = 163 `ok` + 124 `no_options` + 2 `no_trade`** (HBCR11, VXXV11); 9 papéis com métrica fora do universo listados no relatório
+- [x] cada linha traz IV ATM 30d, IV rank/percentil, RV20/30/60, VRP, z, RR25, BFLY25, exp. move, `days_to_liquidate`, nº de séries líquidas e próximo resultado (`actual` = confirmado, `estimated` = previsto) — tabela de 21 colunas; ausência vira `—`
+- [x] **nenhuma** coluna, rótulo ou ordenação sugere previsão; `signal_class` e taxa histórica de acerto **não aparecem** na tela nem no relatório — `grep` de `signal_class|premium|acerto|ranking|caro|barato` = **0**; ordem alfabética declarada como neutra
+- [x] revisão manual de uma semana de relatórios sem absurdo — 13, 16, 17, 18 e 19/11 (`ok` 156/163/163/160/163) varridos por script independente: **0** IV negativa, rank/pct fora de 0–100, NaN ou linha ilegível
+- [x] 1 número conferido à mão por caminho independente e registrado no `AGENTS.md` — PETR4 19/11: `iv_atm_30d` **31,43%**, `spot` **R$ 42,67**, **88/782** séries, **25** vencimentos; medianas IV **31,43** (n=35) e VRP **−30,66** (n=35); BOVA11 96/885/26 e VALE3 68/601/23
+
+**Entregável:** `b3o screen --date X` imprime a tabela descritiva e escreve `data/out/screen-X.md`.
+
+<details>
+<summary>F2 original (suspenso pelo ADR-023 — registro, não executar)</summary>
 
 **Objetivo:** do universo líquido para um ranking curto, com motivo.
-**Estimativa:** 1 sessão · **Depende de:** F1b
 
 | ID | Tarefa | Est. |
 |---|---|---|
@@ -172,13 +193,15 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F2.3 | ranking com **componentes** (sem score opaco), incluindo papéis sem sinal | 1 h |
 | F2.4 | `b3o screen` + briefing Markdown por papel, com **resultado próximo** (`core.earnings`, real ou previsto) e taxa histórica da classe (F1b) | 1.5 h |
 
-**Aceitação F2**
+**Aceitação F2 (original)**
 - [ ] todo papel do universo líquido aparece: com classe, ou `none`, ou excluído com motivo
 - [ ] número de papéis com classe ≠ `none` por dia é **consistente com a frequência medida no F1b** (sem meta fixa)
 - [ ] cada linha traz IV ATM, rank, VRP, z, RR, exp. move e próximo resultado
 - [ ] revisão manual de uma semana de briefings sem absurdo (strike incoerente, IV negativa, papel trocado)
 
 **Entregável:** `b3o screen --date X` imprime o ranking e escreve `out/screen-X.md`.
+
+</details>
 
 ---
 

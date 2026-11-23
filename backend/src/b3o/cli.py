@@ -70,6 +70,9 @@ from b3o.derive.liquidity import (
     build_liquidity,
     render_report,
 )
+from b3o.derive.screen import aggregate as aggregate_screen
+from b3o.derive.screen import render_markdown as render_screen_markdown
+from b3o.derive.screen import render_summary as render_screen_summary
 from b3o.derive.strike_events import classify_strike_events
 from b3o.fsutil import replace_file
 from b3o.ingest.earnings import build_earnings, fetch_earnings, write_earnings
@@ -1280,6 +1283,68 @@ def metrics(
             f"partição   metrics_series sha256 {summary.series_sha256[:12]}… · "
             f"metrics_underlying sha256 {summary.underlying_sha256[:12]}…"
         )
+
+
+@app.command()
+def screen(
+    config: Annotated[
+        Path, typer.Option("--config", help="caminho do config.yaml (chaves planas, P-B)")
+    ] = DEFAULT_CONFIG_PATH,
+    date_: Annotated[
+        date | None,
+        typer.Option("--date", help="sessão do lake (default: a última do lake)"),
+    ] = None,
+    max_rows: Annotated[
+        int,
+        typer.Option(
+            "--max-rows",
+            help="linhas na tabela do terminal (0 = todas; default 20)",
+        ),
+    ] = 20,
+) -> None:
+    """Painel descritivo do universo líquido (F2): tabela, fichas e relatório.
+
+    Lê o que o `b3o metrics` já gravou (`metrics_underlying`/`metrics_series`),
+    a liquidez por volume e o calendário de resultados; **não** calcula métrica
+    nem lê `signal_class` (ADR-024). A ordem é alfabética e o terminal mostra as
+    primeiras `--max-rows` linhas; o relatório `data/out/screen-AAAA-MM-DD.md`
+    é sempre completo. Data sem sessão no lake sai com erro explícito (exit 1).
+    """
+    try:
+        settings = load_config(config)
+    except SourceFailure as exc:
+        typer.secho(f"config     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    configure_logging(settings.log_level)
+
+    if max_rows < 0:
+        typer.echo("screen: --max-rows precisa ser >= 0 (0 = todas)")
+        raise typer.Exit(code=2)
+
+    service = QueryService(settings.data_dir)
+    try:
+        bundle = service.screen_bundle(date_)
+    except SourceFailure as exc:
+        typer.secho(f"screen     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    summary = aggregate_screen(
+        bundle.rows,
+        session=bundle.session,
+        model_version=bundle.model_version,
+        outside_universe=bundle.outside_universe,
+        earnings_coverage_start=bundle.earnings_coverage_start,
+    )
+    for line in render_screen_summary(
+        summary, bundle.rows, max_rows=None if max_rows == 0 else max_rows
+    ):
+        typer.echo(line)
+
+    target = settings.data_dir / "out" / f"screen-{bundle.session.isoformat()}.md"
+    _write_text_atomic(target, render_screen_markdown(summary, bundle.rows))
+    typer.echo(f"relatório  {target}")
 
 
 @app.command()

@@ -39,7 +39,6 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 from b3o.fsutil import replace_file
@@ -378,32 +377,37 @@ def _publish(
 
     Devolve `(linhas_no_arquivo, sha256)` — em merge, `linhas_no_arquivo` é o
     tamanho final da partição (as linhas preservadas também contam).
+
+    **Merge em DuckDB, não em pyarrow.** O `--backfill` regrava a partição do ano
+    a cada bloco de 20 sessões; com `concat_tables` + `sort_by` do pyarrow, o
+    último bloco lia ~3 M linhas para a RAM e o processo morria por OOM (exit 137,
+    medido em 2026-11-22 no 8º bloco de 12). O DuckDB ordena em streaming com
+    spill em disco e o resultado é escrito em lotes pelo pyarrow — o pico fica na
+    ordem do bloco novo, não do arquivo inteiro.
     """
     new = pa.Table.from_pylist(rows, schema=schema)
-    if merge_days and target.is_file():
-        existing = _read_partition(target, schema)
-        keep = pc.invert(
-            pc.is_in(
-                existing.column("refdate"),
-                value_set=pa.array(sorted(merge_days), type=pa.date32()),
-            )
-        )
-        table = pa.concat_tables([existing.filter(keep), new])
-    else:
-        table = new
-    table = table.sort_by(sort_keys)
-
     tmp_dir = target.parents[2] / TMP_DIR / f"metrics-{uuid.uuid4().hex[:12]}"
     tmp_path = tmp_dir / PARTITION_FILE
+    expected = new.num_rows
     try:
         tmp_dir.mkdir(parents=True)
-        pq.write_table(table, tmp_path, compression="zstd")
+        if merge_days and target.is_file():
+            _check_partition_schema(target, schema)  # não materializa as linhas
+            new_path = tmp_dir / "new.parquet"
+            pq.write_table(new, new_path, compression="zstd")
+            del new  # libera o bloco antes de o DuckDB ordenar a partição
+            expected = _merge_partition(
+                target, new_path, tmp_path, schema=schema, sort_keys=sort_keys,
+                merge_days=merge_days, tmp_dir=tmp_dir,
+            )
+        else:
+            pq.write_table(new.sort_by(sort_keys), tmp_path, compression="zstd")
         written = pq.read_metadata(tmp_path).num_rows
-        if written != table.num_rows:
+        if written != expected:
             raise SourceFailure(
                 SourceError(
                     code="bad_data",
-                    message=f"Parquet de {target} com {written} linhas, esperadas {table.num_rows}",
+                    message=f"Parquet de {target} com {written} linhas, esperadas {expected}",
                     hint="escrita truncada: disco cheio ou falha do pyarrow; partição intacta",
                 )
             )
@@ -422,7 +426,107 @@ def _publish(
         ) from exc
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
-    return table.num_rows, sha256
+    return expected, sha256
+
+
+def _merge_partition(
+    target: Path,
+    new_path: Path,
+    tmp_path: Path,
+    *,
+    schema: pa.Schema,
+    sort_keys: list[tuple[str, str]],
+    merge_days: frozenset[date],
+    tmp_dir: Path,
+) -> int:
+    """Mescla o bloco novo na partição existente via DuckDB e escreve em lotes.
+
+    `read_parquet($old)`/`read_parquet($new)` com parâmetros **nomeados** (o
+    binding posicional repetido entrega a primeira lista às duas ocorrências —
+    AGENTS). As colunas são projetadas explicitamente porque o DuckDB acrescenta
+    a coluna de hive `year` ao ler `year=YYYY/part-0.parquet`.
+
+    O resultado sai por `to_arrow_reader` (streaming). `to_arrow_reader` sobre o
+    resultado de `execute()` faz uma cópia inteira da tabela antes de devolver o
+    leitor — num bloco final de ~3 M linhas isso sozinho estourava o limite de
+    3,7 GiB do motor (exit 137 medido em 22/11/2026). `con.sql(...)` devolve um
+    leitor que não materializa.
+    """
+    columns = ", ".join(schema.names)
+    order = ", ".join(f"{name} {direction.upper()}" for name, direction in sort_keys)
+    sql = (
+        f"SELECT {columns} FROM ("
+        f"  SELECT {columns} FROM read_parquet($old)"
+        "   WHERE refdate NOT IN (SELECT unnest($days::DATE[]))"
+        "   UNION ALL BY NAME"
+        f"  SELECT {columns} FROM read_parquet($new)"
+        f") ORDER BY {order}"
+    )
+    spill = Path("/tmp") / f"duckdb-metrics-{uuid.uuid4().hex[:8]}"
+    """Spill do sort do DuckDB em `/tmp` do processo.
+
+    Não pode ser o bind de `data/`: o DuckDB falha ao abrir arquivo de spill no
+    bind do Windows (`Input/output error`, medido no F1b — o mesmo `EIO` do
+    `COPY TO` em `/data`). Spill é temporário e não precisa sobreviver ao job.
+    """
+    written = 0
+    try:
+        with duckdb.connect() as connection:
+            connection.execute("SET memory_limit = '900MB'")
+            connection.execute(f"SET temp_directory = '{spill.as_posix()}'")
+            reader = connection.sql(
+                sql,
+                params={
+                    "old": [str(target)],
+                    "new": [str(new_path)],
+                    "days": sorted(merge_days),
+                },
+            ).to_arrow_reader(100_000)
+            with pq.ParquetWriter(tmp_path, schema, compression="zstd") as writer:
+                for batch in reader:
+                    arrays = [
+                        batch.column(index).cast(schema.field(index).type)
+                        for index in range(batch.num_columns)
+                    ]
+                    writer.write_batch(pa.RecordBatch.from_arrays(arrays, schema=schema))
+                    written += batch.num_rows
+    except duckdb.Error as exc:
+        raise SourceFailure(
+            SourceError(
+                code="bad_data",
+                message=f"falha ao mesclar {target} com o bloco novo: {exc}",
+                hint=(
+                    "partição corrompida ou schema antigo: rode `b3o metrics --backfill`; "
+                    "a partição anterior não foi tocada"
+                ),
+            )
+        ) from exc
+    return written
+
+
+def _check_partition_schema(target: Path, schema: pa.Schema) -> None:
+    """Confere o schema da partição existente **sem** materializar as linhas."""
+    try:
+        existing = pq.read_schema(target)
+    except (OSError, pa.ArrowException) as exc:
+        raise SourceFailure(
+            SourceError(
+                code="bad_data",
+                message=f"partição de métrica ilegível em {target}: {exc}",
+                hint="rode `b3o metrics --backfill` para reconstruir a partição",
+            )
+        ) from exc
+    if not existing.equals(schema, check_metadata=False):
+        raise SourceFailure(
+            SourceError(
+                code="bad_data",
+                message=(
+                    f"schema divergente em {target}: {existing.names} "
+                    f"(esperado {schema.names})"
+                ),
+                hint=_HINT_SCHEMA,
+            )
+        )
 
 
 def _read_partition(target: Path, schema: pa.Schema) -> pa.Table:

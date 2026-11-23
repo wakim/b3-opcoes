@@ -82,6 +82,9 @@ FLAG_NO_RATES = "no_rates"
 FLAG_NO_FORWARD = "no_forward"
 """Vencimento sem forward utilizável (sem par de paridade)."""
 
+FLAG_FORWARD_OUTLIER = "forward_outlier"
+"""Forward rejeitado pela sanidade de carry: `|ln(F/S)/T − r| > 5% a.a.`."""
+
 FLAG_AMERICAN_CALL_EX_DIV = "american_call_ex_div"
 """Call americana ITM com ex-dividendo antes do vencimento: fora do smile."""
 
@@ -269,13 +272,16 @@ def evaluate_quote(
     dividend_dates: Collection[date],
     scale_event: bool,
     trades_5d: int,
+    extra_flags: Sequence[str] = (),
 ) -> EvaluatedQuote:
     """Calcula preço, IV, gregas e flags de uma série.
 
     A IV só existe com `t > 0`, curva (`df`) e forward. Cada ausência deixa a
     flag do motivo; o `implied_vol_detail` carrega o motivo da falha da inversão.
+    `extra_flags` são as do vencimento (`forward_outlier`) que não se deduzem da
+    linha sozinha.
     """
-    flags: list[str] = []
+    flags: list[str] = list(extra_flags)
     if quote.strike != quote.strike_raw:
         flags.append(FLAG_LEG_MISMATCH)
     if quote.style is None:
@@ -461,6 +467,7 @@ __all__ = [
     "FLAG_AMERICAN_CALL_EX_DIV",
     "FLAG_BFLY_NEGATIVE",
     "FLAG_CALENDAR_VIOLATION",
+    "FLAG_FORWARD_OUTLIER",
     "FLAG_INCONSISTENT",
     "FLAG_IV_EXPIRED",
     "FLAG_LEG_MISMATCH",

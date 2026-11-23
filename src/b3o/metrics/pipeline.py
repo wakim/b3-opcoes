@@ -21,6 +21,18 @@ histórico **anterior** à primeira data pedida e o que já foi calculado nesta
 execução, em ordem crescente. Uma data posterior nunca entra no `vrp_z` de uma
 data anterior (é o teste que o G2 vai caçar).
 
+**Regras de smile calibradas no dado real (2026-11-19):**
+
+- os validadores rodam com `butterfly_tol = 0,25` e `monotonicity_tol = 1,0` vol
+  point (o default de 0,05 é 20× menor que o ruído de tick medido — ADR-018) e
+  só na banda `|ln(K/F)| ≤ 0,10` (a asa de IV de 410% não informa nada);
+- **`inconsistent` não tira o strike do ATM**: `atm_by_expiry` recebe todos os
+  strikes com IV válida (o ATM precisa dos dois vizinhos de F); a flag serve
+  para excluir a série do skew/butterfly (RR25/BFLY25);
+- **forward só com ≥ 3 pares utilizáveis** e com carry plausível
+  (`|ln(F/S)/T − r| ≤ 5% a.a.`): senão o vencimento fica sem `F`, a série ganha
+  `forward_outlier`/`no_forward` e o ATM não o usa — nunca se "conserta" o F.
+
 **Falha de um papel não derruba a data:** sem taxa, sem forward, sem spot ou
 vencimento vencido viram `None` + flag; só falha estrutural (lake ausente,
 partição de legs ausente) levanta `SourceFailure`.
@@ -100,6 +112,53 @@ HISTORY_WINDOW = 252
 
 LIQUIDITY_SESSIONS = 5
 """Janela de negócios da liquidez (§6.9)."""
+
+SMILE_BUTTERFLY_TOL = 0.25
+"""Folga da butterfly/calendário: **25% da variância total ATM**.
+
+O default do `derive/checks.py` é 5% — calibrado em cadeia sintética. No
+fechamento real da B3 um tick de 1 ¢ já move ~0,2 vol point no ATM (ADR-018:
+paridade E/E mediana 1,2, P90 5), e 5% de `w_atm` fica abaixo desse ruído: em
+2026-11-19 a tolerância antiga marcava 5.893 de 14.000 séries. 25% ainda pega
+trios realmente tortos (densidade negativa de verdade) sem transformar ruído de
+tick em arbitragem.
+"""
+
+SMILE_MONOTONICITY_TOL = 1.0
+"""Folga da monotonicidade em **vol points** (default do `checks.py`: 0,05).
+
+0,05 vol point é 20× menor que o ruído medido de fechamento (ADR-017/018: ~1,2
+vol point de mediana na paridade). Subir para 1,0 mantém a flag para kinks
+grosseiros e não marca a asa de call normal de um smile em U.
+"""
+
+SMILE_MONEYNESS_BAND = 0.10
+"""Banda de moneyness validada: `|ln(K/F)| ≤ 0,25` (≈ K/F em [0,78; 1,28]).
+
+Fora dela a IV é pura asa de tick (PETR4 19/11 tem strikes com IV de 410% e
+195%) e nenhuma métrica do papel (ATM, 20Δ–80Δ) usa esses pontos. Validar a asa
+inteira inflava `inconsistent` sem informar nada: 2.425 de 14.000 séries com a
+banda de ±60%, contra <10% com esta.
+"""
+
+FORWARD_CARRY_TOL = 0.05
+"""Sanidade do forward contra a curva: `|ln(F/S)/T − r| > 5% a.a.` é outlier.
+
+O forward pela paridade é o preço do mercado; se o carry implícito se afasta da
+DI da sessão em mais de 5 pontos percentuais ao ano, o par que o produziu está
+errado (bracket de 2 pontos, print velho, série ilíquida). O vencimento fica
+sem `F`, as séries dele ganham `forward_outlier` e o ATM não o usa — nunca se
+"conserta" o forward na mão.
+"""
+
+MIN_FORWARD_PAIRS = 3
+"""Pares call/put utilizáveis mínimos para aceitar o cruzamento da paridade.
+
+O cruzamento usa 2 pontos por construção; com **só** 2 pares na cadeia não há
+como saber que a reta é paridade e não dois prints velhos (PETR4 2026-12-23:
+2 pares davam forward de 4372 ¢ contra spot 4267 ¢). Com 2 pares o vencimento
+fica sem forward; o OLS também precisa de 3 na banda (`forward.MIN_OLS_PAIRS`).
+"""
 
 _RATE_SOURCE_PRIORITY: dict[str, int] = {"b3_reference": 0, "selic_flat": 1}
 """Precedência da curva por sessão: PRE da B3 manda; Selic plana é fallback (ADR-014)."""
@@ -300,6 +359,7 @@ def run_metrics(
         )
         del series_rows
         del underlying_rows
+        context.prune(chunk[-1])
 
     summary.iv_atm_median = statistics.median(iv_values) if iv_values else None
     summary.seconds = time.perf_counter() - started
@@ -373,6 +433,9 @@ class _Context:
         self._oi: dict[date, dict[str, int]] = {}
         self._series_5d: dict[str, int] = {}
         self._spot: dict[str, list[SpotBar]] = {}
+        self._window_20: dict[date, tuple[date, ...]] = {}
+        self._recent: dict[str, dict[str, date]] = defaultdict(dict)
+        self._seed_recent_tickers()
         self._spot_start = first_session - timedelta(days=RV_LOOKBACK_DAYS)
         self._spot_end = first_session
         self._underlying_seeded = False
@@ -444,7 +507,73 @@ class _Context:
         if refdate > self._spot_end:
             self._spot_end = refdate
 
+    def average_quantity_20d(self, underlying: str, refdate: date) -> float | None:
+        """Quantidade média negociada do **papel** nas últimas 20 sessões (ações/dia).
+
+        Mesma convenção do relatório de liquidez do F0.11: as 20 sessões vêm do
+        calendário do lake (sessão sem negócio conta como 0 no numerador e no
+        denominador) e a barra escolhida já é o mercado preferido (`010` → `020`)
+        resolvido pelo `spot_bars`. É o denominador de `days_to_liquidate` na
+        **mesma unidade do OI** (`Total de posições`, em ações do ativo-objeto).
+        """
+        window = self.window_20(refdate)
+        if not window:
+            return None
+        bars = {
+            bar.refdate: bar
+            for bar in self.spot_bars(underlying)
+            if bar.refdate <= refdate
+        }
+        total = sum(bars[day].qty if day in bars else 0 for day in window)
+        return total / len(window)
+
+    def window_20(self, refdate: date) -> tuple[date, ...]:
+        """Últimas 20 sessões do lake até `refdate` (inclusive)."""
+        cached = self._window_20.get(refdate)
+        if cached is None:
+            cached = tuple([day for day in self.lake if day <= refdate][-20:])
+            self._window_20[refdate] = cached
+        return cached
+
+    def _seed_recent_tickers(self) -> None:
+        """Séries vistas nas 20 sessões anteriores: o OI cobre série sem negócio hoje.
+
+        O `open_interest_on` devolve ~33 k séries de opção, mas o COTAHIST só lista
+        quem negociou no dia (~14 k). Somar o OI apenas das séries de hoje
+        subestima a posição do papel (PETR4 dava 6,6 dias contra os 8,95 do
+        relatório de liquidez do F0.11); a janela de 20 sessões reconstrói o
+        universo de séries do papel para o numerador.
+        """
+        previous = [day for day in self.lake if day < self.first_session][-20:]
+        for day in previous:
+            try:
+                options = self.service.options_on(day)
+            except SourceFailure:
+                continue
+            for option in options:
+                self._recent[option.underlying][option.ticker] = day
+
     # ---------------------------- histórico ------------------------------ #
+
+    def prune(self, refdate: date) -> None:
+        """Descarta o estado de legs vencidos e de séries fora da janela de 20 sessões.
+
+        O `--backfill` de três anos passa por ~600 k legs; manter o deque de IV de
+        cada um até o fim custaria centenas de MB sem uso (a série vencida não
+        aparece mais). A poda roda por bloco de escrita, não por dia.
+        """
+        stale = [
+            leg_id
+            for leg_id in self.state.series_iv
+            if _leg_maturity(leg_id) is not None and _leg_maturity(leg_id) < refdate
+        ]
+        for leg_id in stale:
+            del self.state.series_iv[leg_id]
+        cutoff = refdate - timedelta(days=40)
+        for underlying, tickers in list(self._recent.items()):
+            for ticker, last_seen in list(tickers.items()):
+                if last_seen < cutoff:
+                    del tickers[ticker]
 
     def _seed_underlying(self) -> None:
         """Semeia as janelas do papel com o histórico **anterior** à primeira data."""
@@ -499,6 +628,7 @@ class _Context:
         grouped: dict[str, list[OptionDay]] = defaultdict(list)
         for option in options:
             grouped[option.underlying].append(option)
+            self._recent[option.underlying][option.ticker] = refdate
 
         tickers = [option.ticker for option in options]
         self._seed_series([option.leg_id for option in options])
@@ -558,10 +688,30 @@ class _Context:
 
         dividends = self.dividends_by_paper.get(underlying, frozenset())
         forwards: dict[date, float | None] = {}
+        outlier_maturities: set[date] = set()
         for maturity in maturities:
             pairs = self._parity_chain(group, maturity, spot, dividends, refdate)
+            usable = _usable_pairs(pairs)
+            if len(usable) < MIN_FORWARD_PAIRS:
+                # Cruzamento com 2 pontos é ruído: sem corroboração, sem forward.
+                forwards[maturity] = None
+                continue
             estimate = forward_by_parity(pairs, spot=spot)
-            forwards[maturity] = estimate.forward
+            forward_value = estimate.forward
+            if forward_value is None:
+                forwards[maturity] = None
+                continue
+            log_df = log_df_by_maturity[maturity]
+            t_value = t_by_maturity[maturity]
+            if (
+                log_df is not None
+                and t_value > 0.0
+                and not _carry_plausible(forward_value, spot, t_value, log_df)
+            ):
+                forwards[maturity] = None
+                outlier_maturities.add(maturity)
+                continue
+            forwards[maturity] = forward_value
 
         scale_today = any(
             day == refdate and kind == "scale"
@@ -593,6 +743,11 @@ class _Context:
                 spot=spot,
                 t=t_by_maturity[option.maturity],
             )
+            extra = (
+                (series_mod.FLAG_FORWARD_OUTLIER,)
+                if option.maturity in outlier_maturities
+                else ()
+            )
             evaluated.append(
                 evaluate_quote(
                     quote,
@@ -602,6 +757,7 @@ class _Context:
                     dividend_dates=dividends,
                     scale_event=scale_today,
                     trades_5d=trades_5d.get(option.ticker, 0),
+                    extra_flags=extra,
                 )
             )
 
@@ -624,36 +780,37 @@ class _Context:
 
         extra_flags: dict[tuple[date, int], tuple[str, ...]] = {}
         inconsistent_keys: set[tuple[date, int]] = set()
-        if all_points:
+        checked_points: list = []
+        for maturity, points in smiles.items():
+            forward_value = forwards.get(maturity)
+            if forward_value is None or forward_value <= 0.0:
+                continue
+            checked_points.extend(
+                point
+                for point in points
+                if abs(math.log(point.strike / forward_value)) <= SMILE_MONEYNESS_BAND
+            )
+        if checked_points:
             representative = _representative_forward(forwards, t_by_maturity)
-            report = check_chain(all_points, representative)
+            report = check_chain(
+                checked_points,
+                representative,
+                butterfly_tol=SMILE_BUTTERFLY_TOL,
+                monotonicity_tol=SMILE_MONOTONICITY_TOL,
+            )
             ticker_to_key = {
-                point.ticker: (point.maturity, point.strike) for point in all_points
+                point.ticker: (point.maturity, point.strike)
+                for point in checked_points
             }
             extra_flags = inconsistent_flags(
                 dict(report.series_flags), ticker_to_key
             )
-            # O que **filtra** é violação de não-arbitragem: butterfly e calendário.
-            # `monotonicity_violation` fica só na flag: o validador exige IV
-            # não-crescente em K, mas um smile em U sobe na asa de call por
-            # construção — com a tolerância de 0,05 vol point e o ruído de tick
-            # medido (ADR-018), filtrar por ela deixava o ATM `None` em 168 de
-            # 172 papéis (medido em 2026-11-19).
-            for key, flags_of_key in extra_flags.items():
-                if series_mod.FLAG_BFLY_NEGATIVE in flags_of_key or (
-                    series_mod.FLAG_CALENDAR_VIOLATION in flags_of_key
-                ):
-                    inconsistent_keys.add(key)
-            for maturity, points in list(smiles.items()):
-                kept = [
-                    point
-                    for point in points
-                    if (maturity, point.strike) not in inconsistent_keys
-                ]
-                if kept:
-                    smiles[maturity] = kept
-                else:
-                    del smiles[maturity]
+            # `inconsistent` NÃO tira o strike do ATM: o ATM precisa exatamente
+            # dos dois strikes vizinhos de F, e remover um deles troca o número
+            # por outro strike (foi o defeito medido: PETR4 caía de 32,84 para
+            # 29,83 com o strike ATM marcado). O ATM usa **todos** os strikes com
+            # IV válida; a flag serve para excluir a série do skew/butterfly.
+            inconsistent_keys = set(extra_flags)
 
         expiries: list[ExpiryAtm] = []
         for maturity in sorted(smiles):
@@ -669,7 +826,20 @@ class _Context:
             if atm.front is not None
             else _nearest_maturity(expiries, TARGET_T_30D)
         )
-        skew = self._skew(smiles, expiry_by_maturity, skew_maturity)
+        skew_points = (
+            [
+                point
+                for point in smiles[skew_maturity]
+                if (skew_maturity, point.strike) not in inconsistent_keys
+            ]
+            if skew_maturity in smiles
+            else []
+        )
+        expiry = expiry_by_maturity.get(skew_maturity) if skew_maturity else None
+        skew = self._skew(
+            skew_points,
+            expiry.atm_iv if expiry is not None else None,
+        )
 
         iv_90 = interpolate_variance_iv(expiries, TARGET_T_90D)
         slope = (
@@ -715,10 +885,18 @@ class _Context:
         )
 
         oi_map = self.open_interest(refdate)
-        paper_tickers = {option.ticker for option in group}
+        window = self.window_20(refdate)
+        window_start = window[0] if window else refdate
+        recent = self._recent.get(underlying, {})
+        paper_tickers = {
+            ticker for ticker, last_seen in recent.items() if last_seen >= window_start
+        }
         present_oi = [ticker for ticker in paper_tickers if ticker in oi_map]
         total_oi = sum(oi_map[ticker] for ticker in present_oi)
-        liquidation = days_to_liquidate(total_oi if present_oi else None, None)
+        avg_quantity = self.average_quantity_20d(underlying, refdate)
+        liquidation = days_to_liquidate(
+            total_oi if present_oi else None, avg_quantity
+        )
 
         flags: set[str] = set()
         if any(option.strike <= 0 for option in group):
@@ -748,8 +926,10 @@ class _Context:
             flags.add("earnings_unmapped")
         if not present_oi:
             flags.add(FLAG_OI_UNAVAILABLE)
-        else:
+        elif liquidation is None:
             flags.add(FLAG_VOLUME_UNAVAILABLE)
+        if outlier_maturities:
+            flags.add(series_mod.FLAG_FORWARD_OUTLIER)
         for window_value in RV_WINDOWS:
             flags.update(rv_flags.get(window_value, ()))
         if any(
@@ -848,21 +1028,21 @@ class _Context:
 
     def _skew(
         self,
-        smiles: Mapping[date, Sequence],
-        expiry_by_maturity: Mapping[date, ExpiryAtm],
-        maturity: date | None,
+        points: Sequence,
+        atm_iv: float | None,
     ) -> SkewMetrics:
-        """RR25/BFLY25 do vencimento de referência (o `front` do ATM 30d)."""
-        if maturity is None or maturity not in smiles:
+        """RR25/BFLY25 do vencimento de referência, **sem** os strikes inconsistentes.
+
+        `inconsistent` tira a série do skew/butterfly (a cauda é onde o ruído de
+        tick pesa mais), mas não do ATM — ver o comentário no `_paper`.
+        """
+        if not points:
             return SkewMetrics(None, None, 0, ("no_expiry",))
-        points = smiles[maturity]
         chain = [
             DeltaPoint(delta=point.delta, iv_pct=point.iv_pct)
             for point in points
             if point.delta is not None and point.iv_pct is not None
         ]
-        expiry = expiry_by_maturity.get(maturity)
-        atm_iv = expiry.atm_iv if expiry is not None else None
         return rr25_bfly25(chain, atm_iv)
 
     def _realized_vol(
@@ -913,6 +1093,17 @@ class _Context:
 # --------------------------------------------------------------------------- #
 
 
+def _leg_maturity(leg_id: str) -> date | None:
+    """Vencimento embutido no `leg_id` (`ticker|maturity|leg_index`)."""
+    parts = leg_id.split("|")
+    if len(parts) != 3:
+        return None
+    try:
+        return date.fromisoformat(parts[1])
+    except ValueError:
+        return None
+
+
 def _push_optional(bucket: deque[float], value: object) -> None:
     """Empurra um número finito no deque; `None`/bool/NaN não entram."""
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -920,6 +1111,41 @@ def _push_optional(bucket: deque[float], value: object) -> None:
     number = float(value)
     if math.isfinite(number):
         bucket.append(number)
+
+
+def _usable_pairs(pairs: Sequence[ParityQuote]) -> list[ParityQuote]:
+    """Pares que a paridade aceita (mesmo filtro de estilo do `forward.py`).
+
+    Put `E` (as puts da B3 são todas europeias), estilo conhecido e call
+    americana só sem ex-dividendo. O cruzamento de 2 pontos só é aceito com
+    **3 pares utilizáveis** na cadeia como corroboração.
+    """
+    return [
+        pair
+        for pair in pairs
+        if pair.put_style == "E"
+        and pair.call_style is not None
+        and not (pair.call_style == "A" and pair.call_ex_div)
+    ]
+
+
+def _carry_plausible(
+    forward: float,
+    spot: float,
+    t: float,
+    log_df: float,
+) -> bool:
+    """`|ln(F/S)/T − r| ≤ 5% a.a.` — sanidade do forward contra a curva da sessão.
+
+    `r` é a taxa efetiva anual implícita no `ln(DF)` da curva para aquele `T`
+    (`r = −ln(DF)/T`). Fora da folga, o vencimento fica sem `F`: o par que
+    produziu o número está errado (2 pontos, print velho) e "consertar" o
+    forward seria inventar preço.
+    """
+    if spot <= 0.0 or t <= 0.0:
+        return False
+    rate = -log_df / t
+    return abs(math.log(forward / spot) / t - rate) <= FORWARD_CARRY_TOL
 
 
 def _representative_forward(

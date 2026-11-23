@@ -384,7 +384,14 @@ class OptionDay:
 
 @dataclass(frozen=True, slots=True)
 class SpotBar:
-    """Uma sessão do subjacente no mercado à vista, em **centavos**."""
+    """Uma sessão do subjacente no mercado à vista, em **centavos**.
+
+    `qty` é a **quantidade** negociada em ações (a unidade do `Total de posições`
+    do OI) e `volume` é o financeiro em centavos: `volume ≈ qty × avg ÷ FATCOT`
+    (o `010`/`020` tem `FATCOT = 1`). `trades` é o número de negócios. Os três
+    vêm do mesmo recorte do OHLC e existem para `days_to_liquidate`
+    (`Σ OI ÷ média de qty 20d`) e para o volume médio do papel (§6.9).
+    """
 
     refdate: date
     open: int
@@ -393,6 +400,15 @@ class SpotBar:
     close: int
     market: str
     """`010` (lote padrão) ou `020` (fracionário) — o escolhido do dia."""
+
+    qty: int = 0
+    """Ações negociadas no dia (mesma unidade do `total_qty` do OI)."""
+
+    volume: int = 0
+    """Volume financeiro em centavos (`volume ≈ qty × avg`; `FATCOT` é 1 no à vista)."""
+
+    trades: int = 0
+    """Número de negócios da sessão."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -645,8 +661,8 @@ class QueryService:
         if not paths:
             return []
         sql = (
-            "SELECT refdate, open, high, low, close, tpmerc FROM ("
-            "  SELECT refdate, open, high, low, close, tpmerc,"
+            "SELECT refdate, open, high, low, close, tpmerc, qty, volume, trades FROM ("
+            "  SELECT refdate, open, high, low, close, tpmerc, qty, volume, trades,"
             "         row_number() OVER ("
             "           PARTITION BY refdate ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END"
             "         ) AS rn"
@@ -663,6 +679,9 @@ class QueryService:
                 low=int(row[3]),
                 close=int(row[4]),
                 market=str(row[5]),
+                qty=int(row[6]),
+                volume=int(row[7]),
+                trades=int(row[8]),
             )
             for row in rows
         ]

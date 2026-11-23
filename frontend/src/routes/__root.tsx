@@ -1,27 +1,63 @@
-import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { Link, Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
+import { apiGet, type Health } from '../lib/api'
+import { ErrorBox } from '../lib/ui'
 
-// O provider do TanStack Query e o carimbo vêm aqui (F5.4/F5.3 preenchem o
-// carimbo a partir de /api/health). Nesta rodada de scaffold é só a casca.
+// Leitura de sessão: 60 s. Glossário/tickers passam staleTime de 1 h nas rotas.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { staleTime: 60_000, retry: 1, refetchOnWindowFocus: false },
+  },
+})
+
 export const Route = createRootRoute({
   component: RootLayout,
 })
 
+const NAV = [
+  { to: '/', label: 'Hoje' },
+  { to: '/carteira', label: 'Carteira' },
+  { to: '/diario', label: 'Diário' },
+  { to: '/aprender', label: 'Aprender' },
+] as const
+
 function RootLayout() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: ({ signal }) => apiGet<Health>('/api/health', signal),
+  })
+  const session = health.data?.data.last_session
+
   return (
-    <div className="app">
-      <header className="appbar">
-        <h1>Opções B3</h1>
-        <div className="stamp">carregando sessão…</div>
-      </header>
-      <main>
-        <Outlet />
-      </main>
-      <nav className="nav">
-        <Link to="/" className="nav-link">Hoje</Link>
-        <Link to="/carteira" className="nav-link">Carteira</Link>
-        <Link to="/diario" className="nav-link">Diário</Link>
-        <Link to="/aprender" className="nav-link">Aprender</Link>
-      </nav>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <div className="app">
+        <header className="appbar">
+          <h1>Opções B3</h1>
+          <div className="stamp">
+            {health.isLoading
+              ? 'carregando sessão…'
+              : session
+                ? `sessão ${session} · D-1`
+                : 'sessão indisponível'}
+          </div>
+        </header>
+        <main>
+          <ErrorBox error={health.error} />
+          <Outlet />
+        </main>
+        <nav className="nav">
+          {NAV.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className={pathname === item.to ? 'active' : undefined}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
+    </QueryClientProvider>
   )
 }

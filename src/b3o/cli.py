@@ -1152,9 +1152,12 @@ def rates(
         client.close()
 
     used = sorted({float(value) for value in summary["selic_pct"].values()})  # type: ignore[union-attr]
-    several = (
-        f"{used[0]:.6f}–{used[-1]:.6f}% a.d." if len(used) > 1 else f"{used[0]:.6f}% a.d."
-    )
+    if len(used) > 1:
+        several = f"{used[0]:.6f}-{used[-1]:.6f}% a.d."
+    elif used:
+        several = f"{used[0]:.6f}% a.d."
+    else:
+        several = ""
     detail = (
         f"{len(used)} valor(es), {several}"
         if used

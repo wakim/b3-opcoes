@@ -191,6 +191,20 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** os critérios do `PLAN.md` que dizem "pytest verde" ficam **revogados** (o texto fica como registro); as armadilhas do `AGENTS.md` passam a ser a única proteção contra regressão de dado — por isso medição nova entra lá com número. Reintroduzir teste exige pedido do dono.
 - **Revisar em:** quando o produto estabilizar (F4/F5) ou se um erro de fórmula escapar para um número exibido.
 
+## ADR-020 — Superfície: calibração dos validadores, `inconsistent` informativo e carry assimétrico (`model_version` 2)
+
+- **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** caro (recalcular 722 sessões, ~26 min)
+- **Contexto:** a primeira rodada real do pipeline (19/11/2026) marcou **47% das séries como `inconsistent`** com as tolerâncias do contrato (0,05 vol point), o que **excluía o strike ATM** do smile e dava `iv_atm_30d` 29,83 na PETR4 em vez do valor conferido à mão (32,84). Ao mesmo tempo, a sanidade de carry simétrica do forward (`|ln(F/S)/T − r| ≤ 5%`) cortava papel de dividendo alto (BBAS3, `q ≈ 7,3% a.a.`).
+- **Decisão:**
+  1. `butterfly_tol = 0,25` (25% da variância total ATM) e `monotonicity_tol = 1,0` vol point, com validação só em `|ln(K/F)| ≤ 0,10` — calibrados no ruído de tick medido (ADR-018), não "até passar";
+  2. **`inconsistent` é flag informativa**: não tira o strike do **ATM** (que precisa dos dois vizinhos de F) e tira só do **skew/butterfly**;
+  3. carry do forward **assimétrico**: `F` acima da curva é rejeitado (+5% a.a.); dividendo implícito até **25% a.a.**; fora disso `forward_outlier`, vencimento sem `F`;
+  4. `days_to_liquidate` = Σ OI ÷ **quantidade** média do à vista 20d (não volume financeiro);
+  5. `model_version` sobe para **2** e o histórico é recalculado inteiro.
+- **Por quê:** o número que o produto exibe tem que ser o mesmo que se confere à mão; e regra simétrica em carry confunde dividendo com erro de cotação.
+- **Consequência:** `inconsistent` caiu de 47% para 6,5% (19/11) e 10,0% no período; PETR4 volta a 31,43 no 30d (interpolação entre 32,84 em 18/12 e 30,96 em 15/01); BBAS3 recupera o ATM. O skew usa só as séries sem flag — quem quiser filtrar mais, filtra a flag.
+- **Revisar em:** F2 (quando o `screen` exibir RR/BFLY) e no portão.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

@@ -142,6 +142,7 @@ banda de ±60%, contra <10% com esta.
 """
 
 FORWARD_CARRY_TOL = 0.05
+FORWARD_DIVIDEND_MAX = 0.25
 """Sanidade do forward contra a curva: `|ln(F/S)/T − r| > 5% a.a.` é outlier.
 
 O forward pela paridade é o preço do mercado; se o carry implícito se afasta da
@@ -220,14 +221,19 @@ class MetricsSummary:
 # --------------------------------------------------------------------------- #
 
 
+def _series() -> defaultdict[str, deque[float]]:
+    """Deque de `HISTORY_WINDOW` por chave: o histórico rolante de papel/leg."""
+    return defaultdict(lambda: deque(maxlen=HISTORY_WINDOW))
+
+
 @dataclass
 class _RollingState:
     """Séries curtas por chave, alimentadas em ordem crescente (nada do futuro)."""
 
-    vrp: dict[str, deque[float]] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=HISTORY_WINDOW)))
-    iv_atm: dict[str, deque[float]] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=HISTORY_WINDOW)))
-    rr25: dict[str, deque[float]] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=HISTORY_WINDOW)))
-    series_iv: dict[str, deque[float]] = field(default_factory=lambda: defaultdict(lambda: deque(maxlen=HISTORY_WINDOW)))
+    vrp: dict[str, deque[float]] = field(default_factory=_series)
+    iv_atm: dict[str, deque[float]] = field(default_factory=_series)
+    rr25: dict[str, deque[float]] = field(default_factory=_series)
+    series_iv: dict[str, deque[float]] = field(default_factory=_series)
     series_seeded: bool = False
 
     def push_underlying(
@@ -570,7 +576,7 @@ class _Context:
         for leg_id in stale:
             del self.state.series_iv[leg_id]
         cutoff = refdate - timedelta(days=40)
-        for underlying, tickers in list(self._recent.items()):
+        for tickers in list(self._recent.values()):
             for ticker, last_seen in list(tickers.items()):
                 if last_seen < cutoff:
                     del tickers[ticker]
@@ -1135,17 +1141,27 @@ def _carry_plausible(
     t: float,
     log_df: float,
 ) -> bool:
-    """`|ln(F/S)/T − r| ≤ 5% a.a.` — sanidade do forward contra a curva da sessão.
+    """Carry plausível: `F` pode cair por provento, mas não subir acima da curva.
 
-    `r` é a taxa efetiva anual implícita no `ln(DF)` da curva para aquele `T`
-    (`r = −ln(DF)/T`). Fora da folga, o vencimento fica sem `F`: o par que
-    produziu o número está errado (2 pontos, print velho) e "consertar" o
-    forward seria inventar preço.
+    `ln(F/S)/T = r − q` (taxa menos dividendo esperado). As duas assimetrias são
+    reais e medidas:
+
+    - **lado positivo** (F acima do que a curva permite) só existe com print
+      errado/par de 2 pontos — rejeita acima de 5% a.a.;
+    - **lado negativo** é dividendo esperado, legítimo: BBAS3 em 18/12/2026 tem
+      `q ≈ 7,3% a.a.` e caía na regra simétrica (perdia o ATM). Passa a valer até
+      **25% a.a.** de dividendo implícito; acima disso o número não é mercado.
+
+    Fora da faixa, o vencimento fica sem `F`, a série ganha `forward_outlier` e o
+    ATM não o usa — nunca se "conserta" o forward.
     """
     if spot <= 0.0 or t <= 0.0:
         return False
     rate = -log_df / t
-    return abs(math.log(forward / spot) / t - rate) <= FORWARD_CARRY_TOL
+    carry = math.log(forward / spot) / t
+    if carry - rate > FORWARD_CARRY_TOL:
+        return False
+    return rate - carry <= FORWARD_DIVIDEND_MAX
 
 
 def _representative_forward(

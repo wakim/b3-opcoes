@@ -8,7 +8,10 @@ data_dir: /data
 log_level: INFO
 
 # Sobe a cada mudança de fórmula; histórico recalculado inteiro. Começa em 1.
-model_version: 1
+# v2 (22/11/2026): carry do forward deixa de ser simétrico — F acima da curva é
+# rejeitado (+5% a.a.), dividendo implícito vale até 25% a.a. (BBAS3 perdia o ATM
+# com q = 7,3%). Ver ADR-020.
+model_version: 2
 
 # Fonte do COTAHIST (medido em 22/11/2026 — ver AGENTS.md):
 # o padrão antigo arquivos.b3.com.br/dados/pregao/cotahist/ está morto (404);

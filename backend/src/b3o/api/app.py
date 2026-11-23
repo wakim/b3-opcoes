@@ -1,27 +1,36 @@
-"""FastAPI do b3o (F3): HTTP em `/api/...` e MCP Streamable HTTP em `/mcp`.
+"""FastAPI do b3o (F3/F5): HTTP em `/api/...`, MCP em `/mcp` e a SPA em `/`.
 
-Uma única instância de `QueryService` nasce no lifespan e é usada pelas duas
-bordas; as rotas e as tools chamam os **mesmos** construtores de payload
+Uma única instância de `QueryService` nasce no lifespan e é usada pelas bordas;
+as rotas e as tools chamam os **mesmos** construtores de payload
 (`b3o.api.payloads`), então o número é o mesmo por construção.
 
-Rotas do F3 (contrato onda-i §5): `health`, `screen`, `underlying`, `chain`,
-`series`, `events`; o F4 acrescenta `POST /api/structure` (cálculo, sem gravar).
-Escritas, journal, positions, glossary e briefing ficam para F5/F6;
-`signal_backtest` não é exposto (ADR-024/025).
+Montagem (armadilha do AGENTS, confirmada no F5): o app MCP é um ASGI montado em
+`/` com `streamable_http_path="/mcp"`. **Não** montar `StaticFiles` em `/` — ele
+engole `/mcp` (ou é engolido). O que funciona é um **dispatcher ASGI**: `/mcp*`
+vai para o `mcp_app`, todo o resto para o `dist` do Vite com fallback de SPA.
+As rotas `/api` ficam registradas **antes** do mount, como sempre.
+
+Cache: `index.html` `no-store`, `/assets/*` `immutable`, JSON de `/api` `no-cache`.
+`frontend/dist` ausente é `503 frontend_missing`, nunca página em branco.
+Escritas/`X-App-Token` ficam para o F6 (ADR F5).
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import date
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.routing import APIRoute
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.gzip import GZipMiddleware
 
 from b3o.api import payloads
 from b3o.api.mcp_server import mcp
@@ -40,9 +49,116 @@ from b3o.ingest.errors import SourceError, SourceFailure
 
 log = logging.getLogger(__name__)
 
+FRONTEND_DIR_ENV = "B3_FRONTEND_DIR"
+"""Caminho do `dist` (default `/app/frontend/dist` na imagem). Fora do config.yaml."""
+
+_API_HINT = (
+    "rotas: /api/health, /api/screen, /api/tickers, /api/glossary, "
+    "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, "
+    "/api/s/{ticker}/{maturity} e POST /api/structure"
+)
+
+
+class _NoCacheRoute(APIRoute):
+    """Toda resposta `/api` sai com `Cache-Control: no-cache`.
+
+    Usa a classe de rota em vez de um `@app.middleware("http")`: middleware
+    baseado em `BaseHTTPMiddleware` quebra o streaming do MCP montado (os smokes
+    F3/F4 têm de continuar 53/53 e 93/93).
+    """
+
+    def get_route_handler(self):  # type: ignore[no-untyped-def]
+        original = super().get_route_handler()
+
+        async def handler(request: Request) -> Response:
+            response = await original(request)
+            response.headers["Cache-Control"] = "no-cache"
+            return response
+
+        return handler
+
+
+def _frontend_missing() -> JSONResponse:
+    """Falha explícita e acionável quando o build do frontend não existe."""
+    failure = SourceError(
+        code="frontend_missing",
+        message=(
+            f"frontend/dist não encontrado em {_frontend_dir()} "
+            "(ou não contém index.html)"
+        ),
+        hint=(
+            "rode `npm run build` em frontend/ — no caminho oficial: "
+            "`podman compose --profile build run --rm web`"
+        ),
+    )
+    return JSONResponse(status_code=503, content=error_payload(failure))
+
+
+def _frontend_dir() -> Path:
+    return Path(os.environ.get(FRONTEND_DIR_ENV, "/app/frontend/dist"))
+
+
+class _SpaDispatcher:
+    """ASGI montado em `/`: `/mcp` → MCP, resto → SPA com fallback.
+
+    Não é `StaticFiles`: o mount do MCP em `/` e o estático não podem disputar a
+    mesma raiz. A decisão é por caminho, antes de qualquer leitura de arquivo.
+
+    `as_of_session` é preenchido no lifespan e injetado no `index.html` no campo
+    `name="b3o-session"`, para que um `GET /` mostre o carimbo mesmo sem JS. A tela
+    continua lendo `/api/health` para o carimbo visível (P-C: vem do lake).
+    """
+
+    def __init__(self, mcp_app: Any, dist_dir: Path) -> None:
+        self.mcp_app = mcp_app
+        self.dist_dir = dist_dir
+        self.as_of_session: str | None = None
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.mcp_app(scope, receive, send)
+            return
+        path = str(scope.get("path", "/"))
+        if path == "/mcp" or path.startswith("/mcp/"):
+            await self.mcp_app(scope, receive, send)
+            return
+        await self._response(path)(scope, receive, send)
+
+    def _response(self, path: str) -> Response:
+        index = self.dist_dir / "index.html"
+        if not self.dist_dir.is_dir() or not index.is_file():
+            return _frontend_missing()
+
+        rel = path.lstrip("/")
+        # SPA fallback: caminho sem extensão (`/`, `/t/PETR4`, `/s/PETR4/...`) é
+        # sempre o shell. Asset com extensão inexistente é 404 — nunca o index.
+        if not rel or "." not in Path(rel).name:
+            try:
+                html = index.read_text(encoding="utf-8")
+            except OSError:
+                return _frontend_missing()
+            html = html.replace("__B3_SESSION__", self.as_of_session or "")
+            return Response(
+                content=html,
+                media_type="text/html",
+                headers={"Cache-Control": "no-store"},
+            )
+
+        target = (self.dist_dir / rel).resolve()
+        try:
+            target.relative_to(self.dist_dir.resolve())
+        except ValueError:
+            return Response(status_code=404, content="Not Found")
+        if not target.is_file():
+            return Response(status_code=404, content="Not Found")
+        headers: dict[str, str] = {}
+        if rel.startswith("assets/"):
+            headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return FileResponse(target, headers=headers)
+
 
 def create_app() -> FastAPI:
-    """Monta o app: lifespan único, rotas HTTP e o MCP em `/mcp`."""
+    """Monta o app: lifespan único, rotas HTTP, estático e o MCP em `/mcp`."""
     mcp_app = mcp.streamable_http_app(
         streamable_http_path="/mcp",
         stateless_http=True,
@@ -57,11 +173,17 @@ def create_app() -> FastAPI:
             ],
         ),
     )
+    spa = _SpaDispatcher(mcp_app, _frontend_dir())
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        set_service(build_service())
+        service = build_service()
+        set_service(service)
         try:
+            # O carimbo vem do lake (P-C). Uma leitura no startup; a tela usa
+            # /api/health para o valor visível.
+            calendar = service.lake_calendar()
+            spa.as_of_session = calendar[-1].isoformat() if calendar else None
             # O lifespan do app MCP não roda sozinho quando montado: sem isto o
             # session manager do Streamable HTTP não inicia (armadilha do AGENTS).
             async with mcp_app.router.lifespan_context(mcp_app):
@@ -74,6 +196,10 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    app.router.route_class = _NoCacheRoute
+    # GZip é ASGI puro (não quebra o streaming do MCP). JSON/HTML/JS/CSS acima
+    # de 500 bytes saem comprimidos quando o cliente aceita gzip.
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     @app.exception_handler(SourceFailure)
     async def _source_failure(_request: Request, exc: SourceFailure) -> JSONResponse:
@@ -110,9 +236,7 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": code,
                     "message": str(exc.detail),
-                    "hint": "as rotas do F3/F4 são GET /api/health, /api/screen, "
-                    "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, "
-                    "/api/s/{ticker}/{maturity} e POST /api/structure",
+                    "hint": _API_HINT,
                 }
             },
         )
@@ -128,11 +252,11 @@ def create_app() -> FastAPI:
         return payloads.health_payload(_service())
 
     @app.get("/api/screen")
-    def api_screen(date: str | None = None, max_rows: int = DEFAULT_MAX_ROWS) -> dict[str, Any]:
+    def api_screen(
+        date: str | None = None, max_rows: int = DEFAULT_MAX_ROWS
+    ) -> dict[str, Any]:
         """Painel descritivo da sessão (resumo + N primeiras linhas alfabéticas)."""
-        return payloads.screen_payload(
-            _service(), date=_date(date), max_rows=max_rows
-        )
+        return payloads.screen_payload(_service(), date=_date(date), max_rows=max_rows)
 
     @app.get("/api/t/{ticker}")
     def api_underlying(
@@ -201,23 +325,17 @@ def create_app() -> FastAPI:
 
     @app.get("/api/{rest:path}")
     def api_not_found(rest: str) -> dict[str, Any]:
-        """Rota `/api` desconhecida: erro no envelope, não o 404 do app montado.
-
-        O MCP é montado em `/` para o endpoint ser exatamente `/mcp` (sem 307);
-        sem esta rota, caminho `/api` inexistente cairia no 404 cru do app
-        montado. Ela fica **depois** das rotas válidas para não sombreá-las.
-        """
+        """Rota `/api` desconhecida: erro no envelope, não o 404 do app montado."""
         raise SourceFailure(
             SourceError(
                 code="not_found",
-                message=f"rota /api/{rest} não existe no F3/F4",
-                hint="rotas: /api/health, /api/screen, /api/t/{ticker}, "
-                "/api/t/{ticker}/chain, /api/t/{ticker}/events, "
-                "/api/s/{ticker}/{maturity}, POST /api/structure",
+                message=f"rota /api/{rest} não existe no F3/F4/F5",
+                hint=_API_HINT,
             )
         )
 
-    app.mount("/", mcp_app)
+    # Dispatcher por último: as rotas /api e o MCP continuam intactos.
+    app.mount("/", spa)
     return app
 
 

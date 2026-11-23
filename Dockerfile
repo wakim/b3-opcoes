@@ -5,9 +5,11 @@
 # projeto; `data/` e `docs/` são compartilhados. Dentro da imagem o código mora em
 # /app (backend) e /frontend (build do frontend).
 #   deps    → só dependências (cacheável entre edições de backend/src/)
+#   web     → build do frontend (npm ci && npm run build) → /frontend/dist
 #   runtime → app sem dev-deps (serviços app, prepare, prepare-watch)
 #   dev     → com dev-deps e src (serviço test: container de ferramentas/python)
-#   web     → build do frontend (npm ci && npm run build) → /frontend/dist
+# A ordem importa: `web` vem ANTES de `runtime`, porque `COPY --from=web` só
+# resolve stages já definidos quando o build é limitado por `--target runtime`.
 
 ########## deps ##########
 # Política de dependências (pré-requisito permanente do dono): bibliotecas e imagens de base
@@ -29,6 +31,16 @@ WORKDIR /app
 # Só lock: edições de backend/src/ não invalidam esta camada.
 COPY backend/pyproject.toml backend/uv.lock README.md ./
 RUN uv sync --frozen --no-install-project --no-dev
+
+########## web (build do frontend, F5.0) ##########
+# node:26-slim = Node 26 (LTS ativa e current em 22/11/2026; 22-slim era LTS de manutenção).
+# Política ADR-008: sempre a mais nova. `npm ci` exige package-lock versionado.
+FROM node:26-slim AS web
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
 
 ########## runtime ##########
 FROM deps AS runtime
@@ -67,13 +79,3 @@ ENV PATH="/app/.venv/bin:$PATH" \
     B3_GLOSSARY_PATH=/app/docs/glossario.md
 
 CMD ["b3o", "--help"]
-
-########## web (build do frontend, F5.0) ##########
-# node:26-slim = Node 26 (LTS ativa e current em 22/11/2026; 22-slim era LTS de manutenção).
-# Política ADR-008: sempre a mais nova. `npm ci` exige package-lock versionado.
-FROM node:26-slim AS web
-WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-COPY frontend/ ./
-RUN npm run build

@@ -41,6 +41,8 @@ _STATUS_BY_CODE = {
     "metrics_missing": 404,
     "not_found": 404,
     "method_not_allowed": 405,
+    "frontend_missing": 503,
+    "glossary_missing": 503,
     "lake_missing": 503,
     "storage_error": 503,
     "bad_config": 503,

@@ -1,0 +1,704 @@
+/* Componentes das telas de leitura (F5-B). Consome os tokens de styles.css;
+   não redefine variáveis e não introduz matiz fora dos gráficos. */
+
+/* Casca ---------------------------------------------------------------- */
+.appbar {
+  padding: 12px 16px;
+}
+
+.wordmark {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.stamp__sep {
+  padding: 0 6px;
+  color: var(--text-3);
+}
+
+.lede {
+  margin: 0 0 16px;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.quiet-line {
+  margin: 0 0 16px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.quiet {
+  color: var(--text-3);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.ticker-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.block-title {
+  margin: 24px 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.notice {
+  margin: 0 0 16px;
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.note {
+  margin: 8px 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.state-loading {
+  margin: 8px 0;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* Métricas -------------------------------------------------------------- */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+@media (min-width: 640px) {
+  .metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.metric {
+  display: block;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  font: inherit;
+}
+
+.metric--tappable {
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.metric--tappable:hover {
+  background: var(--surface-2);
+}
+
+.metric__label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.metric--tappable .metric__label {
+  border-bottom: 1px dotted var(--line-strong);
+  align-self: flex-start;
+}
+
+.metric__value {
+  display: block;
+  font-family: var(--mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
+}
+
+.metric--emphasis .metric__value {
+  font-size: 22px;
+}
+
+.metric__note {
+  display: block;
+  margin-top: 8px;
+}
+
+/* Régua — a assinatura -------------------------------------------------- */
+.ruler {
+  display: block;
+}
+
+.ruler__track {
+  display: block;
+  position: relative;
+  height: 6px;
+  background: var(--line);
+  border-radius: 2px;
+}
+
+.ruler__tick {
+  position: absolute;
+  top: -3px;
+  width: 1px;
+  height: 12px;
+  background: var(--line-strong);
+}
+
+.ruler__needle {
+  position: absolute;
+  top: -5px;
+  width: 2px;
+  height: 16px;
+  background: var(--accent);
+  transform: translateX(-50%);
+}
+
+.ruler__needle::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: -3px;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 4px solid var(--accent);
+}
+
+.ruler__scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.ruler--clamped .ruler__needle {
+  box-shadow: 0 0 0 1px var(--accent-ink);
+}
+
+/* Gráficos -------------------------------------------------------------- */
+.chart {
+  max-width: 640px;
+  margin-top: 8px;
+}
+
+.chart__bounds {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 4px;
+}
+
+/* O compacto é menor por largura (e alinhado à esquerda), não por max-height:
+   max-height em SVG com width:100% faz letterbox e desalinha do gráfico principal. */
+.chart--compact {
+  max-width: 480px;
+}
+
+.chart__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart__grid--mid {
+  stroke-dasharray: 3 4;
+}
+
+.chart__mark {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.chart__line {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart__line--dashed {
+  stroke: var(--text-2);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 4;
+}
+
+.chart__dot {
+  fill: var(--accent);
+}
+
+.chart__dot--muted {
+  fill: var(--text-2);
+}
+
+.chart__dot--hollow {
+  fill: var(--surface);
+  stroke: var(--text-2);
+  stroke-width: 1;
+}
+
+.chart__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.chart__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.chart__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart__key {
+  width: 12px;
+  height: 0;
+  border-top: 1px solid var(--accent);
+}
+
+.chart__key--dashed {
+  border-top: 1px dashed var(--text-2);
+}
+
+.chart__legend-note {
+  color: var(--text-3);
+}
+
+.chart__caption {
+  margin: 6px 0 0;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.chart-empty {
+  margin: 8px 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+/* Seletor --------------------------------------------------------------- */
+.selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.selector--scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.selector button {
+  min-height: 44px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.selector button.active {
+  background: var(--surface-2);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+/* Cadeia ---------------------------------------------------------------- */
+.chain-group {
+  margin-bottom: 20px;
+}
+
+.chain-group__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: var(--r-control) var(--r-control) 0 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.chain-head,
+.chain-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  padding: 8px 12px;
+}
+
+.chain-head {
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.chain-head span:last-child,
+.chain-row span:last-child {
+  text-align: right;
+}
+
+.chain-head span:nth-child(2),
+.chain-row span:nth-child(2) {
+  text-align: center;
+}
+
+.chain-row {
+  width: 100%;
+  min-height: 44px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.chain-item + .chain-item .chain-row {
+  border-top: 0;
+}
+
+.chain-row[aria-expanded='true'] {
+  background: var(--surface-2);
+}
+
+.chain-row__strike {
+  font-weight: 500;
+}
+
+.chain-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 var(--r-card) var(--r-card);
+}
+
+.chain-detail__label {
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.chain-detail__ticker {
+  font-family: var(--mono);
+  color: var(--text-3);
+}
+
+.chain-detail__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 3px 0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.chain-detail__row--button {
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.chain-detail__key {
+  color: var(--text-2);
+}
+
+.chain-detail__row--button .chain-detail__key {
+  border-bottom: 1px dotted var(--line-strong);
+}
+
+.chain-detail__flags,
+.chain-detail__empty {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.chain-empty {
+  margin: 8px 0;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+/* Identidade ------------------------------------------------------------ */
+.identity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: hidden;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.identity > div {
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.identity dt {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.identity dd {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* Tabelas --------------------------------------------------------------- */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.screen-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.screen-table th,
+.screen-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.screen-table th:first-child,
+.screen-table td:first-child {
+  text-align: left;
+}
+
+.screen-table th {
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* Erro ------------------------------------------------------------------ */
+.error-state {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--neg);
+  border-radius: var(--r-control);
+}
+
+.error-state__code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--neg);
+}
+
+.error-state__title {
+  margin: 4px 0;
+  font-size: 14px;
+}
+
+.error-state__msg {
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.error-state__hint {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* Sheet de métrica ------------------------------------------------------ */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(4, 7, 10, 0.72);
+}
+
+.sheet {
+  width: 100%;
+  max-width: 520px;
+  max-height: 85dvh;
+  overflow-y: auto;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.sheet__eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-3);
+}
+
+.sheet__title {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.sheet__close {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sheet__value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+}
+
+.sheet__value-label {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.sheet__value-number {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet__block {
+  margin-top: 16px;
+}
+
+.sheet__block-title {
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.sheet__block-text {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.sheet__error,
+.sheet__note {
+  margin: 8px 0;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+/* Foco visível ---------------------------------------------------------- */
+.metric--tappable:focus-visible,
+.selector button:focus-visible,
+.chain-row:focus-visible,
+.chain-detail__row--button:focus-visible,
+.sheet__close:focus-visible,
+.ticker-link:focus-visible,
+.nav a:focus-visible,
+.back:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}

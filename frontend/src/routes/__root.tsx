@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { Link, Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
 import { apiGet, type Health } from '../lib/api'
-import { ErrorBox } from '../lib/ui'
+import { ErrorState } from '../components/State'
+import { Stamp } from '../components/Stamp'
 
 // Leitura de sessão: 60 s. Glossário/tickers passam staleTime de 1 h nas rotas.
 const queryClient = new QueryClient({
@@ -42,25 +43,20 @@ function AppShell() {
   return (
     <div className="app">
       <header className="appbar">
-        <h1>Opções B3</h1>
-        <div className="stamp">
-          {health.isLoading
-            ? 'carregando sessão…'
-            : session
-              ? `sessão ${session} · D-1`
-              : 'sessão indisponível'}
-        </div>
+        <span className="wordmark">Opções B3</span>
+        <Stamp session={session} loading={health.isLoading} />
       </header>
       <main>
-        <ErrorBox error={health.error} />
+        {health.isError && <ErrorState error={health.error} title="Saúde do lake indisponível" />}
         <Outlet />
       </main>
-      <nav className="nav">
+      <nav className="nav" aria-label="Navegação principal">
         {NAV.map((item) => (
           <Link
             key={item.to}
             to={item.to}
             className={pathname === item.to ? 'active' : undefined}
+            aria-current={pathname === item.to ? 'page' : undefined}
           >
             {item.label}
           </Link>

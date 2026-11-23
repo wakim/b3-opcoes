@@ -330,6 +330,23 @@ Contrato em `docs/prompts/f5-pre-b.md`; ADR-033; evidência em `docs/relatorios/
 
 **Não entregue aqui:** B1 (`/api/tickers` sem UI de busca) segue para F5-C; **F5-B continua em aberto** — unslop, régua, gráficos SVG e o `MetricSheet` de Hoje/Ticker/Série (componente distinto da ficha do Aprender).
 
+### F5-B — sessão 2 de 4 (visual + telas de leitura) — parcial
+
+Contrato em `docs/prompts/f5-b.md`; parecer com veredito e os 9 passes por tela em
+`docs/relatorios/2026-11-23-revisao-f5b.md`. Worktree próprio; app provado em `B3_APP_PORT=8082`
+(8081 pertence ao container da sessão paralela).
+
+- [x] **F5.5** — componentes base: `Metric`/`MetricGrid`, `Ruler` (a agulha), `Chain` put·strike·call,
+  `LineChart` em SVG inline, `MetricSheet`, `ErrorState`/`Stamp` e `metricKeys.ts` (40 campos → 30
+  slugs conferidos um a um em `/api/glossary`). Nenhum import de `lib/ui.tsx`.
+- [x] **F5.3 — parte Hoje/Ticker/Série** — 9 passes aplicados na construção; zero erros de console,
+  carimbo nas 3 telas, 412 px com todos os alvos ≥ 44 px, ficha abrindo/fechando por botão, Escape e
+  backdrop; `npm run lint` + `tsc --noEmit` limpos, duas builds com hashes idênticos, smokes 53/53 e
+  93/93, nenhum arquivo da sessão paralela tocado e `data/` inalterada por GET.
+
+**Não marcado aqui:** F5.3 na parte do Aprender (F5-PreB), F5-B inteiro, smoke de cobertura
+campo↔glossário (F5-C), F5.6–F5.9.
+
 **Aceitação F5**
 - [ ] instalado no celular pelo domínio `*.ts.net` (HTTPS)
 - [ ] `npm run build` roda **dentro do container** (`podman compose run --rm web`) e o FastAPI serve o `dist`

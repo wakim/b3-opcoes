@@ -1,8 +1,14 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { apiGet, type SeriesDetail } from '../lib/api'
 import { brl, fmt } from '../lib/format'
-import { ErrorBox, Loading } from '../lib/ui'
+import { ErrorState, Loading } from '../components/State'
+import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
+import { Ruler } from '../components/Ruler'
+import { LineChart } from '../components/LineChart'
+import { MetricSheet } from '../components/MetricSheet'
+import type { OpenMetric, SheetTarget } from '../components/metricKeys'
 
 export const Route = createFileRoute('/s/$ticker/$maturity')({
   component: SeriesPage,
@@ -10,67 +16,143 @@ export const Route = createFileRoute('/s/$ticker/$maturity')({
 
 function SeriesPage() {
   const { ticker, maturity } = Route.useParams()
+  const [view, setView] = useState<'price' | 'iv'>('price')
+  const [sheet, setSheet] = useState<SheetTarget | null>(null)
+  const openMetric: OpenMetric = (field, label, value) => setSheet({ field, label, value })
+
   const series = useQuery({
     queryKey: ['series', ticker, maturity],
-    queryFn: ({ signal }) =>
-      apiGet<SeriesDetail>(`/api/s/${ticker}/${maturity}`, signal),
+    queryFn: ({ signal }) => apiGet<SeriesDetail>(`/api/s/${ticker}/${maturity}`, signal),
   })
-
   if (series.isLoading || !series.data) return <Loading />
-  if (series.isError) return <ErrorBox error={series.error} />
+  if (series.isError) return <ErrorState error={series.error} />
+
   const data = series.data.data
+  const history = data.history
+  const labels = history.map((point) => point.date.slice(5))
 
   return (
     <>
       <Link className="back" to="/t/$ticker" params={{ ticker }}>
-        ‹ {ticker}
+        <span aria-hidden="true">‹</span> {ticker}
       </Link>
       <h1 className="screen-title">Série</h1>
 
-      <div className="metrics">
-        <div className="metric">
-          <span className="k">Contrato</span>
-          <div className="v">{data.ticker}</div>
+      <dl className="identity">
+        <div><dt>Contrato</dt><dd className="num">{data.ticker}</dd></div>
+        <div><dt>Lado / estilo</dt><dd>{data.side} / {data.style ?? '—'}</dd></div>
+        <div><dt>Strike</dt><dd className="num">{brl(data.strike_brl)}</dd></div>
+        <div><dt>Vencimento</dt><dd className="num">{data.maturity}</dd></div>
+        <div><dt>Leg</dt><dd className="num">{data.leg_id}</dd></div>
+      </dl>
+
+      <h2 className="block-title">Último ponto · {data.last.date}</h2>
+      <MetricGrid>
+        <Metric label="Data" value={data.last.date} />
+        <GlossaryMetric
+          field="mid_brl"
+          label="Preço"
+          value={brl(data.last.mid_brl ?? data.last.close_brl)}
+          onOpen={openMetric}
+          emphasis
+        />
+        <GlossaryMetric
+          field="iv_pct"
+          label="IV"
+          value={fmt(data.last.iv_pct)}
+          onOpen={openMetric}
+        />
+        <GlossaryMetric
+          field="delta"
+          label="Delta"
+          value={fmt(data.last.delta, 3)}
+          onOpen={openMetric}
+          note={
+            <Ruler
+              value={data.last.delta}
+              min={-1}
+              max={1}
+              ticks={[-1, 0, 1]}
+              format={(v) => fmt(v, 1)}
+              describe="Delta"
+            />
+          }
+        />
+        <GlossaryMetric
+          field="gamma"
+          label="Gamma"
+          value={fmt(data.gamma, 4)}
+          onOpen={openMetric}
+        />
+        <GlossaryMetric
+          field="theta_brl"
+          label="Theta"
+          value={brl(data.theta_brl)}
+          onOpen={openMetric}
+        />
+        <GlossaryMetric
+          field="vega_brl"
+          label="Vega"
+          value={brl(data.vega_brl)}
+          onOpen={openMetric}
+        />
+      </MetricGrid>
+
+      <div className="block-head">
+        <h2 className="block-title">Histórico</h2>
+        <div className="selector" role="group" aria-label="Série do gráfico">
+          <button
+            type="button"
+            className={view === 'price' ? 'active' : undefined}
+            aria-pressed={view === 'price'}
+            onClick={() => setView('price')}
+          >
+            Preço
+          </button>
+          <button
+            type="button"
+            className={view === 'iv' ? 'active' : undefined}
+            aria-pressed={view === 'iv'}
+            onClick={() => setView('iv')}
+          >
+            IV
+          </button>
         </div>
-        <div className="metric">
-          <span className="k">Lado / estilo</span>
-          <div className="v">
-            {data.side} / {data.style ?? '—'}
-          </div>
-        </div>
-        <div className="metric">
-          <span className="k">Strike</span>
-          <div className="v">{brl(data.strike_brl)}</div>
-        </div>
-        <div className="metric">
-          <span className="k">Vencimento</span>
-          <div className="v">{data.maturity}</div>
-        </div>
+      </div>
+      <LineChart
+        labels={labels}
+        series={[
+          {
+            label: view === 'price' ? 'Preço' : 'IV',
+            values: history.map((point) => (view === 'price' ? point.close_brl : point.iv_pct)),
+          },
+        ]}
+        formatValue={(v) => (view === 'price' ? brl(v) : fmt(v, 1))}
+        ariaLabel={`Histórico de ${view === 'price' ? 'preço' : 'IV'} de ${data.ticker}`}
+        showPoints={false}
+      />
+      {data.flags.length > 0 && <p className="note">flags: {data.flags.join(' · ')}</p>}
+
+      <h2 className="block-title">Últimos pregões</h2>
+      <div className="table-wrap">
+        <table className="screen-table">
+          <thead>
+            <tr><th>Data</th><th>Fechamento</th><th>IV</th><th>Δ</th></tr>
+          </thead>
+          <tbody>
+            {history.slice(-8).reverse().map((point) => (
+              <tr key={point.date}>
+                <td className="num">{point.date}</td>
+                <td>{brl(point.close_brl)}</td>
+                <td>{fmt(point.iv_pct)}</td>
+                <td>{fmt(point.delta, 3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      <p className="section-label">Último ponto do histórico</p>
-      <div className="metrics">
-        <div className="metric">
-          <span className="k">Data</span>
-          <div className="v">{data.last.date}</div>
-        </div>
-        <div className="metric">
-          <span className="k">Preço</span>
-          <div className="v">{brl(data.last.close_brl)}</div>
-        </div>
-        <div className="metric">
-          <span className="k">IV</span>
-          <div className="v">{fmt(data.last.iv_pct)}</div>
-        </div>
-        <div className="metric">
-          <span className="k">Delta</span>
-          <div className="v">{fmt(data.last.delta)}</div>
-        </div>
-      </div>
-      <p className="note">
-        {data.history.length} ponto(s) no histórico da resposta. Gráfico e marcas
-        de ajuste entram na F5-B.
-      </p>
+      <MetricSheet target={sheet} onClose={() => setSheet(null)} />
     </>
   )
 }

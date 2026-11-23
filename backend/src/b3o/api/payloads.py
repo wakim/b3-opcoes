@@ -15,6 +15,7 @@ from collections.abc import Mapping
 from datetime import date
 from typing import Any
 
+from b3o.api.glossary import GlossaryEntry, glossary_path, parse_glossary
 from b3o.api.serialize import (
     DEFAULT_MAX_ROWS,
     MAX_ROWS,
@@ -27,6 +28,7 @@ from b3o.api.serialize import (
     request_error,
 )
 from b3o.derive.screen import aggregate
+from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.query.service import QueryService
 
 
@@ -340,6 +342,91 @@ def structure_payload(
             "legs": len(result.legs),
             "scenarios": 0 if result.scenarios is None else len(result.scenarios),
         },
+    )
+
+
+# --------------------------------------------------------------------------- #
+# F5.2 — busca de papel e glossário (leitura, sem escrita)
+# --------------------------------------------------------------------------- #
+
+
+def tickers_payload(
+    service: QueryService, q: str = "", max_rows: int | None = None
+) -> dict[str, Any]:
+    """`GET /api/tickers` — busca de papel na última sessão, capada em 60."""
+    result = service.search_tickers(q, max_rows=clamp_max_rows(max_rows))
+    data = {
+        "q": str(q or ""),
+        "rows": [jsonable(row) for row in result.rows],
+    }
+    return envelope(
+        data,
+        as_of_session=result.as_of_session,
+        model_version=result.model_version,
+        list_key="rows",
+        total=result.total,
+    )
+
+
+def _load_glossary() -> list[GlossaryEntry]:
+    """Leitura do arquivo na borda; ausência é `glossary_missing` explícito."""
+    path = glossary_path()
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SourceFailure(
+            SourceError(
+                code="glossary_missing",
+                message=f"glossário não encontrado em {path}",
+                hint=(
+                    "confira B3_GLOSSARY_PATH (default /app/docs/glossario.md) e se "
+                    "o Dockerfile copiou docs/glossario.md para a imagem"
+                ),
+            )
+        ) from exc
+    return parse_glossary(text)
+
+
+def glossary_payload(service: QueryService) -> dict[str, Any]:
+    """`GET /api/glossary` — índice `{key, title, level}` de todos os verbetes."""
+    entries = _load_glossary()
+    rows = [
+        {"key": entry.key, "title": entry.title, "level": entry.level}
+        for entry in entries[:MAX_ROWS]
+    ]
+    return envelope(
+        {"entries": rows},
+        as_of_session=service._session(None),
+        model_version=service._model_version_for(),
+        list_key="entries",
+        total=len(entries),
+    )
+
+
+def glossary_entry_payload(service: QueryService, key: str) -> dict[str, Any]:
+    """`GET /api/glossary/{key}` — o verbete completo; desconhecido é 404."""
+    entries = _load_glossary()
+    entry = next((item for item in entries if item.key == str(key).strip()), None)
+    if entry is None:
+        raise SourceFailure(
+            SourceError(
+                code="not_found",
+                message=f"verbete {key!r} não existe no glossário",
+                hint=(
+                    "veja as chaves em GET /api/glossary (slug do título: minúsculas, "
+                    "sem acento, pontuação vira '-')"
+                ),
+            )
+        )
+    return envelope(
+        {
+            "key": entry.key,
+            "title": entry.title,
+            "level": entry.level,
+            "body_md": entry.body_md,
+        },
+        as_of_session=service._session(None),
+        model_version=service._model_version_for(),
     )
 
 

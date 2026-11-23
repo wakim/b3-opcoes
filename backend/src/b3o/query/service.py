@@ -587,6 +587,32 @@ class ScreenBundle:
 
 
 @dataclass(frozen=True, slots=True)
+class TickerRow:
+    """Uma linha da busca de papel (F5.2): identidade + duas pertences.
+
+    `in_universe` vem do `prepare_state` (o corte de liquidez medido no prepare);
+    `has_options` é a presença de série `070`/`080` do papel **na última sessão**
+    (resolvida pelo ISIN, nunca pelo prefixo do ticker de opção). São fatos
+    distintos: um papel pode ter opção e estar fora do universo, e vice-versa.
+    """
+
+    ticker: str
+    corp_name: str
+    in_universe: bool
+    has_options: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TickerSearch:
+    """Resultado da busca + o total antes do corte de `max_rows` ( envelopes)."""
+
+    as_of_session: date
+    model_version: int
+    rows: list[TickerRow]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
 class TermRow:
     """Um vencimento na estrutura a termo do papel (F3.2).
 
@@ -1476,6 +1502,70 @@ class QueryService:
             rows=rows,
             outside_universe=sorted(set(metrics) - set(universe)),
             earnings_coverage_start=earnings_coverage_start,
+        )
+
+    def search_tickers(self, q: str = "", max_rows: int | None = None) -> TickerSearch:
+        """Busca de papel na última sessão (F5.2): `010`/`020` com nome e pertences.
+
+        Filtro case-insensitive: **prefixo primeiro** (ticker ou razão social),
+        depois "contém", cada faixa em ordem alfabética por ticker. `q` vazio
+        devolve os primeiros alfabéticos. O recorte de `max_rows` é posterior ao
+        filtro e `total` declara o tamanho antes dele — o envelope não mente.
+
+        O vínculo opção→papel é pelo ISIN (`_screen_option_map`), a mesma regra
+        do `screen`: prefixo de ticker de opção não identifica papel (PETR3 ×
+        PETR4 compartilham prefixo — AGENTS, armadilha 1).
+        """
+        session = self._session(None)
+        paths = self._partitions(session.year)
+        if not paths:
+            raise _missing_lake_failure(self.data_dir)
+        rows = self._fetch(
+            "SELECT DISTINCT ticker, corp_name FROM read_parquet(?) "
+            "WHERE refdate = ? AND tpmerc IN ('010', '020') ORDER BY ticker",
+            paths,
+            session,
+        )
+        spots = {str(ticker): str(name or "").strip() for ticker, name in rows}
+
+        _close, isin_to_ticker = self._screen_spots(session)
+        option_map = self._screen_option_map(session, isin_to_ticker)
+        with_options = set(option_map.values())
+        universe = set(load_prepare_state(self.data_dir).universe)
+
+        query = str(q or "").strip().upper()
+        matched: list[tuple[int, str, TickerRow]] = []
+        for ticker, corp_name in spots.items():
+            label = corp_name.upper()
+            if not query:
+                rank = 0
+            elif ticker.startswith(query) or label.startswith(query):
+                rank = 0
+            elif query in ticker or query in label:
+                rank = 1
+            else:
+                continue
+            matched.append(
+                (
+                    rank,
+                    ticker,
+                    TickerRow(
+                        ticker=ticker,
+                        corp_name=corp_name,
+                        in_universe=ticker in universe,
+                        has_options=ticker in with_options,
+                    ),
+                )
+            )
+        matched.sort(key=lambda item: (item[0], item[1]))
+        all_rows = [item[2] for item in matched]
+        total = len(all_rows)
+        limit = max(0, int(max_rows)) if max_rows is not None else None
+        return TickerSearch(
+            as_of_session=session,
+            model_version=self._model_version_for(),
+            rows=all_rows[:limit] if limit is not None else all_rows,
+            total=total,
         )
 
     # ---------------------- leituras do F3 (MCP/API) --------------------- #

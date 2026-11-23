@@ -52,6 +52,13 @@ log = logging.getLogger(__name__)
 FRONTEND_DIR_ENV = "B3_FRONTEND_DIR"
 """Caminho do `dist` (default `/app/frontend/dist` na imagem). Fora do config.yaml."""
 
+def _api_error(status_code: int, content: dict[str, Any]) -> JSONResponse:
+    """Erro HTTP no envelope, com o mesmo `no-cache` das rotas `/api`."""
+    return JSONResponse(
+        status_code=status_code, content=content, headers={"Cache-Control": "no-cache"}
+    )
+
+
 _API_HINT = (
     "rotas: /api/health, /api/screen, /api/tickers, /api/glossary, "
     "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, "
@@ -203,7 +210,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(SourceFailure)
     async def _source_failure(_request: Request, exc: SourceFailure) -> JSONResponse:
-        return JSONResponse(status_code=error_status(exc), content=error_payload(exc))
+        return _api_error(error_status(exc), error_payload(exc))
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(
@@ -220,7 +227,7 @@ def create_app() -> FastAPI:
             "use date ISO AAAA-MM-DD, inteiros para max_rows/days e floats para delta; "
             "os tipos estão em /api/openapi.json",
         )
-        return JSONResponse(status_code=400, content=error_payload(failure))
+        return _api_error(400, error_payload(failure))
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(
@@ -230,9 +237,9 @@ def create_app() -> FastAPI:
         code = {404: "not_found", 405: "method_not_allowed"}.get(
             exc.status_code, "http_error"
         )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={
+        return _api_error(
+            exc.status_code,
+            {
                 "error": {
                     "code": code,
                     "message": str(exc.detail),
@@ -244,7 +251,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def _unexpected(_request: Request, exc: Exception) -> JSONResponse:
         log.exception("api: falha inesperada")
-        return JSONResponse(status_code=500, content=error_payload(exc))
+        return _api_error(500, error_payload(exc))
 
     @app.get("/api/health")
     def api_health() -> dict[str, Any]:
@@ -257,6 +264,21 @@ def create_app() -> FastAPI:
     ) -> dict[str, Any]:
         """Painel descritivo da sessão (resumo + N primeiras linhas alfabéticas)."""
         return payloads.screen_payload(_service(), date=_date(date), max_rows=max_rows)
+
+    @app.get("/api/tickers")
+    def api_tickers(q: str = "", max_rows: int = DEFAULT_MAX_ROWS) -> dict[str, Any]:
+        """Busca de papel (prefixo primeiro, depois contém), capada em 60 linhas."""
+        return payloads.tickers_payload(_service(), q=q, max_rows=max_rows)
+
+    @app.get("/api/glossary")
+    def api_glossary() -> dict[str, Any]:
+        """Índice dos verbetes do glossário (chave, título, nível)."""
+        return payloads.glossary_payload(_service())
+
+    @app.get("/api/glossary/{key}")
+    def api_glossary_entry(key: str) -> dict[str, Any]:
+        """Um verbete do glossário; chave desconhecida é 404 no envelope."""
+        return payloads.glossary_entry_payload(_service(), key)
 
     @app.get("/api/t/{ticker}")
     def api_underlying(

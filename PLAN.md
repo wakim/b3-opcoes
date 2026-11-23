@@ -23,7 +23,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 |---|---|
 | Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…023) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5 (API + PWA), conforme o dono.** F4 fechado com parecer em `docs/relatorios/2026-11-23-revisao-f4.md`; contrato em `docs/contratos/onda-j.md`; prova em `backend/scripts/structure_smoke.py` (93/93). **Prompt da sessão 1 do F5 (F5-A: scaffold + API + cliente tipado) em `docs/prompts/f5-a.md`** — as sessões F5-B (visual/unslop), F5-C (builder + PWA offline) e F5-D (celular/Tailscale) estão no §10 dele. Pendências herdadas: porta 8080 do host ocupada por outro projeto (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas quando o `prepare` rodar de novo, `screen` sem paginação. |
+| Retomar em | **F5-B (visual + telas de leitura).** F5-A entregue: scaffold + FastAPI servindo a SPA + rotas `tickers`/`glossary` + cliente tipado + wireframe funcional (parecer em `docs/relatorios/2026-11-23-revisao-f5a.md`). F4 fechado em `docs/relatorios/2026-11-23-revisao-f4.md`; prompt original em `docs/prompts/f5-a.md`; as sessões F5-B (visual/unslop), F5-C (builder + PWA offline) e F5-D (celular/Tailscale) estão no §10 dele. Pendências herdadas: porta 8080 do host ocupada por outro projeto (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas quando o `prepare` rodar de novo, `screen` sem paginação. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -302,6 +302,21 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F5.7 | PWA com `vite-plugin-pwa`: manifest, precache do shell, `NetworkFirst` em `/api`, offline com carimbo | 2 h |
 | F5.8 | Dockerfile multi-stage (Node build → imagem final Python) — já existe desde o F0.1b; aqui entra o estágio `web` | 1.5 h |
 | F5.9 | `tailscale serve` + instalação no celular + teste de offline | 1 h |
+
+### F5-A — sessão 1 de 4 (infraestrutura + API + cliente tipado + wireframe)
+
+Contrato em `docs/prompts/f5-a.md`; ADR-029…032. Critérios provados com saída colada no parecer `docs/relatorios/2026-11-23-revisao-f5a.md`:
+
+- [x] `podman compose config` válido; `podman compose --profile build run --rm web` gera `frontend/dist` no `node:26-slim` (sem Node no host); `podman compose build app` (com o estágio web) e `up -d app` em `B3_APP_PORT=8081`.
+- [x] `GET /` e `GET /t/PETR4` devolvem o **mesmo** HTML com carimbo; `/api/health` segue JSON com `model_version 2`; `/mcp` intacto (`mcp_smoke.py` **53/53**, `structure_smoke.py` **93/93**).
+- [x] Headers: `index.html` `no-store`; `/assets/*` `immutable`; `/api/*` `no-cache` (inclusive erros); gzip em HTML/JSON/JS; asset inexistente → 404; `dist` ausente → 503 `frontend_missing` (com dica).
+- [x] `GET /api/tickers?q=PETR` → PETR3/PETR4 com `in_universe`/`has_options`, envelope e ≤ 60; `GET /api/glossary` → 30 verbetes (≥ 20); `GET /api/glossary/iv-atm-30d` → texto do verbete; chave desconhecida → 404 `not_found`.
+- [x] `npm run lint` e `tsc --noEmit` limpos no container; duas builds seguidas → hashes idênticos; **só** `frontend/src/lib/api.ts` contém `fetch` (grep).
+- [x] `uv.lock` intacto; `git diff` de `metrics/ingest/store/derive` existente = vazio; `model_version` 2; `b3o health`, `b3o screen --date 2026-11-19` e `b3o struct` intactos.
+- [x] Zero escrita em `data/` por GET; zero vocabulário preditivo novo; sem biblioteca de gráfico; sem SSR/servidor no frontend.
+- [x] ADRs 029–032 (stack/dispatcher/glossário/cliente), armadilhas no `AGENTS.md`, `README.md` com os comandos e push por pacote verde.
+
+**Não entregue aqui (escopo das próximas sessões):** 9 passes do unslop/desenho final, sheet de métrica e gráficos (F5-B); builder de estrutura, Carteira/Diário reais e PWA/offline (F5-C); Tailscale/instalação no celular (F5-D). Os placeholders de Carteira/Diário dizem "F6" explicitamente.
 
 **Aceitação F5**
 - [ ] instalado no celular pelo domínio `*.ts.net` (HTTPS)

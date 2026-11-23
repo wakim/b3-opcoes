@@ -323,6 +323,51 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** a tool **avalia a estrutura dada** — não sugere, não compara, não ordena; `signal_class` não é lido. O resumo do CLI e o payload HTTP/MCP saem do **mesmo** `payloads.structure_payload` (o número não pode divergir entre bordas). Erros novos (`bad_legs`, `underlying_mismatch`, `maturity_mismatch`) entram no mapa de status do envelope (400) e os de dado seguem 404.
 - **Revisar em:** F5 (builder da UI) e F6 (posições — onde o preço de entrada deixa de ser o da sessão e vira `entry_brl`).
 
+## ADR-029 — F5: stack do frontend e versões auditadas (ADR-008)
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** baixo (lock + scaffold)
+- **Contexto:** o F5.0 precisava fixar a stack da SPA. ADR-008 exige a última **estável** de cada biblioteca; o host não tem Node, então a auditoria foi feita com `npm view <pkg> version` **dentro do `node:26-slim`**.
+- **Decisão:** React **19.3.1**, `react-dom` 19.3.1, `@tanstack/react-router` **1.170.46**, `@tanstack/router-plugin` **1.169.0**, `@tanstack/react-query` **5.108.4**, Tailwind **4.3.5** + `@tailwindcss/vite` 4.3.5, Vite **8.3.8**, ESLint **10.15.0**, `@eslint/js` 10.0.1, `typescript-eslint` **8.74.0**, `eslint-plugin-react-hooks` 7.1.1, `globals` 17.14.0, `@types/react`/`@types/react-dom` 19.3.0. **TypeScript 5.9.3**, não o `latest` 7.0.2: o `typescript-eslint` estável mais novo declara peer `typescript >=4.8.4 <6.1.0`, e a única versão compatível com TS 7 é a canary `8.74.1-alpha.0` (não estável). 5.9.3 é a última 5.x estável que fecha a cadeia sem `--legacy-peer-deps`. `package-lock.json` versionado; build com `npm ci`; `node_modules` no volume nomeado `b3o-node-modules`.
+- **Por quê:** ADR-008 (última estável) aplicado com o critério de **compatibilidade entre estáveis**; forçar TS 7 exigiria downgrade do lint para alpha, o que é mais frágil que ficar uma major atrás no compilador.
+- **Consequência:** `npm run lint` e `tsc --noEmit` limpos no container; avisos `[MODULE_LEVEL_DIRECTIVE] "use client"` do Rolldown (Vite 8) são cosméticos em SPA pura (não há RSC). `routeTree.gen.ts` é versionado para que `tsc --noEmit` funcione em checkout limpo.
+- **Revisar em:** quando houver `typescript-eslint` estável compatível com TS 7 (então subir o compilador); ou F5-B se alguma lib travar.
+
+## ADR-030 — F5: um processo, dispatcher `/mcp` × SPA, cache e `X-App-Token` adiado
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** médio (montagem do app)
+- **Contexto:** o app MCP é montado em `/` (`streamable_http_path="/mcp"`) desde o F3. Montar `StaticFiles` também em `/` faria um engolir o outro. Além disso, `@app.middleware("http")` usa `BaseHTTPMiddleware`, que quebra streaming — e os smokes F3/F4 (53/53, 93/93) têm de continuar intactos.
+- **Decisão:**
+  1. Um **dispatcher ASGI** montado em `/` decide por caminho: `/mcp*` → `mcp_app`; resto → `dist` do Vite. Rotas `/api` registradas **antes** do mount. Nenhum segundo processo/servidor.
+  2. SPA fallback: caminho sem extensão (inclusive `/t/PETR4`) → `index.html`; asset com extensão inexistente → **404** (nunca o shell). `index.html` `no-store`; `/assets/*` `immutable`; `/api` (sucesso **e** erro) `no-cache`. `GZipMiddleware` é ASGI puro — seguro para o MCP.
+  3. O carimbo `sessão AAAA-MM-DD · D-1` vem de `/api/health` na tela; o dispatcher também injeta a última sessão do lake no `<meta name="b3o-session">` do `index.html` (uma leitura no lifespan), para um `GET /` já trazer o carimbo sem JS.
+  4. `dist` ausente → **503 `frontend_missing`** com dica do build, nunca página em branco. Caminho por env `B3_FRONTEND_DIR` (fora do `config.yaml`, que tem quatro chaves fechadas — `bad_config` se mudar).
+  5. **`X-App-Token` fica para o F6**: nesta versão não existe rota de escrita, então não há o que proteger. `POST /api/structure` continua sendo cálculo puro.
+- **Por quê:** menor escopo e mais reversível; o dispatcher resolve a armadilha do mount sem tocar no transporte MCP nem no envelope.
+- **Consequência:** HTTP e MCP seguem na mesma porta e na mesma `QueryService`; `mcp_smoke.py` 53/53 e `structure_smoke.py` 93/93 inalterados. Static servido pelo FastAPI, sem servidor no frontend.
+- **Revisar em:** F6 (introduzir `X-App-Token` junto da primeira rota que grava); F5-D (`allowed_hosts` com `*.ts.net`).
+
+## ADR-031 — F5: glossário com fonte única e parser puro
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** baixo (um arquivo de parser)
+- **Contexto:** `/api/glossary` e `/api/glossary/{key}` precisam servir verbetes sem duplicar conteúdo em Python. `.dockerignore` exclui `docs/` e `*.md`, então o arquivo não entraria na imagem. A spec §9 prevê "verbete + exemplo com o dado da sessão" — injetar o número do dia no texto é uma fonte nova de divergência.
+- **Decisão:**
+  1. Fonte única `docs/glossario.md`; `.dockerignore` re-inclui só esse arquivo (`docs/*` + `!docs/glossario.md` **depois** do `*.md`) e o Dockerfile o copia para `/app/docs/glossario.md`. Caminho por env `B3_GLOSSARY_PATH`; ausência → `503 glossary_missing`.
+  2. `api/glossary.py` é **puro**: `parse_glossario(texto) -> verbetes`. A leitura do arquivo fica na borda (`payloads._load_glossary`). `# Nível N` troca o nível; `## Título` abre verbete; `key` = slug (minúsculas, sem acento, pontuação → `-`): "IV ATM 30d" → `iv-atm-30d`, "Preço (spot / fechamento)" → `preco-spot-fechamento`.
+  3. **Desvio declarado da spec §9:** nesta versão **não** há injeção de exemplo da sessão no `body_md` — o texto é servido como está. A ficha com "o número de hoje" é trabalho da F5-B (sheet de métrica).
+  4. O verbete "Taxa histórica do sinal" está marcado "**Fora do produto**" no próprio `glossario.md` (ADR-023/024): o parser o **omite** para que o glossário servido seja descritivo. Os 30 restantes são servidos. As palavras "caro/barato" que aparecem nos verbetes de IV rank/z-score/estrutura a termo são **prosa explicativa pré-existente** ("caro para este papel, no seu próprio histórico", com o aviso "contexto, não gatilho"), não classe de sinal nem recomendação — o arquivo não foi editado.
+- **Por quê:** uma fonte só evita divergência entre doc e API; parser puro é testável no texto; omitir o verbete fora do produto cumpre o ADR-024 sem reescrever o documento do dono.
+- **Consequência:** `/api/glossary` devolve `{key, title, level}` (30 verbetes, ≤ 60); `/api/glossary/{key}` devolve `{key, title, level, body_md}`; chave desconhecida é `404 not_found`. Nenhum número da sessão entra no texto.
+- **Revisar em:** F5-B (sheet de métrica com o número do dia) e se o dono quiser o verbete do portão no app (decisão dele, ADR-023).
+
+## ADR-032 — F5: cliente tipado escrito à mão, `fetch` único
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** baixo (um arquivo)
+- **Contexto:** os endpoints do F3/F4 devolvem `dict` genérico, então `/api/openapi.json` não traz schema útil para geração de tipos. A stack precisa de um contrato único entre API e UI.
+- **Decisão:** `frontend/src/lib/api.ts` é o **único** arquivo com `fetch` e com os tipos (`Envelope<T>`, `Health`, `Screen*`, `Underlying`/`Term`/`Smile`/`History`, `ChainRow`, `SeriesDetail`, `Events`, `Structure`, `TickerRow`, `Glossary*`), escritos à mão a partir do OpenAPI + contratos onda-i/onda-j. `apiGet` trata status HTTP, envelope de erro (`ApiError` com `code`/`message`/`hint`) e avisa quando `meta.truncated`; `apiPost` existe apenas para o cálculo de `POST /api/structure`. `VITE_API_BASE` default vazio (mesma origem). TanStack Query no `__root`: 60 s para leitura de sessão, 1 h para glossário/tickers.
+- **Por quê:** gerador não agregaria valor sobre `dict`; um único arquivo torna divergência de contrato impossível de esconder e é onde o grep de `fetch` procura.
+- **Consequência:** nenhum componente chama `fetch` direto; erros `not_found` e de rede viram estados explícitos na tela (F5.3).
+- **Revisar em:** se as rotas passarem a declarar modelos Pydantic com schema (aí gerar a partir do OpenAPI passa a valer a pena).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

@@ -10,9 +10,9 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões (ADR-001…028) |
-| Código | 🟢 **F0–F4 completos** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events, structure_eval) e `b3o struct` (payoff, breakevens, capital, gregas e cenários da estrutura dada). F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F5 (API+PWA)**, conforme o dono — F4 fechado com parecer em `docs/relatorios/2026-11-23-revisao-f4.md` |
+| Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões (ADR-001…032) |
+| Código | 🟢 **F0–F4 completos + F5-A entregue** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events, structure_eval) e `b3o struct` (payoff, breakevens, capital, gregas e cenários da estrutura dada). F5-A acrescenta a SPA servida pelo FastAPI (dispatcher `/mcp` × estático), `/api/tickers`, `/api/glossary`, cliente tipado e wireframe funcional. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F5-B (visual + unslop)** — F5-A fechado com parecer em `docs/relatorios/2026-11-23-revisao-f5a.md` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
@@ -41,7 +41,7 @@ O trabalho segue o [`PLAN.md`](PLAN.md), fase por fase. O caminho oficial de exe
 
 ```
 backend/     Python: pyproject.toml, uv.lock, config.yaml, src/b3o/, scripts/
-frontend/    Node/Vite (entra no F5.0) — SPA servida estática pelo FastAPI
+frontend/    Node/Vite — SPA servida estática pelo FastAPI (F5-A)
 data/        lake Parquet + journal (fora do git)
 docs/        spec, decisões, contratos, glossário, relatórios
 compose.yaml · Dockerfile · PLAN.md · AGENTS.md · README.md
@@ -100,7 +100,17 @@ decisão.
 Frontend: **Vite + React + TypeScript + TanStack Router/Query** (SPA pura), em `frontend/`. Build no serviço `web`:
 
 ```powershell
-podman compose run --rm web     # gera frontend/dist, que o FastAPI serve
+# build oficial (no container node:26-slim) — gera frontend/dist, servido pelo FastAPI
+podman compose --profile build run --rm web
+# lint + checagem de tipos (também no container)
+podman compose --profile build run --rm --entrypoint sh web -c "npm run lint && npm run typecheck"
+# dev server opcional (não é o caminho oficial de build)
+podman compose --profile dev up web-dev
 ```
+
+A SPA tem seis rotas file-based em `frontend/src/routes/`: Hoje, Carteira, Diário,
+Aprender e os drill-downs Ticker/Série. Nesta sessão Carteira e Diário são
+placeholders explícitos ("F6"); o desenho final com os 9 passes do unslop, os
+gráficos SVG, o builder de estrutura e o modo offline vêm em F5-B/F5-C.
 
 Os serviços e as regras do ambiente estão na spec (§4.1) e em [`PLAN.md`](PLAN.md#ambiente).

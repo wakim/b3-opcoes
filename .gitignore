@@ -12,8 +12,8 @@ __pycache__/
 
 # node / frontend
 node_modules/
-web/dist/
-web/.vite/
+frontend/dist/
+frontend/.vite/
 *.tsbuildinfo
 
 # container

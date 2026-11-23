@@ -68,7 +68,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | ID | Tarefa | Est. |
 |---|---|---|
 | F0.0 | `git init` + `.gitignore` (data, .venv, __pycache__, *.db) + primeiro commit dos docs | 15 min |
-| F0.1 | Esqueleto `uv`: `pyproject.toml` (**com `uv.lock` versionado**), `src/b3o/`, `config.yaml`, `data/.gitkeep`, `pytest` + `tests/` | 30 min |
+| F0.1 | Esqueleto `uv`: `pyproject.toml` (**com `uv.lock` versionado**), `backend/src/b3o/`, `config.yaml`, `data/.gitkeep`, `pytest` + `tests/` (removidos no ADR-019) | 30 min |
 | F0.1b | **Stack em container:** `compose.yaml` (spec §4.1) + `Dockerfile` multi-stage (`runtime` sem deps de dev, `dev` com elas, estágio `node` para o futuro `web/dist`), serviços `app`/`test`/`dev`/`prepare`/`prepare-watch`, `./data:/data`, volumes nomeados; `podman compose config` válido e `podman compose run --rm test pytest` rodando | 2 h |
 | F0.2 | `fetch.py`: download condicional (`ETag` / `If-Modified-Since` → 304), retry, timeout, cache em `data/raw/` | 1 h |
 | F0.3 | `parse.py`: COTAHIST streaming, latin-1, 245 bytes, filtro de mercados (010/020/070/080/012/013), preços em centavos | 2 h |
@@ -225,11 +225,11 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | ID | Tarefa | Est. |
 |---|---|---|
-| F5.0 | Scaffold `web/`: **Vite + React + TS + TanStack Router (file-based) + TanStack Query + Tailwind v4**; serviços `web` (build one-shot) e `web-dev` (Vite) no compose | 1.5 h |
-| F5.1 | FastAPI: `/api/health`, gzip, cache HTTP, `X-App-Token` nas escritas, estático de `web/dist` | 1.5 h |
+| F5.0 | Scaffold `frontend/`: **Vite + React + TS + TanStack Router (file-based) + TanStack Query + Tailwind v4**; serviços `web` (build one-shot) e `web-dev` (Vite) no compose | 1.5 h |
+| F5.1 | FastAPI: `/api/health`, gzip, cache HTTP, `X-App-Token` nas escritas, estático de `frontend/dist` | 1.5 h |
 | F5.2 | rotas do backend (screen, tickers, ticker, chain, series, glossary, structure) | 2 h |
 | F5.3 | Router: 4 destinos + 2 drill-downs + sheet de métrica | 2 h |
-| F5.4 | cliente tipado da API (`web/src/lib/api.ts`) + TanStack Query (cache, erro, offline) | 1.5 h |
+| F5.4 | cliente tipado da API (`frontend/src/lib/api.ts`) + TanStack Query (cache, erro, offline) | 1.5 h |
 | F5.5 | componentes base (cartões, régua, cadeia put·strike·call, gráficos SVG) aplicando os 9 passes do unslop | 4 h |
 | F5.6 | builder de estrutura (toque nas pernas → prêmio e breakeven) | 1.5 h |
 | F5.7 | PWA com `vite-plugin-pwa`: manifest, precache do shell, `NetworkFirst` em `/api`, offline com carimbo | 2 h |

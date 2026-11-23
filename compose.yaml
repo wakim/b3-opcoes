@@ -34,8 +34,9 @@ services:
     volumes:
       - ./data:/data
       # código bind para iteração rápida; .venv vive na imagem, nunca no bind (ADR-003)
-      - ./src:/app/src
-      - ./config.yaml:/app/config.yaml
+      - ./backend/src:/app/src
+      - ./backend/scripts:/app/scripts
+      - ./backend/config.yaml:/app/config.yaml
     command: ["b3o", "--help"]
 
   # backend com --reload (profile dev)
@@ -49,8 +50,8 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - ./data:/data
-      - ./src:/app/src
-      - ./config.yaml:/app/config.yaml
+      - ./backend/src:/app/src
+      - ./backend/config.yaml:/app/config.yaml
     command: ["uvicorn", "b3o.api:app", "--reload", "--host", "0.0.0.0", "--port", "8080"]
 
   # one-shot: baixa e deriva (b3o prepare)
@@ -65,9 +66,9 @@ services:
     profiles: [watch]
     command: ["b3o", "prepare", "--watch"]
 
-  # build do frontend (inerte até o F5.0 — não tem web/ ainda)
+  # build do frontend (inerte até o F5.0 — não tem frontend/ ainda)
   web:
     image: node:26-slim
     profiles: [build]
-    working_dir: /web
-    command: ["sh", "-c", "echo 'web build entra no F5.0 (npm ci && npm run build)'; exit 0"]
+    working_dir: /frontend
+    command: ["sh", "-c", "echo 'build do frontend entra no F5.0 (npm ci && npm run build)'; exit 0"]

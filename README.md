@@ -37,6 +37,21 @@ O trabalho segue o [`PLAN.md`](PLAN.md), fase por fase. O caminho oficial de exe
 
 ---
 
+## Estrutura
+
+```
+backend/     Python: pyproject.toml, uv.lock, config.yaml, src/b3o/, scripts/
+frontend/    Node/Vite (entra no F5.0) — SPA servida estática pelo FastAPI
+data/        lake Parquet + journal (fora do git)
+docs/        spec, decisões, contratos, glossário, relatórios
+compose.yaml · Dockerfile · PLAN.md · AGENTS.md · README.md
+```
+
+Backend e frontend são projetos separados, cada um com seu lock e seu build; o que os
+liga é o `compose.yaml` (e, em produção, o mesmo processo FastAPI servindo `/api` e `/mcp`).
+
+---
+
 ## A ideia em uma tela
 
 ```
@@ -64,10 +79,10 @@ podman compose up -d app                 # app + MCP (/mcp) em 127.0.0.1:8080
 tailscale serve --bg --https=443 http://127.0.0.1:8080
 ```
 
-Frontend: **Vite + React + TypeScript + TanStack Router/Query** (SPA pura), em `web/`. Build no serviço `web`:
+Frontend: **Vite + React + TypeScript + TanStack Router/Query** (SPA pura), em `frontend/`. Build no serviço `web`:
 
 ```powershell
-podman compose run --rm web     # gera web/dist, que o FastAPI serve
+podman compose run --rm web     # gera frontend/dist, que o FastAPI serve
 ```
 
 Os serviços e as regras do ambiente estão na spec (§4.1) e em [`PLAN.md`](PLAN.md#ambiente).

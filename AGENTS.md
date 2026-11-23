@@ -130,7 +130,8 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 - **Repositório e push:** `origin` = `git@github.com:wakim/b3-opcoes.git`, branch `master`, autenticação por **SSH** (`~/.ssh/id_ed25519`, sem token no disco). O dono criou o repositório e pediu o envio em 22/11/2026: commit por pacote **e** push depois de cada pacote verde. `data/` e `out/` ficam fora do git (`.gitignore`): relatório de sessão, de liquidez e `backtest.md` são artefato local, não commit.
 
 - **O projeto NÃO tem suíte de testes** (diretiva do dono, 22/11/2026 — ADR-019): `tests/` foi removido, `pytest` saiu das deps e do caminho oficial. Validar é rodar no **dado real** (`b3o prepare`, `b3o health`, `b3o metrics`, `b3o backtest`), conferir 1 número à mão por um caminho independente e comparar com medição já registrada aqui. Não crie `tests/` de novo sem o dono pedir.
-- Python 3.15, `uv`, layout `src/b3o/`.
+- **Monorepo por aplicação:** `backend/` (Python: `pyproject.toml`, `uv.lock`, `config.yaml`, `src/b3o/`, `scripts/`) e `frontend/` (Node/Vite) na raiz; `data/` (lake), `docs/` e os arquivos de orquestração (`compose.yaml`, `Dockerfile`, `README.md`, `AGENTS.md`, `PLAN.md`) ficam compartilhados no topo. Nada de código de app na raiz. O `compose.yaml` continua no topo e **todo comando `podman compose`/`docker compose` roda da raiz** (o contexto de build é `.`, e o Dockerfile referencia `backend/…`); dentro da imagem o backend mora em `/app` e o frontend em `/frontend`. Contratos de onda anteriores a 22/11 citam `src/b3o/` — o caminho hoje é `backend/src/b3o/`.
+- Python 3.15, `uv`, layout `backend/src/b3o/`; o projeto `uv` é `backend/` (o `uv lock` roda lá).
 - **Tudo roda em container** (`compose.yaml`, spec §4.1). Nenhum comando oficial usa `uv`/Python/Node do host: `podman compose run --rm test b3o health`, `podman compose run --rm prepare`. Se um comando só funciona no host, ele está errado.
 - Runner: `podman compose` (o host não tem Docker). O `compose.yaml` é compose padrão — nunca usar extensão exclusiva do Podman, para que `docker compose` funcione em outra máquina.
 - `uv.lock` é versionado e a imagem instala com `uv sync --frozen`: sem lock atualizado a build quebra de propósito.
@@ -145,11 +146,11 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 
 ## Frontend
 
-- **Vite + React + TypeScript + TanStack Router (file-based) + TanStack Query**, SPA pura, `web/` na raiz. Sem TanStack Start nem qualquer framework com servidor.
-- Rotas em `web/src/routes/`, um arquivo por tela: `index` (Hoje), `carteira`, `diario`, `aprender`, `t.$ticker`, `s.$ticker.$maturity`.
+- **Vite + React + TypeScript + TanStack Router (file-based) + TanStack Query**, SPA pura, `frontend/` na raiz. Sem TanStack Start nem qualquer framework com servidor.
+- Rotas em `frontend/src/routes/`, um arquivo por tela: `index` (Hoje), `carteira`, `diario`, `aprender`, `t.$ticker`, `s.$ticker.$maturity`.
 - Dados via **TanStack Query** sobre `/api`; nada de `fetch` solto em componente.
 - O backend é um só (FastAPI). Se o frontend ganhar lógica de servidor, a regra da `QueryService` única morre — por isso a stack não tem servidor.
-- Tipos da API em **um** arquivo de contrato (`web/src/lib/api.ts`), gerado ou escrito à mão a partir de `/api/openapi.json`. Divergência entre tipo e resposta é bug de contrato.
+- Tipos da API em **um** arquivo de contrato (`frontend/src/lib/api.ts`), gerado ou escrito à mão a partir de `/api/openapi.json`. Divergência entre tipo e resposta é bug de contrato.
 - Gráficos em **SVG inline** (os mesmos do mockup). Não adicionar biblioteca de gráfico.
 - Build oficial **sempre no container** (`node:26-slim`, serviço `web` do compose). No hospedeiro não há Node. Para `npm run dev`, usar o serviço `web-dev` com `CHOKIDAR_USEPOLLING=1` (vigilância de arquivo entre volumes no Windows é lenta).
 - `npm run lint` + `tsc --noEmit` antes de considerar uma tarefa pronta.

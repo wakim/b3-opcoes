@@ -82,7 +82,7 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 [app] FastAPI long-lived, 127.0.0.1:8080
   /mcp    MCP Streamable HTTP            (agente, read-only)
   /api/*  JSON                            (PWA)
-  /       estático de web/dist            (build Vite, gerado no estágio Node)
+  /       estático de frontend/dist       (build Vite, gerado no estágio Node)
 ```
 
 ### 4.1 Serviços do `compose.yaml`
@@ -91,10 +91,10 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 |---|---|---|---|
 | `app` | — | `target: runtime` | FastAPI + `/mcp`, `127.0.0.1:8080`, sem deps de dev |
 | `test` | — | `target: dev` | container de ferramentas: `b3o …`, `python`, `ruff` (não há suíte de testes — ADR-019) |
-| `dev` | `dev` | `target: dev` | `uvicorn --reload` com `src/`, `tests/` e `config.yaml` montados |
+| `dev` | `dev` | `target: dev` | `uvicorn --reload` com `backend/src/` e `backend/config.yaml` montados |
 | `prepare` | `jobs` | `target: runtime` | one-shot `b3o prepare` |
 | `prepare-watch` | `watch` | `target: runtime` | `b3o prepare --watch`, diário às 21:30 BRT |
-| `web` | `build` | `node:26-slim` | `npm ci && npm run build` → `web/dist` (entra no F5.0) |
+| `web` | `build` | `node:26-slim` | `npm ci && npm run build` → `frontend/dist` (entra no F5.0) |
 | `web-dev` | `dev` | `node:26-slim` | Vite em `127.0.0.1:5173`, proxy de `/api` (entra no F5.0) |
 
 Regras do ambiente:
@@ -105,7 +105,7 @@ Regras do ambiente:
 - `.env` opcional (`env_file` com `required: false`): `APP_TOKEN`, `B3_DATA_DIR`, `LOG_LEVEL`.
 - `app`, `prepare` e `prepare-watch` compartilham a **mesma** imagem: um `model_version` só, sem duas cópias do cálculo.
 - Limite do motor nesta máquina: 8 vCPU e ~3,7 GiB de RAM. Ingestão é streaming (nunca carregar o TXT inteiro em memória) e o pico de RSS entra no `health`.
-- `web/dist` é gerado no container e servido pelo FastAPI; `web/` não tem servidor.
+- `frontend/dist` é gerado no container e servido pelo FastAPI; `frontend/` não tem servidor.
 
 O COTAHIST anual do ano corrente chega **inteiro** a cada dia. Por isso não há append nem lógica de "sessão republicada": a partição do ano é reparseada e substituída por inteiro (segundos). A idempotência vem de graça.
 

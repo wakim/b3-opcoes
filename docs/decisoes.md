@@ -306,6 +306,23 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** o termo é descritivo e reproduzível; quem precisa do número oficial de 30d continua lendo `summary.forward_30d`/`exp_move_1s_30d`. `docs/glossario.md` registra a diferença.
 - **Revisar em:** se o dono pedir o backtest como leitura histórica explícita (nova rota read-only, com aviso do portão) ou no F4 (estruturas), que reusa o forward do termo.
 
+## ADR-028 — F4: `structure_eval` descritivo — unidades, payoff, capital e cenários
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** baixo (cálculo on-demand; nada é gravado)
+- **Contexto:** a spec §7 fixa `structure_eval(legs, date=None, capital=None, scenarios=True)` e proíbe margem e PoP/RND; o ADR-017 fixa o preço de inversão (fechamento) e o ADR-023/024 fixam o produto como descritivo. O que não estava fechado: a **unidade de `quantity`**, o que entra no "prêmio líquido", o sinal da perda/ganho máximo, o que é "capital comprometido", a grade de cenários e como versionar a matemática nova sem tocar `model_version`.
+- **Decisão:**
+  1. `quantity` é **número inteiro de ações** (1 contrato = 100). Preço por ação = `metrics_series.mid` da sessão (ADR-017); perna de ação = fechamento do `010`/`020`. **Nenhum lote é inventado e nada é multiplicado por 100.**
+  2. A ação entra no cálculo como perna de valor terminal `s` e fluxo de abertura `preço_da_sessão × quantity`. Isso faz `net_premium_brl` ser o **fluxo líquido de entrada**: positivo = débito pago, negativo = crédito recebido. A coberta tem breakeven `S₀ − prêmio da call`, como à mão.
+  3. `max_loss_brl`/`max_gain_brl` são **magnitudes ≥ 0** (0 = "não perde"/"não ganha"); o sinal vive no payoff e nos cenários. `null` **só** quando ilimitado, junto de `unbounded_loss`/`unbounded_gain`.
+  4. `capital_committed_brl` = débito líquido em estrutura de débito; perda máxima em estrutura de crédito/risco definido; `null` quando ilimitado. **Sem margem** (não está no dado; aproximação errada é pior que ausência). `capital` informado é orçamento: `capital_over: true` quando o comprometido passa dele — **não é erro**.
+  5. Breakevens são **raízes lineares por segmento** em `s ≥ 0`, inclusive no trecho ilimitado (`slope∞ = Σ sinal×quantity` sobre ação e calls); perda/ganho máximo = mínimo/máximo do payoff nos kinks + `s = 0`, com o limite assintótico quando a inclinação não é zero.
+  6. Cenários: grade fixa de **45 pontos** = 5 spots (`0,8–1,2 × S`) × 3 choques de IV (`−5/0/+5` pts) × 3 horizontes (`0/7/15` dias úteis). Opção reaprecificada com **Black-76 de `derive/iv.py`**, `F' = F·S'/S`, `σ' = (iv_pct + choque)/100`, `T' = max(t − dias/252, 0)`; em `T' = 0` vale o intrínseco; `DF` restante sai da curva da sessão (`log_df_interp_or_none`). Insumo faltando → **`scenarios = null`** + `scenarios_unavailable` e a causa (`forward_unavailable`/`no_rates`/`no_iv`); o payoff no vencimento continua.
+  7. `structure_version = 1` no módulo, **separado de `model_version`** (que segue 2): a matemática nova é pura, on-demand, e não recalcula nem regrava métrica. `POST /api/structure` é **cálculo, não gravação** — não há estrutura persistida, journal ou posição nesta onda.
+  8. Faixa `mid ± ½ spread` (PLAN F4.1) por perna de opção quando os dois lados do book existem; sem book → `null` (nunca 0). A perna de ação fica sem faixa nesta onda (o `_spot_brl` lê o close).
+- **Por quê:** menor escopo e mais reversível; tudo reusa as funções puras já validadas (`iv`, `greeks` via leitura, `forward`, `conventions`, `dist`); unidade em ações é a única que não inventa contrato; e o "sem margem" é explícito da spec.
+- **Consequência:** a tool **avalia a estrutura dada** — não sugere, não compara, não ordena; `signal_class` não é lido. O resumo do CLI e o payload HTTP/MCP saem do **mesmo** `payloads.structure_payload` (o número não pode divergir entre bordas). Erros novos (`bad_legs`, `underlying_mismatch`, `maturity_mismatch`) entram no mapa de status do envelope (400) e os de dado seguem 404.
+- **Revisar em:** F5 (builder da UI) e F6 (posições — onde o preço de entrada deixa de ser o da sessão e vira `entry_brl`).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

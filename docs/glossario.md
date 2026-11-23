@@ -76,6 +76,30 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 **No painel** — `Δ −0,41`: se a ação cair R$ 1,00, o prêmio sobe ~R$ 0,41 (na primeira ordem).
 
+## Prêmio líquido de uma estrutura
+
+**O que é** — a soma do que você paga (pernas compradas) e recebe (pernas vendidas) para montar a estrutura, **por ação × quantidade**. Positivo = **débito** (você pagou); negativo = **crédito** (você recebeu).
+
+**Erro comum** — esquecer que a perna de ação também é caixa. Numa coberta, o "prêmio" da estrutura é o que você gastou comprando as 100 ações **menos** o que recebeu vendendo a call; ignorar a compra da ação faz o breakeven sair R$ 42,67 acima do real. Outro erro é tratar quantidade como contrato: a conta é em **ações** (1 contrato = 100 ações), e o preço é por ação.
+
+**Na estrutura (F4)** — `net_premium_brl` soma as pernas com o sinal do lado; é o fluxo de caixa de entrada. Na coberta de PETR4 em 19/11: `100 × 42,67 − 100 × 1,58 = R$ 4.109,00` de débito.
+
+## Payoff no vencimento
+
+**O que é** — o resultado da estrutura se o papel fechar em cada preço possível no vencimento: valor terminal de cada perna (ação = `S`; call = `max(S−K,0)`; put = `max(K−S,0)`) menos o prêmio líquido.
+
+**Erro comum** — ler payoff como previsão. É uma **função determinística do preço no vencimento**, não uma expectativa. E ele ignora o caminho: dois cenários com o mesmo `S` final podem ter P&L bem diferente antes do vencimento (é para isso que existem os cenários com tempo).
+
+**Na estrutura (F4)** — `payoff` traz pontos `spot_brl × pnl_brl`; `pnl_brl` é o P&L da estrutura naquele preço. A curva é desenhada com 41 pontos base entre `0,6·S` e `1,4·S`, mais os strikes e os breakevens.
+
+## Breakeven
+
+**O que é** — o(s) preço(s) do papel no vencimento em que a estrutura empata (`P&L = 0`). Pode haver dois (straddle), um (coberta, travas) ou nenhum.
+
+**Erro comum** — achar que breakeven é "o alvo". Ele é o ponto de indiferença; a estrutura pode empatar e continuar perdendo por custo de saída (spread). Estrutura com perda ilimitada **também tem breakeven** — o que não tem limite é a perda, não a raiz.
+
+**Na estrutura (F4)** — `breakeven_brl` lista as raízes em ordem crescente. Straddle de PETR4 em 19/11 (K 43,16, prêmio 3,15): `40,01` e `46,31`.
+
 ---
 
 # Nível 2 — o que dá contexto
@@ -146,6 +170,30 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 **No painel** — `28,4 (nov) / 30,1 (dez) / 31,8 (jan)`: contango normal, sem evento concentrado no curto prazo.
 
+## Perda máxima, ganho máximo e capital comprometido
+
+**O que é** — o pior e o melhor P&L possíveis no vencimento, e quanto de dinheiro a estrutura exige para existir. Perda/ganho máximo aparecem como **magnitude** (quanto se perde/ganha); `null` só quando o lado é **ilimitado** (call vendida nua perde sem limite; call comprada ganha sem limite). **Capital comprometido** é o débito pago numa estrutura de débito e a perda máxima numa de crédito.
+
+**Erro comum** — chamar capital comprometido de "margem". Não é: margem é exigência de corretora, depende de conta e de regra de bolsa, e **não está no dado**. O número aqui é só o caixa em risco na estrutura, sem alavancagem. Também é erro achar que short put é risco ilimitado: a ação não vai abaixo de zero, então a perda é finita.
+
+**Na estrutura (F4)** — coberta em PETR4: perda máxima `R$ 4.109,00`, ganho máximo `R$ 207,00`, capital `R$ 4.109,00`. Call vendida nua: `max_loss_brl: null` + `unbounded_loss`. Com `capital` abaixo do comprometido, a resposta diz `capital_over: true` (não é erro).
+
+## Cenário (spot × IV × dias)
+
+**O que é** — o P&L da estrutura sob uma grade fixa: 5 preços do papel (`0,8–1,2 × S`), 3 choques de IV (`−5/0/+5` pontos) e 3 horizontes (`0/7/15` dias úteis) = **45 pontos**. As opções são reaprecificadas com Black-76, com o forward deslocado junto com o spot e o tempo reduzido; em `T' = 0` vale o intrínseco.
+
+**Erro comum** — ler cenário como probabilidade. Não há peso, não há densidade neutra ao risco, não há "probabilidade de lucro" na v1 — a grade é **descritiva**. Outro erro é supor que o cenário de 0 dias com o spot de hoje tem P&L zero por construção: ele reproduz o preço da sessão (a IV gravada é a que inverteu aquele preço), então fica a centavos de zero — a diferença é o ruído de tick.
+
+**Na estrutura (F4)** — `scenarios` traz `spot_brl`, `iv_shift_pts`, `days_forward` e `pnl_brl`. Sem forward, sem curva ou com perna sem IV, a lista sai `null` + `scenarios_unavailable`; o payoff no vencimento **continua**.
+
+## Gregas agregadas da estrutura
+
+**O que é** — a soma das gregas de cada perna com o sinal do lado e a quantidade (ação: Δ = 1, Γ = Θ = ν = 0). Delta agregado é a exposição equivalente em ações; theta agregado é o que a estrutura ganha/perde por dia útil; vega, por ponto de vol.
+
+**Erro comum** — somar prêmios como se fossem gregas, ou esquecer o sinal da perna vendida. Numa coberta, o delta agregado é ~49 ações (100 da ação − 51 da call), não 100.
+
+**Na estrutura (F4)** — `delta`, `gamma`, `theta_brl` e `vega_brl` agregados. Perna sem grega gravada contribui 0 (o campo da perna mostra `null`); a soma não inventa número.
+
 **No MCP (F3)** — cada vencimento traz `iv_atm`, `forward_brl`/`forward_method`, `exp_move_1s` e as contagens `n_strikes` (strikes distintos com série no dia) e `n_liquid_strikes` (quantos têm ao menos uma série na regra §6.9). A contagem é do dia, não do histórico.
 
 ## Volume e open interest
@@ -213,6 +261,14 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 **No painel** — usado internamente para calcular IV sem depender de um chute de dividendo.
 
 **No MCP (F3)** — a estrutura a termo devolve `forward_brl` por vencimento e `forward_method`: `crossing` (strike onde call = put), `ols` (ajuste na banda OTM) ou `none` (nenhum par honesto → `null`). O forward é reconstruído na leitura a partir dos `mid`s gravados, com a mesma função pura do pipeline; nenhuma métrica é reescrita.
+
+## Fator de desconto (DF)
+
+**O que é** — `DF = exp(−r·T)`: quanto vale hoje R$ 1,00 a receber no vencimento, na taxa da curva DI. É o que traz o payoff a valor presente no modelo.
+
+**Erro comum** — usar `T` em dias corridos ou a Selic de 1 dia para qualquer prazo. O prazo é em **dias úteis/252** e a taxa é interpolada na curva, no nó de DU do vencimento — a curva não é plana entre 1 dia e 20 dias.
+
+**Na estrutura (F4)** — `df` e `t` aparecem no resultado para auditoria. O DF do vencimento sai da curva da sessão em `du = round(t × 252)`; sem curva, `null` + `no_rates` e os cenários ficam indisponíveis.
 
 ## Dividendo implícito
 

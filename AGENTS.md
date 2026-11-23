@@ -24,6 +24,19 @@ Fonte: arquivos públicos da B3 (EOD). Interface: MCP (agente) + PWA (humano).
 
 ---
 
+## Portão F1b — o sinal NÃO PASSA (ratificado pelo dono em 23/11/2026)
+
+O backtest das classes (F1b, `b3o backtest`) mediu `edge = iv_atm_30d − rv_fwd20` em 6.773 observações (2024–2026, após aquecimento de 252 sessões). **As duas classes do portão NÃO PASSAM** nos critérios pré-registrados, e o parecer independente (`docs/relatorios/2026-11-23-validacao-f1b.md`, APROVADO) reproduziu o veredito por fora com diferença 0:
+
+| Classe | n | Acerto | Base `none` | Margem |
+|---|---:|---:|---:|---:|
+| `premium_rich` | 617 | 42,3% | 43,7% (edge>0) | −1,4 p.p. |
+| `premium_cheap` | 498 | 49,8% | 56,3% (edge<0) | −6,5 p.p. |
+
+**O sinal é pior que a base incondicional — valor negativo, não falha marginal.** A tese de *reversão* do VRP está falsificada neste dado EOD: o que aparece é *momentum/clustering* de vol (IV cara vs RV passada → RV futura ainda mais alta). **Decisão do dono (ADR-023, Opção 1): PARAR no portão.** `F2+` não é construído sobre este sinal; o produto pode seguir como **painel descritivo** sem alegação preditiva. Mudar limiar no mesmo dado é proibido (P-L); um estudo de momentum só é honesto **fora da amostra**, pré-registrado às cegas. Não registre "o sinal passou" em lugar nenhum.
+
+---
+
 ## Armadilhas do dado (todas verificadas no arquivo de 2026)
 
 Estas custaram uma sessão de investigação cada. Medições do COTAHIST 2026 (até 21/11). Não redescubra.
@@ -108,6 +121,7 @@ Linha 2.087.780 do `COTAHIST_A2026.TXT` (medido 22/11/2026): `FR0T5L`, mercado `
 - **O estilo da opção está no COTAHIST, escondido no nome resumido** (`l[27:39]`): o 1º token é a raiz do ticker + `E` para europeia (`PETRE`, `BOVAE`) e a raiz pura para americana (`PETR`). **Medido de novo em 22/11/2026, aplicando a regra do §6 no TXT inteiro (3.570.796 linhas): 111.158 séries de call → 62.958 A (56,6%), 46.109 E (41,5%), 781 com estilo conflitante entre datas, 1.310 `null`; 109.124 séries de put → 107.990 E e 1.134 `null`, ZERO americanas.** Por número de negócios a call fica ~48,6% A / 51,4% E. Os `null` são todas IBOV (índice/fora do universo de ações). ⚠️ O número antigo "74.576 A (66%) / 38.564 E (34%)" estava **errado** (não fecha com as 220.282 séries de opção do próprio parágrafo e não se reproduz pela regra): a proporção correta por série é ~57/42, não 66/34. Exceção de raiz: `BRAVA`/`BRAVAE` (raiz de 5 letras). Sufixos como `/EJ` e `/AT` depois do token são marcas de ex-direito, não estilo. Evidência de que put é europeia (além do token): 24% das puts ITM negociaram mais de 1% abaixo do intrínseco, o que é impossível para americana.
 - **`strike == 0` existe em linha de opção** (74 linhas em 2026, todas IBOV: `IBOVA189E5`, `IBOVK232W4`, …): o `0` dessas linhas NÃO é "strike zero válido" — moneyness/leg/foward não podem consumi-las (são órfãs de ajuste de grade). Irmão disso: **50 linhas de opção com `trades > 0` e `volume == 0`** (todas AZUL, leilão) — liquidez medida por `volume` as trata como ilíquidas, o que é aceitável, mas não é "sem negócio". Ambos medidos na revisão da Onda A (22/11/2026).
 - `FATCOT` (`l[210:217]`) não é sempre 1: 42.250 linhas de opção com 100, e algumas com 10.000 e 1.000.000. Preço por ação = preço ÷ fator.
+- **Série ajustada no dia ex pode vir com ISIN-placeholder** (medido 23/11/2026, caso AUAU): AUAU3 (Petz Cobasi) tem ISIN real `BRAUAUACNOR1`, mas no dia ex **2026-05-15** as opções ajustadas (`corp_name` com marcador `/AT`, ex.: `AUAUE    /AT`) vêm com `isin_underlying = "BRAUAUCDAXX1"` — um placeholder que **não casa com nenhuma linha à vista** (798 linhas de opção com esse ISIN em 2026; **0** linhas `010`/`020` com ele). O B2 detecta o provento real de **3 ¢** (ex.: `AUAUQ900` 471→468) mas o `_underlying_of` não resolve pelo ISIN → cai no fallback `(underlying = próprio ISIN, unknown=True)` e o evento sai `ambiguous=True`. É o **único** underlying não-normal em `strike_events` (`BRAUAUCDAXX1`, 2026-05-15, `dividend`, `delta_strike=3`, `n_series=2`). **Regra: manter com a flag, não inventar resolução** — nem por prefixo de ticker de opção, nem por raiz de ISIN (`BRAUAU…`). O evento é real e está correto; o nome estranho é o fallback honesto do ISIN não resolvido.
 - O COTAHIST anual do ano corrente vem inteiro todo dia: reconstrói-se a partição do ano, sem append.
 - **Não há OpLab.** Referência externa gratuita de IV: **não existe mais** — medido em 22/11/2026, `brapi.dev/api/v2/options[/PETR4]` devolve **HTTP 401 `MISSING_TOKEN`** (a cadeia/IV saiu do sandbox); o que continua livre sem token é `brapi.dev/api/quote/PETR4` (**só spot**, HTTP 200), sem IV e sem bid/ask. Consequência: a validação externa de IV cai no P-J (registrar e seguir) e a validação principal é a interna: IV de call europeia = IV de put europeia no mesmo strike (paridade é independente de modelo). O endpoint antigo `cotacao.b3.com.br` também não serve (sem timestamp, sem book).
 - **Calendário de resultados vem da CVM**, não de digitação: data de entrega da 1ª versão do ITR/DFP = data do resultado; o futuro é estimado e marcado `estimated`.

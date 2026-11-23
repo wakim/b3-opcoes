@@ -235,9 +235,10 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** o `rv_fwd20` de papel que não negocia na sessão `data+20` sai (honesto, contado); a janela pode estender-se um pouco antes de `data` quando faltam barras intermediárias ou há provento — documentado no relatório. Nenhuma fórmula de `derive/realized.py` mudou.
 - **Revisar em:** ratificação do portão (ADR-023) e F2 (quando `signal_backtest` virar tool).
 
-## ADR-023 — F1b: o portão NÃO PASSA — decisão PENDENTE do dono
+## ADR-023 — F1b: o portão NÃO PASSA — RATIFICADO: parar no portão (Opção 1)
 
-- **Data:** 2026-11-23 · **Status:** **pendente do dono** (não ratificada) · **Custo de reverter:** médio (repensar F2+ se o sinal for trocado)
+- **Data:** 2026-11-23 · **Status:** **ratificada pelo dono em 23/11/2026 — Opção 1 (parar no portão)** · **Custo de reverter:** médio (repensar F2+ se o sinal for trocado)
+- **Ratificação (23/11/2026):** o dono escolheu a **Opção 1 — parar no portão**, após parecer independente (`docs/relatorios/2026-11-23-validacao-f1b.md`, **APROVADO**) confirmar que o NÃO PASSA se reproduz por fora com diferença 0 em 6.773 observações, sem look-ahead e com critérios intactos. **O sinal de reversão do VRP está falsificado neste dado:** as duas classes têm acerto **abaixo da base `none`** (rich 42,3% vs 43,7%; cheap 49,8% vs 56,3%) — valor negativo, não falha marginal. O dado mostra *momentum/clustering* de vol, não reversão. **F2+ não será construído sobre este sinal.** O produto pode seguir como **painel descritivo** (IV/RV/VRP/gregas/liquidez/estrutura) sem alegação preditiva. Um futuro estudo de *momentum* só é honesto **fora da amostra**, com critérios pré-registrados às cegas (não um re-run nestes dados — P-L). A Opção 3 (mudar limiar no mesmo dado) permanece proibida.
 - **Contexto:** o backtest rodou no histórico real (2024-01-02→2026-11-19, 722 sessões, `model_version=2`, 6.773 observações válidas após aquecimento de 252 sessões por papel, que começa em 2025-02-13). As três provas de que o resultado *pode estar errado* passaram: permutar o `rv_fwd20` muda o resultado (rich 42,3%→67,3%, mediana −1,41→+7,84); o z recalculado por fora bate exato e não vaza futuro; um `rv_fwd20` da PETR4 (2025-02-20) conferido à mão por Yang-Zhang independente bate com diferença 0. **O veredito abaixo é mecânico sobre os critérios pré-registrados; a decisão de seguir/parar não é do implementador (P-L).**
 - **Medição (período completo, como pré-registrado):**
   | Classe | n | Acerto | Mediana edge | Base `none` | Margem | Veredito |
@@ -250,8 +251,8 @@ Critérios de desempate, nesta ordem:
   1. **Parar no portão (default P-L):** não construir F2+ sobre este sinal; repensar a tese antes de continuar.
   2. **Mudar limiar com justificativa *a priori*** (ex.: exigir `vrp` maior, ou tenor casado diferente) **e validar num período fora da amostra** — proibido otimizar no mesmo dado (P-L); qualquer mudança de fórmula sobe `model_version` e recalcula o histórico.
   3. **Trocar o sinal:** testar uma tese de *momentum* de vol (a direção que o dado mostra) em vez de reversão, com novos critérios pré-registrados antes de olhar o resultado.
-- **Consequência:** `PLAN.md` F1b **não** marcado `[x]`; `AGENTS.md` **não** registra "o sinal passou". O relatório completo está em `data/out/backtest.md` (fora do git). Este ADR só se torna decisão quando o dono ratificar.
-- **Revisar em:** ratificação do dono (antes de qualquer F2).
+- **Consequência (ratificada):** `PLAN.md` F1b marcado `[x]` com a evidência (medição + decisão registrada); `AGENTS.md` registra "o sinal NÃO PASSA — parar no portão" (não "passou"). O relatório completo está em `data/out/backtest.md` (fora do git). **F2 em diante fica suspenso** até a tese ser repensada; nenhum funil/ranking é construído sobre o sinal falsificado.
+- **Revisar em:** se o dono quiser retomar o produto preditivo (estudo de momentum fora da amostra, pré-registrado às cegas) ou redefinir o produto como painel descritivo.
 
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 

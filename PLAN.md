@@ -148,11 +148,13 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F1b.3 | Relatório: n, taxa de acerto, mediana de `iv − rv_fwd`, pior caso, por classe | 1 h |
 
 **Aceitação F1b**
-- [ ] sem look-ahead: teste que embaralha o futuro e mostra que o resultado muda
-- [ ] relatório gerado para 2024–2026, por classe e por papel
-- [ ] **decisão registrada no `AGENTS.md`**: o sinal segue, muda de limiar (com justificativa *a priori*, não otimizada) ou é trocado. Se não há sinal, F2 em diante é repensado antes de continuar.
+- [x] sem look-ahead: permutação do `rv_fwd20` muda o resultado (rich 42,3%→66,1%, seed 987654321); z recalculado por fora bate exato em 3 papéis × 3 datas e não vaza futuro — parecer `docs/relatorios/2026-11-23-validacao-f1b.md` (APROVADO)
+- [x] relatório gerado para 2024–2026, por classe e por papel — `data/out/backtest.md` (6.773 obs, 37 papéis); reproduzido por fora com diferença 0
+- [x] **decisão registrada no `AGENTS.md`**: o sinal **NÃO PASSA** (rich 42,3% / cheap 49,8%, ambos abaixo da base `none`). Dono ratificou **Opção 1 — PARAR no portão** (ADR-023, 23/11/2026). **F2 em diante suspenso**: nenhum funil/ranking construído sobre o sinal falsificado; produto pode seguir como painel descritivo sem alegação preditiva.
 
 **Entregável:** `b3o backtest` e `out/backtest.md`.
+
+> **Portão (23/11/2026):** o sinal de reversão do VRP está falsificado neste dado (momentum de vol, não reversão; acerto abaixo da base incondicional). **F2+ não começa** sem o dono repensar a tese (estudo de momentum fora da amostra, pré-registrado às cegas) ou redefinir o produto como descritivo. Ver ADR-023 e a seção "Portão F1b" do `AGENTS.md`.
 
 ---
 

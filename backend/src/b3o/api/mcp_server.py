@@ -77,6 +77,14 @@ TOOL_EVENTS = (
     "(previsto). Use quando precisar do que aconteceu ou está datado para o papel. "
     "Não use para preço ou volatilidade (use underlying)."
 )
+TOOL_STRUCTURE = (
+    "Avalia a estrutura que você especificou: payoff no vencimento, breakevens, prêmio "
+    "líquido, perda e ganho máximo, capital comprometido, gregas agregadas e cenários "
+    "(spot × IV × dias). Use quando já tiver as pernas (opções e ação, quantidade em ações) "
+    "e quiser os números daquela estrutura na sessão. Não use para escolher, comparar ou "
+    "ordenar estruturas: a tool só avalia a que você deu, sem sugestão e sem probabilidade. "
+    "Para ver strikes e vencimentos antes de montar as pernas, use `chain`."
+)
 
 
 def _safe(builder: Callable[[], dict[str, Any]]) -> dict[str, Any]:
@@ -167,12 +175,32 @@ def events(ticker: str) -> dict[str, Any]:
     return _safe(lambda: payloads.events_payload(get_service(), ticker))
 
 
+@mcp.tool(description=TOOL_STRUCTURE)
+def structure_eval(
+    legs: list[dict[str, Any]],
+    underlying: str | None = None,
+    date: str | None = None,
+    capital: float | None = None,
+    scenarios: bool = True,
+) -> dict[str, Any]:
+    """Avalia a estrutura dada (payoff, breakevens, capital, gregas e cenários)."""
+    body = {
+        "legs": legs,
+        "underlying": underlying,
+        "date": date,
+        "capital": capital,
+        "scenarios": scenarios,
+    }
+    return _safe(lambda: payloads.structure_payload(get_service(), body))
+
+
 __all__ = [
     "TOOL_CHAIN",
     "TOOL_EVENTS",
     "TOOL_HEALTH",
     "TOOL_SCREEN",
     "TOOL_SERIES",
+    "TOOL_STRUCTURE",
     "TOOL_UNDERLYING",
     "mcp",
 ]

@@ -5,8 +5,9 @@ bordas; as rotas e as tools chamam os **mesmos** construtores de payload
 (`b3o.api.payloads`), então o número é o mesmo por construção.
 
 Rotas do F3 (contrato onda-i §5): `health`, `screen`, `underlying`, `chain`,
-`series`, `events`. Escritas, journal, positions, structure, glossary e
-briefing ficam para F4/F5; `signal_backtest` não é exposto (ADR-024/025).
+`series`, `events`; o F4 acrescenta `POST /api/structure` (cálculo, sem gravar).
+Escritas, journal, positions, glossary e briefing ficam para F5/F6;
+`signal_backtest` não é exposto (ADR-024/025).
 """
 
 from __future__ import annotations
@@ -109,9 +110,9 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": code,
                     "message": str(exc.detail),
-                    "hint": "as rotas do F3 são GET /api/health, /api/screen, "
-                    "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events "
-                    "e /api/s/{ticker}/{maturity}",
+                    "hint": "as rotas do F3/F4 são GET /api/health, /api/screen, "
+                    "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, "
+                    "/api/s/{ticker}/{maturity} e POST /api/structure",
                 }
             },
         )
@@ -189,6 +190,15 @@ def create_app() -> FastAPI:
             )
         return payloads.series_payload(_service(), ticker, parsed, days=days)
 
+    @app.post("/api/structure")
+    def api_structure(body: dict[str, Any]) -> dict[str, Any]:
+        """Avalia a estrutura dada (payoff, breakevens, capital, gregas, cenários).
+
+        É cálculo, não gravação: não cria posição, journal nem arquivo (F6 é que
+        grava). O corpo é o do contrato onda-j §2.
+        """
+        return payloads.structure_payload(_service(), body)
+
     @app.get("/api/{rest:path}")
     def api_not_found(rest: str) -> dict[str, Any]:
         """Rota `/api` desconhecida: erro no envelope, não o 404 do app montado.
@@ -200,10 +210,10 @@ def create_app() -> FastAPI:
         raise SourceFailure(
             SourceError(
                 code="not_found",
-                message=f"rota /api/{rest} não existe no F3",
+                message=f"rota /api/{rest} não existe no F3/F4",
                 hint="rotas: /api/health, /api/screen, /api/t/{ticker}, "
                 "/api/t/{ticker}/chain, /api/t/{ticker}/events, "
-                "/api/s/{ticker}/{maturity}",
+                "/api/s/{ticker}/{maturity}, POST /api/structure",
             )
         )
 

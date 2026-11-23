@@ -31,6 +31,9 @@ MAX_RESPONSE_BYTES = 200_000
 
 _STATUS_BY_CODE = {
     "bad_request": 400,
+    "bad_legs": 400,
+    "underlying_mismatch": 400,
+    "maturity_mismatch": 400,
     "ticker_not_found": 404,
     "no_session": 404,
     "maturity_not_found": 404,

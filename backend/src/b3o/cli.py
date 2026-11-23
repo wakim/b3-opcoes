@@ -1388,6 +1388,191 @@ def backtest(
     typer.echo(f"relatório  {target}")
 
 
+@app.command()
+def struct(
+    config: Annotated[
+        Path, typer.Option("--config", help="caminho do config.yaml (chaves planas, P-B)")
+    ] = DEFAULT_CONFIG_PATH,
+    underlying: Annotated[
+        str | None,
+        typer.Option("--underlying", help="ticker do papel (omitido: sai das opções)"),
+    ] = None,
+    date_: Annotated[
+        date | None,
+        typer.Option("--date", help="sessão do lake (default: a última do lake)"),
+    ] = None,
+    leg: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--leg",
+            help="perna como kind:ticker:side:quantity (repita por perna; "
+            "quantity em ações, ex.: option:PETRL44:short:100)",
+        ),
+    ] = None,
+    capital: Annotated[
+        float | None,
+        typer.Option("--capital", help="orçamento em R$ (opcional; não é margem)"),
+    ] = None,
+    scenarios: Annotated[
+        bool,
+        typer.Option("--scenarios/--no-scenarios", help="grade de cenários (default: sim)"),
+    ] = True,
+    json_out: Annotated[
+        bool, typer.Option("--json", help="imprime o envelope JSON em vez do resumo")
+    ] = False,
+) -> None:
+    """Avalia a estrutura dada (F4): payoff, breakevens, capital, gregas e cenários.
+
+    **Cálculo, não gravação**: não cria posição nem journal (F6). Não sugere,
+    compara nem ordena estruturas (ADR-023/024/028) — só devolve os números da
+    estrutura especificada, com a sessão e o `model_version`. Usa o **mesmo**
+    `payloads.structure_payload` do HTTP/MCP, então o número não divergência
+    entre bordas. Data sem sessão e perna inválida saem com erro explícito (exit 1).
+    """
+    try:
+        settings = load_config(config)
+    except SourceFailure as exc:
+        typer.secho(f"config     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    configure_logging(settings.log_level)
+
+    from b3o.api import payloads
+
+    service = QueryService(settings.data_dir)
+    body = {
+        "underlying": underlying,
+        "date": date_.isoformat() if date_ is not None else None,
+        "legs": _cli_legs(leg),
+        "capital": capital,
+        "scenarios": scenarios,
+    }
+    try:
+        result = payloads.structure_payload(service, body)
+    except SourceFailure as exc:
+        typer.secho(f"struct     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    except ValueError as exc:
+        typer.secho(f"struct     bad_legs: {exc}", fg=typer.colors.RED, err=True)
+        typer.secho(
+            "           dica: cada --leg é kind:ticker:side:quantity "
+            "(quantity em ações)",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+
+    if json_out:
+        typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    for line in _render_structure(result):
+        typer.echo(line)
+
+
+def _cli_legs(raw: list[str] | None) -> list[dict[str, object]]:
+    """`--leg kind:ticker:side:quantity` → lista de pernas do contrato §2."""
+    legs: list[dict[str, object]] = []
+    for index, item in enumerate(raw or [], start=1):
+        parts = [part.strip() for part in item.split(":")]
+        if len(parts) != 4:
+            raise ValueError(
+                f"--leg {index} inválida ({item!r}): use kind:ticker:side:quantity"
+            )
+        kind, ticker, side, quantity = parts
+        try:
+            amount = int(quantity)
+        except ValueError as exc:
+            raise ValueError(
+                f"--leg {index} com quantity não inteira ({quantity!r})"
+            ) from exc
+        legs.append(
+            {"kind": kind, "ticker": ticker, "side": side, "quantity": amount}
+        )
+    return legs
+
+
+def _fmt_number(value: object, digits: int = 2) -> str:
+    """Número no padrão do `screen` (milhar com espaço, decimal com vírgula)."""
+    if value is None:
+        return "—"
+    return f"{float(value):,.{digits}f}".replace(",", " ").replace(".", ",")
+
+
+def _fmt_brl(value: object) -> str:
+    """R$ com duas casas; ausência é `—` (nunca zero silencioso)."""
+    return "—" if value is None else "R$ " + _fmt_number(value, 2)
+
+
+def _render_structure(payload: Mapping[str, Any]) -> list[str]:
+    """Resumo de uma tela do `b3o struct` (P-G) — só formata, não calcula."""
+    data = payload["data"]
+    lines = [
+        f"estrutura  {data['underlying']} · sessão {payload['as_of_session']} · "
+        f"model_version {payload['model_version']} · structure {data['structure_version']}",
+        "",
+        "pernas",
+    ]
+    for item in data["legs"]:
+        lines.append(
+            f"  {item['kind']:<6} {item['ticker']:<10} {item['side']:<5}"
+            f" {item['quantity']:>6} × {_fmt_number(item['price_brl'])}"
+            f" = {_fmt_brl(item['premium_brl'])}"
+        )
+    breakevens = ", ".join(_fmt_brl(value) for value in data["breakeven_brl"])
+    band = (
+        ""
+        if data["net_premium_low_brl"] is None
+        else f" (faixa {_fmt_brl(data['net_premium_low_brl'])} a "
+        f"{_fmt_brl(data['net_premium_high_brl'])})"
+    )
+    lines += [
+        "",
+        "resultado",
+        f"  prêmio líquido   {_fmt_brl(data['net_premium_brl'])}{band}"
+        + (" (débito)" if data["net_premium_brl"] > 0 else " (crédito)"),
+        f"  breakevens       {breakevens or '—'}",
+        f"  perda máxima     {_fmt_brl(data['max_loss_brl'])}"
+        + (" (ilimitada)" if data["max_loss_brl"] is None else ""),
+        f"  ganho máximo     {_fmt_brl(data['max_gain_brl'])}"
+        + (" (ilimitado)" if data["max_gain_brl"] is None else ""),
+        f"  capital          {_fmt_brl(data['capital_committed_brl'])} comprometido"
+        + (
+            f" · informado {_fmt_brl(data['capital_input_brl'])}"
+            + (" · ACIMA do orçamento" if data["capital_over"] else "")
+            if data["capital_input_brl"] is not None
+            else ""
+        ),
+        f"  gregas           Δ {_fmt_number(data['delta'], 4)} · "
+        f"Γ {_fmt_number(data['gamma'], 6)} · "
+        f"Θ {_fmt_number(data['theta_brl'], 4)}/dia · "
+        f"ν {_fmt_number(data['vega_brl'], 4)}/vol",
+    ]
+    payoff = data["payoff"]
+    if payoff:
+        lowest = min(point["pnl_brl"] for point in payoff)
+        highest = max(point["pnl_brl"] for point in payoff)
+        lines.append(
+            f"  payoff           {len(payoff)} pontos · P&L de {_fmt_brl(lowest)} "
+            f"a {_fmt_brl(highest)}"
+        )
+    if data["scenarios"] is None:
+        lines.append("  cenários         — (indisponível; ver flags)")
+    else:
+        lines.append(
+            f"  cenários         {len(data['scenarios'])} pontos "
+            "(5 spots × 3 IV × 3 dias)"
+        )
+    lines.append(f"  flags            {', '.join(data['flags']) if data['flags'] else '—'}")
+    if data["forward_brl"] is not None:
+        lines.append(
+            f"  vencimento       {data['maturity']} · forward {_fmt_brl(data['forward_brl'])}"
+            f" · df {_fmt_number(data['df'], 6)} · t {_fmt_number(data['t'], 6)}"
+        )
+    for note in data.get("notes") or []:
+        lines.append(f"  nota             {note}")
+    return lines
+
+
 def _resolve_commit() -> str | None:
     """Commit curto do HEAD, se o git estiver disponível (no container geralmente não)."""
     try:

@@ -323,3 +323,10 @@ preditivo; `ruff check src` limpo e comandos do F1/F2/F3 intactos; `git diff` de
    no payoff e nos cenários. `null` só quando ilimitado, junto da flag.
 5. **`derive/structure.py` não lê `date` do sistema**; recebe só números e a data do vencimento já
    resolvida (mesma disciplina das outras fórmulas puras).
+6. **O grep de `premium` nas respostas** casa o **nome de campo** `net_premium_brl`/
+   `premium_brl` exigido por este contrato (P-R: inglês com unidade), não um rótulo preditivo.
+   O smoke aplica o grep **removendo esses nomes de campo**; o que sobra — `premium_rich`,
+   `premium_cheap`, `signal_class`, `acerto`, `ranking`, `caro`, `barato`, `recomend` — é **0**.
+   Nenhuma classe de sinal é lida.
+7. **`scenarios=False` devolve `scenarios = null` sem flag**: é escolha do chamador, não
+   indisponibilidade (o contrato só marca flag quando o insumo falta).

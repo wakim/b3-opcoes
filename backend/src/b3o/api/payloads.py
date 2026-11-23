@@ -11,6 +11,7 @@ campo preditivo é exposto (`signal_class` não é lido).
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from typing import Any
 
@@ -241,6 +242,103 @@ def events_payload(service: QueryService, ticker: str) -> dict[str, Any]:
         counts={
             "maturities": len(detail.maturities),
             "strike_events": len(detail.strike_events),
+        },
+    )
+
+
+STRUCTURE_KEYS = frozenset({"underlying", "date", "legs", "capital", "scenarios"})
+"""Campos aceitos no corpo do `POST /api/structure` (contrato onda-j §2)."""
+
+
+def structure_payload(
+    service: QueryService, body: Any
+) -> dict[str, Any]:
+    """Avalia a estrutura **dada** (`POST /api/structure` e tool `structure_eval`).
+
+    É a **única** ponte: o CLI `b3o struct` também chama esta função, então MCP,
+    HTTP e CLI devolvem o mesmo JSON por construção. Não sugere, não compara e
+    não ordena estruturas — só avalia o que o corpo especifica (ADR-024/028).
+
+    Forma do corpo (contrato §2): `{underlying?, date?, legs, capital?, scenarios?}`;
+    campo desconhecido é `bad_request` (não se ignora parâmetro em silêncio).
+    """
+    if not isinstance(body, Mapping):
+        raise request_error(
+            "corpo da estrutura inválido",
+            'envie um objeto JSON {"underlying", "date", "legs", "capital", "scenarios"}',
+        )
+    unknown = sorted(str(key) for key in body if str(key) not in STRUCTURE_KEYS)
+    if unknown:
+        raise request_error(
+            f"campos desconhecidos no corpo: {unknown}",
+            f"os campos aceitos são {sorted(STRUCTURE_KEYS)}",
+        )
+    underlying = body.get("underlying")
+    if underlying is not None and not isinstance(underlying, str):
+        raise request_error(
+            f"underlying inválido ({underlying!r})",
+            "underlying é o ticker do papel (ex.: PETR4) ou omitido",
+        )
+    raw_date = body.get("date")
+    if raw_date is not None and not isinstance(raw_date, str | date):
+        raise request_error(
+            f"date inválida ({raw_date!r})",
+            "use uma sessão do lake em ISO AAAA-MM-DD (o `health` diz a última)",
+        )
+    scenarios = body.get("scenarios", True)
+    if not isinstance(scenarios, bool):
+        raise request_error(
+            f"scenarios inválido ({scenarios!r})",
+            "scenarios é booleano (true/false); omitido vale true",
+        )
+    detail = service.structure_eval(
+        body.get("legs"),
+        underlying=underlying,
+        date=_as_date(raw_date),
+        capital=body.get("capital"),
+        scenarios=scenarios,
+    )
+    result = detail.result
+    data = {
+        "underlying": detail.underlying,
+        "structure_version": result.structure_version,
+        "spot_brl": result.spot_brl,
+        "forward_brl": result.forward_brl,
+        "df": result.df,
+        "t": result.t,
+        "maturity": result.maturity,
+        "legs": [jsonable(leg) for leg in result.legs],
+        "net_premium_brl": result.net_premium_brl,
+        "net_premium_low_brl": result.net_premium_low_brl,
+        "net_premium_high_brl": result.net_premium_high_brl,
+        "breakeven_brl": list(result.breakeven_brl),
+        "max_loss_brl": result.max_loss_brl,
+        "max_gain_brl": result.max_gain_brl,
+        "capital_committed_brl": result.capital_committed_brl,
+        "capital_input_brl": result.capital_input_brl,
+        "capital_over": result.capital_over,
+        "delta": result.delta,
+        "gamma": result.gamma,
+        "theta_brl": result.theta_brl,
+        "vega_brl": result.vega_brl,
+        "payoff": [jsonable(point) for point in result.payoff],
+        "scenarios": (
+            None
+            if result.scenarios is None
+            else [jsonable(row) for row in result.scenarios]
+        ),
+        "flags": list(result.flags),
+        "notes": list(detail.notes),
+    }
+    return envelope(
+        data,
+        as_of_session=detail.as_of_session,
+        model_version=detail.model_version,
+        list_key="payoff",
+        total=len(result.payoff),
+        counts={
+            "legs": len(result.legs),
+            "scenarios": 0 if result.scenarios is None else len(result.scenarios),
         },
     )
 

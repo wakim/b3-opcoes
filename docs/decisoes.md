@@ -268,6 +268,15 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** F3 (MCP) passa a expor `screen` descritivo; o `signal_backtest` continua existindo como registro histórico do portão, **não** como coluna do funil. Qualquer reintrodução de ranking preditivo exige novo ADR e novo portão.
 - **Revisar em:** quando o painel estiver no F5 (UI) ou se o dono decidir retomar o produto preditivo (estudo de momentum fora da amostra).
 
+## ADR-025 — `health` honesto sobre `model_version` (F3.0)
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** baixo
+- **Contexto:** `b3o health` lia `model_version` do `ingest_state` e mostrava **1** enquanto `metrics_underlying`/`metrics_series` estão em **2** (o `prepare` não roda desde o bump para v2; medido em 23/11/2026). Com o F3 expondo o `health` ao agente via MCP, o número viraria mentira visível.
+- **Decisão:** `Health.model_version` passa a ser o **maior** `model_version` das tabelas derivadas (`metrics_underlying` ∪ `metrics_series`), lido com parâmetros nomeados. Os campos novos dizem o resto: `ingest_model_version` (o que o `ingest_state` diz), `model_version_mismatch` (divergência) e `model_version_source`/`model_version_note` (de onde veio e por quê). Sem tabela derivada, o fallback para o `ingest_state` é explícito — nunca uma versão inventada.
+- **Por quê:** a versão que importa é a que produziu o número que o painel mostra; o `ingest_state` é retrato do último `prepare`. Não se mexeu em `prepare`/`_update_state` (fora do escopo e sem necessidade).
+- **Consequência:** `b3o health` passa a mostrar `2` com `mismatch: true` e a nota da divergência; nenhuma fórmula muda e `model_version` do lake continua 2.
+- **Revisar em:** quando o `prepare` rodar de novo (o `ingest_state` se alinha sozinho) ou se o dono quiser reconciliar os dois de vez.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

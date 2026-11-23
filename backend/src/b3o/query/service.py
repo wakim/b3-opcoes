@@ -305,7 +305,24 @@ class Health:
     """Pico de RSS do último prepare, em MiB (3,7 GiB de RAM no motor)."""
 
     model_version: int
-    """Versão do cálculo derivado (`ingest_state`)."""
+    """Versão do cálculo das **tabelas derivadas** (`metrics_underlying`/`metrics_series`).
+
+    É a versão que produziu os números que o painel mostra (F3.0). Sem tabela
+    derivada, cai para a versão do `ingest_state` — e o campo
+    `model_version_source` diz de onde veio.
+    """
+
+    ingest_model_version: int
+    """O que o `ingest_state` diz (`prepare`) — diagnóstico, não a verdade do cálculo."""
+
+    model_version_mismatch: bool
+    """`True` quando o `ingest_state` e as tabelas derivadas discordam (F3.0)."""
+
+    model_version_source: str
+    """`"metrics"` (tabelas derivadas) ou `"ingest_state"` (fallback explícito)."""
+
+    model_version_note: str | None
+    """Explicação quando há divergência, tabela ausente ou leitura falha."""
 
     as_of: str | None
     """`updated_at` do `ingest_state` (ISO com offset, P-D)."""
@@ -335,6 +352,10 @@ class Health:
             "last_error": self.last_error,
             "rss_peak_mib": self.rss_peak_mib,
             "model_version": self.model_version,
+            "ingest_model_version": self.ingest_model_version,
+            "model_version_mismatch": self.model_version_mismatch,
+            "model_version_source": self.model_version_source,
+            "model_version_note": self.model_version_note,
             "as_of": self.as_of,
         }
 
@@ -1066,6 +1087,30 @@ class QueryService:
 
     # ----------------------- painel descritivo (F2) ---------------------- #
 
+    def derived_model_version(self) -> int | None:
+        """Maior `model_version` gravado em `metrics_underlying` ∪ `metrics_series`.
+
+        É a versão que produziu os números que o painel mostra (F3.0). `None`
+        quando nenhuma tabela derivada existe — ausência, não versão 1 inventada.
+        As duas tabelas são lidas com parâmetros **nomeados** (a armadilha do
+        DuckDB é com duas listas posicionais na mesma consulta).
+        """
+        underlying = self._partitions_for("metrics_underlying", None)
+        series = self._partitions_for("metrics_series", None)
+        if not underlying and not series:
+            return None
+        parts: list[str] = []
+        params: dict[str, object] = {}
+        if underlying:
+            parts.append("SELECT max(model_version) AS version FROM read_parquet($underlying)")
+            params["underlying"] = [str(path) for path in underlying]
+        if series:
+            parts.append("SELECT max(model_version) AS version FROM read_parquet($series)")
+            params["series"] = [str(path) for path in series]
+        rows = self._fetch_named(" UNION ALL ".join(parts), params)
+        versions = [int(row[0]) for row in rows if row[0] is not None]
+        return max(versions) if versions else None
+
     def screen(
         self, date: date | None = None, max_rows: int | None = None
     ) -> list[ScreenRow]:
@@ -1423,6 +1468,7 @@ class QueryService:
         oi_dates, oi_unavailable = self._open_interest(last_session)
         earnings_coverage = self._earnings_coverage(prepare, last_session)
         unexplained_gap = self._unexplained_gap(sessions)
+        model_version, ingest_version, mismatch, source, note = self._model_versions(state)
 
         return Health(
             last_session=last_session_value,
@@ -1443,13 +1489,62 @@ class QueryService:
             unexplained_gap=unexplained_gap,
             last_error=prepare.last_error,
             rss_peak_mib=prepare.rss_peak_mib,
-            model_version=state.model_version if state is not None else MODEL_VERSION,
+            model_version=model_version,
+            ingest_model_version=ingest_version,
+            model_version_mismatch=mismatch,
+            model_version_source=source,
+            model_version_note=note,
             as_of=(
                 state.updated_at.isoformat()
                 if state is not None and state.updated_at is not None
                 else None
             ),
         )
+
+    def _model_versions(
+        self, state: IngestState | None
+    ) -> tuple[int, int, bool, str, str | None]:
+        """`(model_version, ingest_model_version, mismatch, source, note)` (F3.0).
+
+        A verdade do cálculo é a **tabela derivada**: o `ingest_state` é o
+        retrato do último `prepare` e pode estar defasado (medido em 23/11/2026:
+        `ingest_state` em 1 e `metrics_underlying` em 2). Sem tabela derivada, o
+        fallback para o `ingest_state` é explícito em `source`/`note` — nunca um
+        `2` que ninguém calculou nem um `1` silencioso.
+        """
+        ingest = state.model_version if state is not None else MODEL_VERSION
+        try:
+            derived = self.derived_model_version()
+        except SourceFailure as exc:
+            return (
+                ingest,
+                ingest,
+                False,
+                "ingest_state",
+                f"não foi possível ler as tabelas de métrica ({exc.code}): "
+                f"{exc.message}; usando o ingest_state",
+            )
+        if derived is None:
+            return (
+                ingest,
+                ingest,
+                False,
+                "ingest_state",
+                "nenhuma tabela de métrica gravada: a versão é a do ingest_state",
+            )
+        if derived != ingest:
+            return (
+                derived,
+                ingest,
+                True,
+                "metrics",
+                (
+                    f"o ingest_state diz model_version {ingest}, mas as métricas estão "
+                    f"em {derived} — o health reporta a versão das métricas"
+                ),
+            )
+        return derived, ingest, False, "metrics", None
+
 
     # ----------------------------- internos ----------------------------- #
 

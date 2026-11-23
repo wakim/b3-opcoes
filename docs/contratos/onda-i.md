@@ -52,10 +52,18 @@ sinal, taxa de acerto ou recomendação.
 - `model_version` = maior versão das linhas que produziram a resposta; ausência de métrica
   → versão derivada das tabelas (`QueryService.derived_model_version`), nunca 1 inventado.
 - `meta` só existe quando há lista; `total` = linhas após filtro, `returned` = linhas
-  efetivamente devolvidas, `truncated` = `returned < total`.
+  efetivamente devolvidas, `truncated` = `returned < total`. Quando a resposta tem mais
+  de uma tabela (`underlying`, `events`), `meta` descreve a **lista principal** declarada
+  e `meta.lists` traz `{total, returned, truncated}` das demais.
 - Erro: o corpo é **apenas** `{"error": {...}}` (sem envelope), status HTTP 404
-  (`ticker_not_found`, `no_session`, `maturity_not_found`, `expiry_not_found`) ou 400
-  (`bad_request`); MCP devolve o mesmo dicionário como conteúdo da tool.
+  (`ticker_not_found`, `no_session`, `maturity_not_found`, `expiry_not_found`,
+  `metrics_missing`, `not_found`), 400 (`bad_request`, inclusive parâmetro numérico ou data
+  malformada — o handler de validação traduz o 422 do FastAPI) ou 405
+  (`method_not_allowed`); MCP devolve o mesmo dicionário como conteúdo da tool. Erro
+  inesperado → 500 `internal_error`, com log, sem traceback no corpo. **Exceção
+  declarada:** a validação de *schema* feita pelo SDK MCP antes de chamar a tool (ex.:
+  `max_rows="abc"`) responde como erro de tool (`is_error: true`, texto do SDK) — não é
+  erro de dado e não passa pelo envelope; a tool em si nunca devolve texto cru.
 
 ## 3. Health (F3.0)
 
@@ -116,9 +124,13 @@ ChainRow(ticker, side, style, maturity, strike_brl, t, bid_brl, ask_brl, mid_brl
 
 - Fonte: `metrics_series` da sessão (IV/gregas/liquidez/`mid`) + `raw_cotahist` do dia
   (`bid`/`ask`/`close`), com o papel resolvido **pelo ISIN** (nunca por prefixo).
+  `bid_brl`/`ask_brl` são `null` quando o lake grava `0` (sem oferta) — zero não é preço.
+  `mid_brl` é o preço gravado usado na IV (ADR-017: `close / quote_factor`), e
+  `close_brl` repete o mesmo número; o mid do book não é exposto.
 - `liquidity="strict"` → só `is_liquid` gravado (§6.9); `"all"` → tudo.
-- `delta_range` aplica a **|Δ|** (puts têm Δ negativo; o `side` diz o sinal); `None` não
-  filtra; linha sem Δ sai do recorte quando há banda.
+- `delta_range` aplica a **|Δ|** (puts têm Δ negativo; o `side` diz o sinal); o default
+  do transporte é **0,25–0,75**; `0`–`1` pede a grade inteira (linha sem Δ continua fora);
+  `None` não filtra e só existe para a `QueryService` chamada direto.
 - `expiry` filtra o vencimento (data ISO); desconhecido → `expiry_not_found` com dica.
 - Ordem: `maturity, strike, side`; `max_rows` aplica **depois** do filtro (as N primeiras,
   nunca "as melhores"). Papel sem opção no dia → lista vazia + `notes`.
@@ -183,10 +195,10 @@ Os 10 itens do §7 do prompt da sessão, provados com saída colada:
 resposta > 60 linhas e teto de 200 KB truncando; `grep` preditivo = 0; `ruff check src`
 limpo; `b3o health`/`screen`/`metrics` intactos; `uv.lock` commitado e build do zero ok.
 
-## 8. Desvios declarados (registrados em ADR-025)
+## 8. Desvios declarados (registrados em ADR-026/ADR-027)
 
-1. **`signal_backtest` fora do F3** (ADR-024 + prompt). A spec §7/§8 ainda o lista; o
-   `PLAN.md` F3 é ajustado e a spec não é reescrita nesta onda.
+1. **`signal_backtest` fora do F3** (ADR-024 + prompt; ADR-027). A spec §7/§8 ainda o
+   lista; o `PLAN.md` F3 é ajustado e a spec não é reescrita nesta onda.
 2. **Sufixo `_brl`** nos campos de preço das leituras novas (P-R: unidade no nome); o
    rascunho do prompt listava `bid`/`ask`/`mid`/`close`/`strike` sem sufixo.
 3. **`term.forward`/`exp_move` são reconstruídos na leitura** a partir dos `mid`s gravados,
@@ -194,3 +206,8 @@ limpo; `b3o health`/`screen`/`metrics` intactos; `uv.lock` commitado e build do 
    recalculada nem reescrita; `model_version` não muda.
 4. **`max_rows` padrão 20 no transporte** (regra da spec §8); a `QueryService.chain` aceita
    o default 60 do enunciado, mas HTTP/MCP passam 20 e nunca acima de 60.
+5. **`exp_move` vira `exp_move_1s`** (fração, nome com a unidade e o 1σ, como no
+   `ScreenRow`); `strike`/`bid`/`ask`/`mid`/`close` levam `_brl`.
+6. **Porta do host:** o compose publica `${B3_APP_PORT:-8080}:8080`; nesta máquina a
+   8080 está ocupada por outro projeto local, então a prova rodou em 8081 (a app no
+   container é sempre `:8080`). O default não mudou.

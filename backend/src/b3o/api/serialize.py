@@ -36,6 +36,8 @@ _STATUS_BY_CODE = {
     "maturity_not_found": 404,
     "expiry_not_found": 404,
     "metrics_missing": 404,
+    "not_found": 404,
+    "method_not_allowed": 405,
     "lake_missing": 503,
     "storage_error": 503,
     "bad_config": 503,

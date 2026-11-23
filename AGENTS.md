@@ -202,6 +202,21 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - `TZ=America/Sao_Paulo` no container. A data de referência **nunca** vem do relógio: vem do arquivo.
 - BuildKit `RUN --mount=type=cache` funciona no Podman, mas não é necessário: a imagem tem que construir do zero em < 5 min sem cache (critério do F0).
 
+## Armadilhas do runtime F3 (API/MCP, medidas em 23/11/2026)
+
+- **MCP SDK 2.x não tem `FastMCP` no caminho antigo.** Em `mcp 2.3.0` o servidor é `from mcp.server import MCPServer` e o cliente é `from mcp import Client` (aceita a URL e negocia Streamable HTTP). `CallToolResult.structured_content` traz o dicionário da tool; `content` traz o texto. `@mcp.tool(description=...)` + docstring viram descrição/schema.
+- **Montar o app Streamable HTTP no FastAPI tem duas armadilhas juntas.** (1) `streamable_http_app(streamable_http_path="/")` montado em `app.mount("/mcp", …)` devolve **307 para `/mcp/`** (o cliente segue, mas é frágil); o padrão que funciona é `streamable_http_path="/mcp"` + `app.mount("/", mcp_app)` **depois** das rotas `/api`. (2) O **lifespan do app montado não roda** com o mount: sem `async with mcp_app.router.lifespan_context(mcp_app)` no lifespan do FastAPI o session manager não inicia e o POST falha.
+- **`TransportSecuritySettings` recusa Host não listado com 421** (`Invalid Host header` no log), inclusive `host.containers.internal:8081`. O default tem `allowed_hosts=[]`; liste os hosts usados (`127.0.0.1`, `localhost`, `host.containers.internal`, com `:*` para porta variável). Em F5, o host `*.ts.net` entra aqui.
+- **O teto de 200 KB não é alcançável com payload real do F3**: a maior resposta medida é o `underlying` de PETR4 com todas as seções (**22,7 KB**). A truncagem é provada no serializador: 3.000 linhas sintéticas → 2.562 devolvidas = **199.957 bytes** com `truncated: true`. Não confunda "não trunca porque não precisa" com "não trunca".
+- **Preço no JSON: arredondar só na borda.** O envelope passa floats por `round(x, 6)` — sem isso, `spread_brl` sai `0.10000000000000009`. As gregas continuam com precisão (6 casas bastam para Δ/Γ/Θ/ν gravados).
+- **`chain` com banda de delta aplica `|Δ|`**: puts têm Δ negativo; `delta_min=0&delta_max=1` pede a grade inteira (linhas sem Δ continuam fora); omitir a banda usa o default 0,25–0,75. Em PETR4 19/11, strict + 0,25–0,75 = **6** séries; `all` + 0–1 = **437** (de 782 séries, 88 líquidas).
+- **O vencimento do próprio dia entra no `term`** com `t = 0` e `iv_atm = null` (`iv_expired`): é a grade real, não erro. O `forward` por paridade ainda aparece.
+- **A porta 8080 do host pode estar ocupada por outro projeto local.** O compose publica `${B3_APP_PORT:-8080}:8080`; a app dentro do container é sempre `:8080`. Medido nesta máquina: `realestate-api-1` ocupa 127.0.0.1:8080; a prova do F3 rodou em 8081.
+- **`best_bid`/`best_ask` do lake são `0` quando não há oferta** (a regra §6.9 exige `> 0`). Expor esse `0` como preço é zero silencioso: no `chain`/`series` ele vira `null` (medido em PETR4 19/11: 275 linhas com bid `0`, 333 com ask `0`, 149 com os dois, em 782). `spread_brl` só existe com os dois lados.
+- **O 422 do FastAPI não é o formato do projeto.** `max_rows=abc`/`days=abc`/`delta_min=z` caem na validação de tipo antes da rota; o handler de `RequestValidationError` traduz para `400 {"error":{code:"bad_request",...}}`. Já a validação de schema do SDK MCP acontece antes da tool e responde como erro de tool (`is_error`) — exceção declarada no contrato, não erro de dado.
+- **`/api/{rest:path}` catch-all:** o app MCP é montado em `/` (para o endpoint ser exatamente `/mcp`, sem 307). Sem a rota catch-all, caminho `/api` desconhecido cairia no 404 do app montado; a rota existe e devolve `not_found` no envelope.
+- **`screen` não pagina** (F3): `meta.total` diz 289, mas o teto de 60 devolve só os 60 primeiros alfabéticos. O universo inteiro continua no relatório do CLI; paginação/filtro é pendência para F4/UI.
+
 ## Armazenamento
 
 - Parquet + DuckDB, particionado por `year`, escrita atômica (`tmp/` → `os.replace`).

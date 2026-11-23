@@ -22,8 +22,8 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Item | Situação |
 |---|---|
 | Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…023) |
-| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. Sem UI. |
-| Retomar em | **F3 — MCP mínimo**: expor o `screen` descritivo e as leituras da `QueryService` (spec §7/§8), com `max_rows`, teto de 200 KB e erro `{code,message,hint}`. Pendência conhecida fora do F2: o `health` mostra o `model_version` do `ingest_state` (**1**) enquanto as métricas estão em **2** (o `screen` lê 2 do parquet; corrigir `health`/`_update_state` numa tarefa própria). |
+| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB; `health` reporta o `model_version` das tabelas derivadas (**2**). Sem UI. |
+| Retomar em | **F4 (estruturas) ou F5 (API+PWA), conforme o dono.** F3 fechado com parecer em `docs/relatorios/2026-11-23-revisao-f3.md`; pendências registradas: porta 8080 do host ocupada por outro projeto (usar `B3_APP_PORT`), exclusão de índice/BDR do universo e reconciliação `ingest_state` × métricas quando o `prepare` rodar de novo. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -52,7 +52,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | **M0** | "sei quantos pregões, séries e papéis líquidos existem, e consigo provar que a conta está certa" |
 | **M1** | "a IV de call e put europeias no mesmo strike bate dentro de 1 vol point, e a da PETR4 é coerente com uma referência externa" |
 | **M2** | "sei, com 3 anos de dado, se `premium_rich` antecipa RV abaixo da IV" — **portão** |
-| **M3** | "rodo `b3o screen` e pergunto ao agente 'vale vender put em PETR4?' com números auditáveis" |
+| **M3** | "rodo `b3o screen`/`b3o health` e pergunto ao agente o que o dado diz sobre PETR4 — números auditáveis, sem alegação de edge" |
 | **M4** | "avalio uma estrutura com payoff, breakeven e perda máxima" |
 | **M5** | "abro o painel no celular, instalado, via HTTPS" |
 | **M6** | "vejo minha posição, o P&L e se a tese se realizou" |
@@ -205,7 +205,36 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 ---
 
-# F3 — MCP mínimo
+# F3 — MCP mínimo (painel descritivo)
+
+> **Reescrito em 23/11/2026 (ADR-023/024/026/027).** O F3 original aceitava "vale vender put em PETR4?" com taxa histórica da classe — alegação que o portão falsificou. O F3 entregue expõe **leitura descritiva**: o que o dado diz, sem classe de sinal, nota, taxa de acerto ou recomendação. A aceitação original fica preservada em bloco suspenso.
+
+**Objetivo:** o agente consome o painel descritivo e as leituras do lake **antes** de existir tela, com números calculados em Python e falha explícita.
+**Estimativa:** 0,5 sessão · **Depende de:** F2 (F1b não é mais pré-requisito do descritivo, mas segue como registro do portão)
+
+| ID | Tarefa | Est. |
+|---|---|---|
+| F3.0 | `health` honesto: `model_version` vem das tabelas derivadas (`2`), `ingest_model_version` separado, `model_version_mismatch`/`source`/`note` | 30 min |
+| F3.1 | FastAPI (`b3o.api:app`) + MCP Streamable HTTP em `/mcp`, uma `QueryService` no lifespan, envelope (`as_of_session`/`model_version`), `max_rows` 20/60 e teto de 200 KB; rotas `health`, `screen`, `underlying`, `chain`, `series`, `events` | 2 h |
+| F3.2 | Leituras novas na `QueryService` (`underlying`, `chain`, `series`, `events`) com dataclasses `frozen, slots`; vínculo por ISIN, unidades na borda | 2 h |
+| F3.3 | Cliente MCP de fumaça (`backend/scripts/mcp_smoke.py`) + prova MCP×HTTP e a pergunta de aceitação descritiva | 1 h |
+
+**Aceitação F3** — parecer independente em `docs/relatorios/2026-11-23-revisao-f3.md`.
+- [x] `podman compose config` válido; `up -d app` sobe e `/api/health` traz `as_of_session` e **`model_version` 2** (o `ingest_state` em 1 aparece como `ingest_model_version`, com `mismatch: true`) — a prova rodou em `127.0.0.1:8081` (`B3_APP_PORT`) porque 8080 está ocupado por outro projeto local; a app dentro do container é `:8080`
+- [x] `tools/list` mostra `health`, `screen`, `underlying`, `chain`, `series`, `events`, cada uma com "use quando / não use para" e **sem** termo preditivo
+- [x] `screen` de 19/11 devolve **289/163/126** (`no_trade` 2, `no_options` 124), IV mediana **31,43** (n=35), VRP **−30,66** (n=35); mesmo JSON no HTTP; `meta` declara `total=289`, `returned=20`, `truncated=true`
+- [x] `underlying PETR4` em 19/11: spot **42,67**, `iv_atm_30d` **31,43**, **88/782** séries, **25** vencimentos; `chain` respeita `delta_range`/`liquidity` e devolve ≤ 60 linhas; `events` traz o próximo resultado com `actual`/`estimated`
+- [x] ticker inválido → `{"error":{"code":"ticker_not_found",...}}`; data sem sessão → `no_session` + dica; **nenhum** traceback no corpo
+- [x] nenhuma lista > 60 linhas; o teto de 200 KB trunca com `truncated: true` (3.000 linhas sintéticas → 2.562 devolvidas, 199.957 bytes)
+- [x] `grep -i` de `signal_class|premium|acerto|ranking|caro|barato|recomend` nas respostas = **0**
+- [x] pergunta de aceitação respondida de forma descritiva, sem edge, citando campos reais (IV ATM 30d, RV30, VRP/z, RR25, liquidez, próximo resultado) e dizendo que o sinal não foi validado (ADR-023)
+- [x] `ruff check src` limpo; `b3o health`, `b3o screen --date 2026-11-19` e `b3o metrics --date 2026-11-19` continuam funcionando; nenhuma fórmula mudou e `model_version` segue **2**
+- [x] `uv.lock` regerado no container e commitado; build do zero e `podman compose up -d app` funcionam
+
+**Entregável:** `podman compose up -d app` sobe HTTP + `/mcp`; `backend/scripts/mcp_smoke.py` prova o contrato no dado real.
+
+<details>
+<summary>F3 original (suspenso pelo ADR-023/024 — registro, não executar)</summary>
 
 **Objetivo:** o agente já consome o funil, antes de existir tela.
 **Estimativa:** 0,5 sessão · **Depende de:** F2
@@ -216,10 +245,13 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F3.2 | tools `health`, `screen`, `underlying`, `chain`, `series`, `events`, `signal_backtest` com descrição "use quando / não use para", `max_rows`, teto de 200 KB | 1.5 h |
 | F3.3 | teste de contrato: MCP e HTTP devolvem o mesmo número | 30 min |
 
-**Aceitação F3**
+**Aceitação F3 (original)**
 - [ ] agente conectado responde "vale vender put em PETR4?" citando campos que existem nos retornos e a taxa histórica da classe
 - [ ] nenhuma tool devolve > 60 linhas
 - [ ] erro sempre no formato `{error:{code,message,hint}}`
+
+</details>
+
 
 ---
 
@@ -373,6 +405,7 @@ podman compose --profile dev up dev                        # backend com --reloa
 | Variável | Uso |
 |---|---|
 | `B3_DATA_DIR` | raiz do lake no container (`/data`, bind de `./data`) |
+| `B3_APP_PORT` | porta publicada no host (default `8080`; a app no container é sempre `:8080`) |
 | `APP_TOKEN` | token das escritas |
 | `TZ` | `America/Sao_Paulo` no container (só log; a data vem do arquivo) |
 

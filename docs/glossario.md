@@ -34,6 +34,8 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 **No painel** — `PETRZ400 mid 1,42 · bid 1,40 · ask 1,44`.
 
+**No MCP (F3)** — `bid_brl`/`ask_brl` saem `null` quando o lake grava `0` (sem oferta) — `0,00` não é preço. O `mid_brl` que a API devolve é o **preço usado na IV**, que por ADR-017 é o fechamento dividido pelo fator de cotação (`metrics_series.mid`), não o mid do book; `close_brl` repete o mesmo número. O mid do book, quando existe, é `(bid + ask) / 2` calculado pelo consumidor.
+
 ## Spread
 
 **O que é** — a distância entre bid e ask. É o custo implícito de entrar e sair: você compra pelo ask e vende pelo bid.
@@ -85,6 +87,8 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 **Erro comum** — comparar IV de vencimentos diferentes. A IV do vencimento mais próximo sobe e desce com o calendário, criando serra dente de serra. Por isso o painel **interpola** para 30 dias em vez de pegar o vencimento mais próximo.
 
 **No painel** — `IV ATM 30d 28,4` é comparável com a de ontem, com a de outro papel e com a sua própria média de 12 meses.
+
+**Na estrutura a termo (F3)** — cada vencimento mostra um `iv_atm` **selecionado** na série com `|Δ|` mais próximo de 0,5 do que está gravado (as puts têm Δ negativo; o `side` diz o sinal). É leitura para olhar o formato da curva, não substitui o ATM 30d oficial, que é interpolado em variância total e mora em `metrics_underlying`.
 
 ## IV rank e percentil
 
@@ -142,6 +146,8 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 **No painel** — `28,4 (nov) / 30,1 (dez) / 31,8 (jan)`: contango normal, sem evento concentrado no curto prazo.
 
+**No MCP (F3)** — cada vencimento traz `iv_atm`, `forward_brl`/`forward_method`, `exp_move_1s` e as contagens `n_strikes` (strikes distintos com série no dia) e `n_liquid_strikes` (quantos têm ao menos uma série na regra §6.9). A contagem é do dia, não do histórico.
+
 ## Volume e open interest
 
 **O que é** — volume é o que foi negociado no dia; open interest (OI) é quantos contratos estão abertos. Volume mostra atividade, OI mostra posição acumulada.
@@ -161,6 +167,8 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 ---
 
 ## Taxa histórica do sinal
+
+> **Fora do produto (ADR-023/024).** O backtest das classes de sinal está registrado como **histórico do portão** (`docs/relatorios/2026-11-23-validacao-f1b.md`, `data/out/backtest.md`) e **não** é exposto no painel nem no MCP (`signal_backtest` fora do F3, ADR-027). O sinal de reversão do VRP **não passou** — as classes ficaram abaixo da base `none`; o texto abaixo é registro do que foi testado.
 
 **O que é** — quantas vezes, nos últimos anos, a mesma classe de sinal (ex.: `premium_rich`) foi seguida de volatilidade realizada abaixo da implícita nas 20 sessões seguintes. É o backtest do próprio funil.
 
@@ -203,6 +211,8 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 **Erro comum** — achar que forward e spot são a mesma coisa. A diferença é juro menos dividendo esperado no período — e é justamente ela que revela expectativa de provento.
 
 **No painel** — usado internamente para calcular IV sem depender de um chute de dividendo.
+
+**No MCP (F3)** — a estrutura a termo devolve `forward_brl` por vencimento e `forward_method`: `crossing` (strike onde call = put), `ols` (ajuste na banda OTM) ou `none` (nenhum par honesto → `null`). O forward é reconstruído na leitura a partir dos `mid`s gravados, com a mesma função pura do pipeline; nenhuma métrica é reescrita.
 
 ## Dividendo implícito
 

@@ -17,8 +17,10 @@ from datetime import date
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from b3o.api import payloads
 from b3o.api.mcp_server import mcp
@@ -33,7 +35,7 @@ from b3o.api.serialize import (
     request_error,
 )
 from b3o.api.state import build_service, set_service
-from b3o.ingest.errors import SourceFailure
+from b3o.ingest.errors import SourceError, SourceFailure
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +77,44 @@ def create_app() -> FastAPI:
     @app.exception_handler(SourceFailure)
     async def _source_failure(_request: Request, exc: SourceFailure) -> JSONResponse:
         return JSONResponse(status_code=error_status(exc), content=error_payload(exc))
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(
+        _request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Parâmetro malformado também sai no envelope (`400 bad_request`)."""
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error.get('loc', ()))}: "
+            f"{error.get('msg', 'inválido')}"
+            for error in exc.errors()[:3]
+        )
+        failure = request_error(
+            f"parâmetros inválidos ({details})",
+            "use date ISO AAAA-MM-DD, inteiros para max_rows/days e floats para delta; "
+            "os tipos estão em /api/openapi.json",
+        )
+        return JSONResponse(status_code=400, content=error_payload(failure))
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_error(
+        _request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        """404/405 das rotas `/api` no mesmo formato de erro do projeto."""
+        code = {404: "not_found", 405: "method_not_allowed"}.get(
+            exc.status_code, "http_error"
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "code": code,
+                    "message": str(exc.detail),
+                    "hint": "as rotas do F3 são GET /api/health, /api/screen, "
+                    "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events "
+                    "e /api/s/{ticker}/{maturity}",
+                }
+            },
+        )
 
     @app.exception_handler(Exception)
     async def _unexpected(_request: Request, exc: Exception) -> JSONResponse:
@@ -148,6 +188,24 @@ def create_app() -> FastAPI:
                 "use /api/s/<ticker>/<AAAA-MM-DD> com o vencimento da série",
             )
         return payloads.series_payload(_service(), ticker, parsed, days=days)
+
+    @app.get("/api/{rest:path}")
+    def api_not_found(rest: str) -> dict[str, Any]:
+        """Rota `/api` desconhecida: erro no envelope, não o 404 do app montado.
+
+        O MCP é montado em `/` para o endpoint ser exatamente `/mcp` (sem 307);
+        sem esta rota, caminho `/api` inexistente cairia no 404 cru do app
+        montado. Ela fica **depois** das rotas válidas para não sombreá-las.
+        """
+        raise SourceFailure(
+            SourceError(
+                code="not_found",
+                message=f"rota /api/{rest} não existe no F3",
+                hint="rotas: /api/health, /api/screen, /api/t/{ticker}, "
+                "/api/t/{ticker}/chain, /api/t/{ticker}/events, "
+                "/api/s/{ticker}/{maturity}",
+            )
+        )
 
     app.mount("/", mcp_app)
     return app

@@ -1661,16 +1661,18 @@ class QueryService:
         if not rows:
             self._series_failure(code, maturity, paths)
         last = rows[-1]
-        points = [
-            SeriesPoint(
+
+        def point(row: tuple) -> SeriesPoint:
+            return SeriesPoint(
                 date=row[0],
                 close_brl=float(row[1]) / 100.0,
                 mid_brl=float(row[1]) / 100.0,
                 iv_pct=None if row[2] is None else float(row[2]),
                 delta=None if row[3] is None else float(row[3]),
             )
-            for row in rows[-max(0, int(days)) :]
-        ]
+
+        window = rows[-int(days) :] if days > 0 else []
+        points = [point(row) for row in window]
         return SeriesDetail(
             ticker=code,
             maturity=maturity,
@@ -1684,7 +1686,7 @@ class QueryService:
             gamma=None if last[4] is None else float(last[4]),
             theta_brl=None if last[5] is None else float(last[5]),
             vega_brl=None if last[6] is None else float(last[6]),
-            last=points[-1],
+            last=point(last),
             history=points,
             as_of_session=session,
             model_version=int(last[14]),
@@ -1719,6 +1721,11 @@ class QueryService:
             (row for row in earnings_all if row.date >= session), None
         )
         notes: list[str] = []
+        if not maturities:
+            notes.append(
+                f"maturities: nenhuma série de {paper} com métrica na sessão "
+                f"{session.isoformat()}; o calendário e os eventos continuam válidos"
+            )
         coverage_start = min((row.date for row in self.earnings_rows()), default=None)
         if not earnings_all:
             notes.append(
@@ -1850,8 +1857,18 @@ class QueryService:
         result: list[ChainRow] = []
         for row in rows:
             factor = int(row[18]) if row[18] else 1
-            bid = None if row[15] is None else float(row[15]) / factor / 100.0
-            ask = None if row[16] is None else float(row[16]) / factor / 100.0
+            # `best_bid/ask == 0` no lake significa "sem oferta" (é o que a regra
+            # §6.9 usa). Expor 0,0 sugere "oferta a zero": ausência vira `None`.
+            bid = (
+                None
+                if row[15] is None or int(row[15]) <= 0
+                else float(row[15]) / factor / 100.0
+            )
+            ask = (
+                None
+                if row[16] is None or int(row[16]) <= 0
+                else float(row[16]) / factor / 100.0
+            )
             close = None if row[17] is None else float(row[17]) / factor / 100.0
             spread_brl = None
             spread_pct = None

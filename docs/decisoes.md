@@ -277,6 +277,35 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** `b3o health` passa a mostrar `2` com `mismatch: true` e a nota da divergência; nenhuma fórmula muda e `model_version` do lake continua 2.
 - **Revisar em:** quando o `prepare` rodar de novo (o `ingest_state` se alinha sozinho) ou se o dono quiser reconciliar os dois de vez.
 
+## ADR-026 — F3: FastAPI + MCP Streamable HTTP, uma `QueryService` e o envelope de resposta
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** médio (troca de SDK/transporte)
+- **Contexto:** o F3 precisava da API e do MCP no mesmo processo, sobre a mesma `QueryService` (spec §7/§8), com `max_rows`, teto de 200 KB e erro `{code,message,hint}`. O `compose.yaml` já chamava `uvicorn b3o.api:app`, mas o módulo não existia.
+- **Dependências (ADR-008, última estável; `uv lock` no container):** `fastapi 0.165.0`, `uvicorn 0.54.0`, `mcp 2.3.0` (SDK oficial; transporte Streamable HTTP e cliente `mcp.Client`). O `uv.lock` foi regerado dentro do container pelo workaround do bind (copiar para `/tmp`, `uv lock`, copiar de volta).
+- **Decisão:**
+  1. `backend/src/b3o/api/`: `app.py` (FastAPI), `state.py` (uma instância no lifespan), `payloads.py` (construtores compartilhados por HTTP e MCP), `serialize.py` (envelope, limites, erro) e `mcp_server.py` (as 6 tools).
+  2. **HTTP e MCP chamam as mesmas funções** de payload — o mesmo JSON é o critério de contrato, não uma coincidência.
+  3. O app MCP é montado em `/` com `streamable_http_path="/mcp"` (montar em `/mcp` com caminho `/` devolvia 307 para `/mcp/`). O **lifespan do app montado não roda sozinho**: o lifespan do FastAPI executa `mcp_app.router.lifespan_context(mcp_app)`.
+  4. `stateless_http=True` (leitura pura, sem sessão de servidor) e `TransportSecuritySettings(allowed_hosts=…)` para `127.0.0.1`, `localhost` e `host.containers.internal` (o default recusa Host fora de localhost com 421).
+  5. Envelope `{as_of_session, model_version, data, meta}`; `meta.total/returned/truncated` (e `meta.lists` quando há mais de uma tabela). `max_rows` padrão **20**, teto **60**; o teto de **200 KB** trunca a lista principal pelo maior prefixo que cabe, sem cortar linha.
+  6. O compose publica `${B3_APP_PORT:-8080}:8080`; o default continua 8080 (o host desta sessão tem outro projeto local nessa porta — a app dentro do container é sempre `:8080`).
+- **Por quê:** o SDK oficial é o caminho mais curto para Streamable HTTP com cliente de fumaça; a montagem no mesmo processo garante a regra "uma camada de consulta"; o envelope único evita divergência entre bordas.
+- **Consequência:** `podman compose up -d app` sobe HTTP + `/mcp`; o smoke `backend/scripts/mcp_smoke.py` prova `tools/list`, os números e a igualdade MCP×HTTP. Rotas de escrita/journal/positions/structure continuam fora (F4/F5).
+- **Revisar em:** F5 (PWA/Tailscale: incluir o host `*.ts.net` no `allowed_hosts`) ou se o SDK mudar a API de montagem/lifespan.
+
+## ADR-027 — F3: `signal_backtest` fora do MCP; leitura reconstrói forward/exp_move do termo
+
+- **Data:** 2026-11-23 · **Status:** provisória (orquestrador) · **Custo de reverter:** baixo (é exposição/leitura; não toca fórmula)
+- **Contexto:** a spec §7/§8 lista `signal_backtest`, mas o ADR-023/024 parou no portão e redefiniu o produto como descritivo. Além disso, a estrutura a termo precisa de `forward`/`exp_move` por vencimento, que **não** estão gravados (só o forward 30d e o exp_move 30d de `metrics_underlying`).
+- **Decisão:**
+  1. **`signal_backtest` não é exposto** no F3 (nem HTTP nem MCP). Ele continua como registro histórico do portão (`docs/relatorios/2026-11-23-validacao-f1b.md`, `data/out/backtest.md`); expô-lo convidaria a leitura preditiva que o ADR-023 falsificou. O `PLAN.md` F3 foi ajustado.
+  2. `term.forward_brl` é reconstruído **na leitura** por paridade dos `mid`s gravados, chamando `derive.forward.forward_by_parity` (a mesma função pura do pipeline); `forward_method` diz `crossing`/`ols`/`none`. `term.exp_move_1s` usa `derive.dist.expected_move_1s` sobre o straddle ATM do vencimento (constante 1,25 da §6.10).
+  3. Nenhuma métrica gravada é recalculada nem reescrita; `model_version` continua **2**. A reconstrução é determinística sobre o dado do lake e falha explícita (`null` + método `none`) quando não há par honesto.
+  4. Campos de preço das leituras novas levam sufixo `_brl` (P-R: unidade no nome); o rascunho do prompt listava `bid/ask/mid/close/strike` sem sufixo. `ScreenRow` mantém os nomes do contrato do F2 (`spot_brl`, `forward_30d`).
+- **Por quê:** expor `signal_backtest` contradiria o ADR-024; deixar `forward`/`exp_move` nulos empobreceria a estrutura a termo sem necessidade, já que os insumos e as funções puras existem e são os mesmos do cálculo gravado.
+- **Consequência:** o termo é descritivo e reproduzível; quem precisa do número oficial de 30d continua lendo `summary.forward_30d`/`exp_move_1s_30d`. `docs/glossario.md` registra a diferença.
+- **Revisar em:** se o dono pedir o backtest como leitura histórica explícita (nova rota read-only, com aviso do portão) ou no F4 (estruturas), que reusa o forward do termo.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

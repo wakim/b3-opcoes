@@ -312,6 +312,11 @@ async def main_async() -> int:
             "series",
             {"ticker": SERIES_TICKER, "maturity": SERIES_MATURITY, "days": 60},
         )
+        series_zero = await call(
+            client,
+            "series",
+            {"ticker": SERIES_TICKER, "maturity": SERIES_MATURITY, "days": 0},
+        )
         events = await call(client, "events", {"ticker": TICKER})
 
         print("\nHTTP nos mesmos parâmetros:")
@@ -342,6 +347,40 @@ async def main_async() -> int:
             and len(series["data"]["history"]) > 0,
             "series devolve identidade + histórico",
             f"n={len(series['data']['history'])}",
+        )
+        check(
+            len(series_zero["data"]["history"]) == 0
+            and series_zero["data"]["last"] is not None,
+            "series days=0 devolve histórico vazio (não tudo)",
+            f"n={len(series_zero['data']['history'])}",
+        )
+        zero_book = [
+            row
+            for row in chain_all["data"]["rows"]
+            if row["bid_brl"] == 0 or row["ask_brl"] == 0
+        ]
+        check(
+            not zero_book,
+            "chain: book ausente é null, nunca 0,0",
+            f"linhas com zero={len(zero_book)}",
+        )
+
+        print("\nErros de parâmetro/rota (HTTP):")
+        bad_parameter = await http.get("/api/screen?max_rows=abc")
+        bad_body = bad_parameter.json()
+        check(
+            bad_parameter.status_code == 400
+            and bad_body.get("error", {}).get("code") == "bad_request",
+            "max_rows malformado → 400 {error:{code:bad_request}}",
+            f"HTTP {bad_parameter.status_code} {json.dumps(bad_body)[:80]}",
+        )
+        missing_route = await http.get("/api/nope")
+        missing_body = missing_route.json()
+        check(
+            missing_route.status_code == 404
+            and missing_body.get("error", {}).get("code") == "not_found",
+            "rota /api desconhecida → 404 {error:{code:not_found}}",
+            f"HTTP {missing_route.status_code} {json.dumps(missing_body)[:80]}",
         )
 
         print("\nErros (MCP):")

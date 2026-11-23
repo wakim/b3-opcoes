@@ -22,7 +22,8 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Item | Situação |
 |---|---|
 | Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…018) |
-| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 a ~80%**: convenções/forward/IV/gregas, realizada+eventos, ATM/VRP/skew/dist, validadores e a plumbing do pipeline estão prontos; `b3o metrics` roda no dado real e está em **correção da rodada de revisão** (tolerância do validador, volume do papel, sanidade do forward). Sem UI. |
+| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 calculado no dado real** — convenções/forward/IV/gregas, realizada, ATM/VRP/skew/dist, validadores e `b3o metrics` (722 sessões) — **em aceitação**: as métricas precisam ser recalculadas inteiras com `model_version=2` (o backfill foi interrompido) e os critérios 3–6 medidos. Sem UI. |
+| Retomar em | `out/relatorio-sessao.md` §7.3 e §9 (estado exato e ordem do dia seguinte) |
 | Dados baixados | COTAHIST 2026 (221 sessões, 3.537.186 linhas dos 6 mercados), OI (10 sessões), curva DI (1 sessão; Selic plana em lote para o histórico), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |

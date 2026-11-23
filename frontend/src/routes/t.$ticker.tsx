@@ -55,7 +55,7 @@ function TickerPage() {
         </div>
         <div className="metric">
           <span className="k">Cadeia (linhas)</span>
-          <div className="v">{chain.data?.meta?.returned ?? '—'}</div>
+          <div className="v">{chain.data?.meta?.total ?? '—'}</div>
         </div>
       </div>
 

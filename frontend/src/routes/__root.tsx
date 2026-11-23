@@ -21,7 +21,17 @@ const NAV = [
   { to: '/aprender', label: 'Aprender' },
 ] as const
 
+/** O Provider fica no __root (contrato), mas o consumidor precisa ser FILHO:
+ *  um hook chamado no mesmo componente que retorna o Provider não vê o contexto. */
 function RootLayout() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppShell />
+    </QueryClientProvider>
+  )
+}
+
+function AppShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const health = useQuery({
     queryKey: ['health'],
@@ -30,34 +40,32 @@ function RootLayout() {
   const session = health.data?.data.last_session
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <div className="app">
-        <header className="appbar">
-          <h1>Opções B3</h1>
-          <div className="stamp">
-            {health.isLoading
-              ? 'carregando sessão…'
-              : session
-                ? `sessão ${session} · D-1`
-                : 'sessão indisponível'}
-          </div>
-        </header>
-        <main>
-          <ErrorBox error={health.error} />
-          <Outlet />
-        </main>
-        <nav className="nav">
-          {NAV.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={pathname === item.to ? 'active' : undefined}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
-      </div>
-    </QueryClientProvider>
+    <div className="app">
+      <header className="appbar">
+        <h1>Opções B3</h1>
+        <div className="stamp">
+          {health.isLoading
+            ? 'carregando sessão…'
+            : session
+              ? `sessão ${session} · D-1`
+              : 'sessão indisponível'}
+        </div>
+      </header>
+      <main>
+        <ErrorBox error={health.error} />
+        <Outlet />
+      </main>
+      <nav className="nav">
+        {NAV.map((item) => (
+          <Link
+            key={item.to}
+            to={item.to}
+            className={pathname === item.to ? 'active' : undefined}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+    </div>
   )
 }

@@ -77,7 +77,7 @@ function Hoje() {
       </table>
       <p className="note">
         Recorte alfabético (API devolve no máximo 60 linhas). Leitura descritiva:
-        sem classe de sinal, nota ou recomendação.
+        nenhum número aqui é uma previsão ou sugestão de operação.
       </p>
     </>
   )

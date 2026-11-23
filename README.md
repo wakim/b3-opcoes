@@ -10,9 +10,9 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões (ADR-001…027) |
-| Código | 🟢 **F0–F3 completos** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events). F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F4 (estruturas)** ou **F5 (API+PWA)**, conforme o dono — F3 fechado com parecer em `docs/relatorios/2026-11-23-revisao-f3.md` |
+| Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões (ADR-001…028) |
+| Código | 🟢 **F0–F4 completos** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events, structure_eval) e `b3o struct` (payoff, breakevens, capital, gregas e cenários da estrutura dada). F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F5 (API+PWA)**, conforme o dono — F4 fechado com parecer em `docs/relatorios/2026-11-23-revisao-f4.md` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
@@ -75,14 +75,23 @@ podman compose run --rm prepare                          # baixa e deriva (1×/d
 podman compose run --rm test b3o health                  # estado do lake e da versão do cálculo
 podman compose run --rm test b3o screen --date 2026-11-19 # painel descritivo (sem classe de sinal)
 podman compose run --rm test b3o metrics --date 2026-11-19
+podman compose run --rm test b3o struct --date 2026-11-19 `
+  --underlying PETR4 --leg "option:PETRL44:short:100" --leg "stock:PETR4:long:100" --capital 5000
 podman compose up -d app                                 # HTTP + MCP (/mcp) em 127.0.0.1:8080
 # se a 8080 do host estiver ocupada por outro projeto:
 $env:B3_APP_PORT="8081"; podman compose up -d app
 # prova do MCP/HTTP (container → app):
 podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
   -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/mcp_smoke.py
+podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
+  -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/structure_smoke.py
 tailscale serve --bg --https=443 http://127.0.0.1:8080
 ```
+
+`b3o struct` (e `POST /api/structure` / tool `structure_eval`) **avalia a estrutura dada** —
+payoff, breakevens, prêmio líquido, perda/ganho máximo, capital comprometido, gregas e 45
+cenários. É cálculo, não gravação: não vira posição nem journal, e **não sugere, compara ou
+ordena** estruturas (ADR-028). `quantity` é em **ações** (1 contrato = 100), não em contratos.
 
 `b3o backtest` continua existindo como **registro histórico do portão** (F1b): o sinal de
 reversão do VRP **não passou** (ADR-023) e **não** é exposto no MCP nem usado como insumo de

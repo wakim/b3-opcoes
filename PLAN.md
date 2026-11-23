@@ -22,8 +22,8 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Item | Situação |
 |---|---|
 | Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…023) |
-| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB; `health` reporta o `model_version` das tabelas derivadas (**2**). Sem UI. |
-| Retomar em | **F4 (estruturas) ou F5 (API+PWA), conforme o dono.** Prompt de execução do F4 em `docs/prompts/f4.md`. F3 fechado com parecer em `docs/relatorios/2026-11-23-revisao-f3.md`; pendências registradas: porta 8080 do host ocupada por outro projeto (usar `B3_APP_PORT`), exclusão de índice/BDR do universo e reconciliação `ingest_state` × métricas quando o `prepare` rodar de novo. |
+| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
+| Retomar em | **F5 (API + PWA), conforme o dono.** F4 fechado com parecer em `docs/relatorios/2026-11-23-revisao-f4.md`; contrato em `docs/contratos/onda-j.md`; prova em `backend/scripts/structure_smoke.py` (91/91). Pendências herdadas: porta 8080 do host ocupada por outro projeto (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas quando o `prepare` rodar de novo, `screen` sem paginação. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -257,22 +257,29 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 # F4 — Estruturas
 
-**Objetivo:** transformar "prêmio caro" em estrutura avaliada.
+**Objetivo:** avaliar **a estrutura que o usuário especificou** (payoff, breakevens, prêmio líquido, perda/ganho máximo, capital comprometido, gregas e cenários) — descritivo, sem sugestão, comparação, ordenação, margem ou probabilidade (ADR-023/024/028).
 **Estimativa:** 1 sessão · **Depende de:** F3
 
 | ID | Tarefa | Est. |
 |---|---|---|
-| F4.1 | `structure_eval`: payoff, breakevens, prêmio líquido, gregas agregadas, faixa mid±½ spread | 2 h |
-| F4.2 | cenários spot × IV × dias dentro do `structure_eval` | 1 h |
-| F4.3 | perda máxima e capital comprometido (**sem margem**) dentro do `structure_eval` | 30 min |
-| F4.4 | tool `structure_eval` no MCP + `b3o struct` | 30 min |
-| F4.5 | Testes: payoff e breakeven das 5 estruturas abaixo | 30 min |
+| F4.1 | `derive/structure.py` puro: payoff, breakevens, prêmio líquido (débito/crédito), gregas agregadas, faixa `mid ± ½ spread` | 2 h |
+| F4.2 | cenários spot × IV × dias dentro do `structure_eval` (45 pontos, Black-76, `T'=0` intrínseco) | 1 h |
+| F4.3 | perda máxima e capital comprometido (**sem margem**) no cálculo puro | 30 min |
+| F4.4 | `POST /api/structure` + tool `structure_eval` + `b3o struct` sobre o mesmo payload | 30 min |
+| F4.5 | Prova no dado real: 5 estruturas conferidas à mão + `structure_smoke.py` (sem `tests/`) | 30 min |
 
-**Aceitação F4**
-- [ ] payoff e breakeven conferem à mão em 5 estruturas (coberta, put caixa, trava alta, trava baixa, straddle)
-- [ ] perda máxima correta em estruturas de risco limitado; `null` + flag `unbounded_loss` nas demais
+**Aceitação F4 (onda J)** — contrato `docs/contratos/onda-j.md`; parecer independente em `docs/relatorios/2026-11-23-revisao-f4.md`.
 
-**Entregável:** `b3o struct --underlying PETR4 --legs "..."`
+- [x] payoff, breakeven e prêmio líquido conferem à mão em 5 estruturas de PETR4 em 19/11 — **coberta** 4109 / [41,09] / −268,70 · 158,00 · 207,00; **put caixa** −72 / [40,19] / −178,70 · 72 · 72; **trava alta** 35 / [42,76] / −35 · −9 · 40; **trava baixa** 99 / [42,42] / 151 · −25 · −99; **straddle** 315 / [40,01; 46,31] / 160,70 · −266 · 62,70; conferência por caminho independente (`data/out/f4-conferencia.py`, DuckDB direto + aritmética própria) e recalculo do revisor
+- [x] perda máxima correta em risco limitado; **call vendida nua → `max_loss_brl: null` + `unbounded_loss`**; `capital` abaixo do comprometido → `capital_over: true`; `capital_committed_brl` = 4109 / 4019 / 35 / 99 / 315 nas 4 de risco definido (+ coberta)
+- [x] `POST /api/structure`, tool `structure_eval` e `b3o struct --json` devolvem **o mesmo JSON** nas 6 estruturas — `structure_smoke.py` **91/91 PASS** no dado real
+- [x] cenários ≤ 60 pontos (45), `(S, 0, 0)` ≈ P&L 0, `T'=0` = intrínseco (27/11 com 7 dias → −86,00 = intrínseco 0 − prêmio 0,86), perna sem IV → `scenarios_unavailable` com payoff presente
+- [x] erros `bad_legs`/`bad_request`/`underlying_mismatch`/`maturity_mismatch` (400), `ticker_not_found`/`no_session`/`metrics_missing` (404), sempre `{error:{code,message,hint}}` e sem traceback
+- [x] nenhuma lista > 60 linhas; maior resposta real **6.596 bytes** (teto de 200 KB respeitado); `grep` preditivo = **0** (o nome de campo `net_premium_brl` é a única ocorrência de "premium", declarada no contrato §8)
+- [x] `ruff check src` limpo; `b3o health`/`screen`/`metrics` intactos; `model_version` segue **2**; `git diff` de `metrics/`/`ingest/`/`store/`/`derive/` existente = vazio; `uv.lock` intacto
+- [x] `POST /api/structure` é cálculo, não gravação: nenhum arquivo do lake é criado/alterado (F6 é que grava)
+
+**Entregável:** `b3o struct --underlying PETR4 --leg "option:PETRL44:short:100" --leg "stock:PETR4:long:100"` (e `POST /api/structure` + tool `structure_eval`).
 
 ---
 

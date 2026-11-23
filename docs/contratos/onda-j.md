@@ -35,7 +35,7 @@ fora (spec §7/§6.10).
 | F4.1 | `backend/src/b3o/derive/structure.py` (**novo**, puro) |
 | F4.2 | `backend/src/b3o/query/service.py` (método + dataclasses), `query/__init__.py` (se exportar) |
 | F4.3 | `backend/src/b3o/api/payloads.py`, `api/app.py`, `api/mcp_server.py`, `api/serialize.py` (só o mapa de status dos códigos novos), `backend/src/b3o/cli.py` (**só** o comando `struct`) |
-| F4.4 | `backend/scripts/structure_smoke.py` (**novo**) |
+| F4.4 | `backend/scripts/structure_smoke.py` (**novo**) e `backend/scripts/mcp_smoke.py` (atualizado: 7ª tool `structure_eval` e a exceção do nome `net_premium_brl` no grep) |
 | docs | `docs/decisoes.md` (ADR), `docs/glossario.md` (verbetes novos), `PLAN.md`, `AGENTS.md`, `docs/relatorios/2026-11-23-revisao-f4.md` |
 | **congelado** | `metrics/`, `ingest/`, `store/`, `derive/` existente (só chamar), `backend/pyproject.toml`, `backend/uv.lock`, `frontend/`, `config.yaml` |
 
@@ -253,7 +253,7 @@ structure_eval(legs, underlying=None, date=None, capital=None, scenarios=True) -
   "capital_committed_brl": 4109.0,
   "capital_input_brl": 5000.0,
   "capital_over": false,
-  "delta": 48.62, "gamma": 0.0, "theta_brl": 0.0, "vega_brl": 0.0,
+  "delta": 48.624814, "gamma": -0.098687, "theta_brl": 3.849762, "vega_brl": -4.793596,
   "payoff": [{"spot_brl": 25.6, "pnl_brl": -1549.0}, ...],
   "scenarios": [{"spot_brl": 34.13, "iv_shift_pts": -5.0, "days_forward": 0, "pnl_brl": ...}, ...],
   "flags": ["illiquid_leg"],

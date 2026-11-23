@@ -52,8 +52,39 @@ for (d0, v0), (d1, v1) in zip(series, series[1:]):
     jumps.append((abs(v1 - v0), d1))
 jumps.sort(reverse=True)
 over = [j for j in jumps if j[0] > 2.0]
-print(f"5) PETR4 ATM 30d: {len(series)} dias, {len(over)} saltos > 2 vol points; "
+print(f"5) PETR4 ATM 30d: {len(series)} dias, {len(over)} saltos > 2 vol points (TODOS os dias; "
+      f"o PLAN pede só dias de rolagem); "
       f"maiores: {[(round(j[0], 2), str(j[1])) for j in jumps[:4]]}")
+
+# O critério do PLAN é "em dia de rolagem". Identifica a frente como o vencimento
+# com t (du/252) mais próximo de 30/252, via ISIN da PETR4 (prefixo de ticker não
+# distingue PETR3 de PETR4 — ver AGENTS.md). Nenhum limiar é alterado aqui.
+_roll_rows = con.execute(
+    """
+    WITH raw AS (SELECT refdate, tpmerc, maturity, isin_underlying FROM
+                 read_parquet('/data/raw_cotahist/year=2026/part-0.parquet')),
+    sess AS (SELECT DISTINCT refdate FROM raw WHERE tpmerc='010' ORDER BY 1),
+    ix AS (SELECT refdate, row_number() OVER (ORDER BY refdate) i FROM sess),
+    cand AS (
+      SELECT DISTINCT o.refdate, o.maturity, abs((b.i - a.i) - 30) AS gap
+      FROM raw o JOIN ix a ON a.refdate=o.refdate JOIN ix b ON b.refdate=o.maturity
+      WHERE o.tpmerc IN ('070','080') AND o.isin_underlying='BRPETRACNPR6'
+    ),
+    front AS (SELECT refdate, maturity,
+                     row_number() OVER (PARTITION BY refdate ORDER BY gap, maturity) rn
+              FROM cand)
+    SELECT refdate, maturity FROM front WHERE rn=1 ORDER BY refdate
+    """
+).fetchall()
+_rolls: set[dt.date] = set()
+_prev = None
+for day, maturity in _roll_rows:
+    if _prev is not None and maturity != _prev:
+        _rolls.add(day)
+    _prev = maturity
+_over_roll = [j for j in jumps if j[0] > 2.0 and j[1] in _rolls]
+print(f"   em dias de rolagem ({len(_rolls)} datas): {len(_over_roll)} saltos > 2 vol points "
+      f"(critério literal do PLAN): {[(round(j[0], 2), str(j[1])) for j in _over_roll[:8]]}")
 
 # ------------------------------------------- 3. forward OTM-only vs ITM-only
 options = service.options_on(REF)
@@ -118,7 +149,7 @@ def df_at(du: int, shift: float) -> float:
 
 
 du = 20
-ivs = []
+ivs: list[tuple[float, float]] = []  # (|ΔIV| em vol points, |ln(K/F)|)
 for o in options:
     if o.underlying != "PETR4" or o.strike <= 0 or o.maturity != dt.date(2026, 12, 18):
         continue
@@ -130,5 +161,17 @@ for o in options:
     plus, _ = implied_vol_detail(price, 4316.93, o.strike, t, df_at(du, 1.0), is_call=o.side == "C")
     minus, _ = implied_vol_detail(price, 4316.93, o.strike, t, df_at(du, -1.0), is_call=o.side == "C")
     if None not in (base, plus, minus):
-        ivs.append(max(abs(plus - base), abs(minus - base)) * 100)
-print(f"4) r ±100 bp: n={len(ivs)}, max|ΔIV| = {max(ivs):.3f} vol points" if ivs else "4) sem amostra")
+        ivs.append((
+            max(abs(plus - base), abs(minus - base)) * 100,
+            abs(math.log(o.strike / 4316.93)),
+        ))
+if ivs:
+    print(f"4) r ±100 bp: n={len(ivs)}, max|ΔIV| = {max(v for v, _ in ivs):.3f} vol points "
+          "(TODAS as séries; o max vem de opções a 67–82% de moneyness, fora do smile)")
+    # A banda validada pelo pipeline é |ln(K/F)| <= 0,10 (pipeline.py:SMILE_MONEYNESS_BAND).
+    # Reportar também o max nela — o domínio em que a IV realmente é usada. Limiar inalterado.
+    band = [v for v, m in ivs if m <= 0.10]
+    if band:
+        print(f"   na banda validada |ln(K/F)|≤0,10: n={len(band)}, max|ΔIV| = {max(band):.3f} vol points")
+else:
+    print("4) sem amostra")

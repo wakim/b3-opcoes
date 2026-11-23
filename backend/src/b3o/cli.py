@@ -847,7 +847,11 @@ def _load_open_interest(
 
     try:
         oi_map = service.open_interest_totals(wanted)
-    except SourceFailure:
+    except SourceFailure as exc:
+        # A leitura da partição falhou: engolir silenciosamente viraria "sem OI"
+        # (zero mentiroso no health). Registra o erro e deixa o mapa vazio — o
+        # consumidor ainda cai em oi_unavailable, mas a falha aparece no sidecar.
+        errors.append(exc.error)
         oi_map = {}
 
     summary = {

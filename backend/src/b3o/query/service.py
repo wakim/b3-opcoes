@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -44,10 +45,12 @@ from pathlib import Path
 import duckdb
 
 from b3o.derive.calendar import trading_sessions
+from b3o.derive.conventions import SESSIONS_PER_YEAR, log_df_interp_or_none
 from b3o.derive.dist import expected_move_1s
 from b3o.derive.forward import ParityQuote, forward_by_parity
 from b3o.derive.liquidity import DAYS_WINDOW, VOLUME_MIN_CENTS
 from b3o.derive.realized import DEFAULT_GAP_THRESHOLD, flag_unexplained
+from b3o.derive.structure import StructureLeg, StructureResult, evaluate
 from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.ingest.parse import KEPT_MARKETS
@@ -760,6 +763,42 @@ class EventsDetail:
     strike_events: list[StrikeEventRow]
     earnings: list[EarningsEventRow]
     next_earnings: EarningsEventRow | None
+    notes: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class StructureLegInput:
+    """Uma perna pedida pelo chamador, já normalizada (contrato onda-j §2).
+
+    `quantity` é **número de ações** (inteiro > 0): 1 contrato padrão = `quantity: 100`
+    e nada é multiplicado por 100 em lugar nenhum (§0.7). A resolução do papel e o
+    preço da sessão acontecem em `QueryService.structure_eval`.
+    """
+
+    kind: str
+    """`option` | `stock`."""
+
+    ticker: str
+    side: str
+    """`long` | `short`."""
+
+    quantity: int
+
+
+@dataclass(frozen=True, slots=True)
+class StructureEval:
+    """Resultado do `structure_eval` + a sessão e o modelo que o produziram (F4.2).
+
+    `result` é puro (`derive/structure.py`); `notes` explica o que as flags dizem
+    (perna ilíquida, cenários indisponíveis e o motivo, `capital_over`) sem virar
+    número novo. `model_version` é o das tabelas derivadas — `structure_version`
+    viaja dentro de `result` e nunca entra nele (contrato §0.6).
+    """
+
+    underlying: str
+    as_of_session: date
+    model_version: int
+    result: StructureResult
     notes: list[str]
 
 
@@ -1745,6 +1784,417 @@ class QueryService:
             earnings=earnings_all,
             next_earnings=next_earnings,
             notes=notes,
+        )
+
+    # ------------------------ estrutura (F4.2) --------------------------- #
+
+    def structure_eval(
+        self,
+        legs: Sequence[Mapping[str, object] | StructureLegInput],
+        underlying: str | None = None,
+        date: date | None = None,
+        capital: float | None = None,
+        scenarios: bool = True,
+    ) -> StructureEval:
+        """Avalia **a estrutura dada** (contrato onda-j §2/§4) — descritivo.
+
+        Não sugere, não compara e não ordena estruturas; nenhum número é calculado
+        aqui além da montagem das pernas — payoff, breakeven, capital, gregas e
+        cenários vêm de `derive/structure.py` (puro).
+
+        Resolução (toda pelo **ISIN**, nunca pelo prefixo do ticker — armadilha 1):
+
+        - opção → papel da sessão (`raw_cotahist` `070`/`080` → `isin_underlying` →
+          linha `010`/`020`, com `010` de precedência); todas as opções têm de cair
+          no mesmo papel e no mesmo vencimento;
+        - perna de ação só entra com `ticker == papel` resolvido; estrutura só de
+          ação é válida e o papel é o próprio ticker;
+        - preço da opção = `mid` gravado (ADR-017: o fechamento); faixa = `mid ∓
+          spread/2` só quando os **dois** lados do book existem;
+        - `t`/`forward` do vencimento saem de `_term_rows` (paridade do F3) e o `df`
+          da curva DI da sessão no `du = round(t × 252)` — `du <= 0` é `df = 1`
+          (vencimento hoje), nunca o primeiro nó da curva.
+
+        Erros: `bad_legs`/`bad_request` (forma), `no_session`, `ticker_not_found`,
+        `metrics_missing`, `expiry_not_found`, `underlying_mismatch`,
+        `maturity_mismatch` — sempre `SourceFailure` com dica útil.
+        """
+        parsed = _parse_structure_legs(legs)
+        capital_brl = _parse_structure_capital(capital)
+        session = self._session(date)
+        paper = self._structure_paper(parsed, underlying, session)
+        self._require_underlying(paper)
+        rows = self._chain_rows(paper, session)
+        by_ticker: dict[str, ChainRow] = {}
+        for row in rows:
+            by_ticker.setdefault(row.ticker, row)
+
+        maturities: set[date] = set()
+        for leg in parsed:
+            if leg.kind != "option":
+                continue
+            row = by_ticker.get(leg.ticker)
+            if row is None:
+                raise self._structure_option_failure(leg.ticker, paper, session)
+            maturities.add(row.maturity)
+        if len(maturities) > 1:
+            raise SourceFailure(
+                SourceError(
+                    code="maturity_mismatch",
+                    message=(
+                        "as opções da estrutura estão em vencimentos diferentes: "
+                        + _sample_sorted(maturities)
+                    ),
+                    hint=(
+                        "monte a estrutura com um vencimento só (o payoff no "
+                        "vencimento é avaliado num instante único)"
+                    ),
+                )
+            )
+        maturity = min(maturities) if maturities else None
+
+        spot = self._spot_brl(paper, session)
+        if spot is None or spot <= 0:
+            raise SourceFailure(
+                SourceError(
+                    code="metrics_missing",
+                    message=(
+                        f"{paper} não tem fechamento à vista em "
+                        f"{session.isoformat()} para ancorar a estrutura"
+                    ),
+                    hint=(
+                        "confira se o papel negociou na sessão (mercado 010/020) e "
+                        "escolha outra data"
+                    ),
+                )
+            )
+
+        forward_brl: float | None = None
+        time_to_expiry: float | None = None
+        df: float | None = None
+        curve_nodes: list[tuple[int, float]] = []
+        if maturity is not None:
+            term_row = next(
+                (item for item in _term_rows(rows, spot) if item.maturity == maturity),
+                None,
+            )
+            if term_row is None:
+                raise SourceFailure(
+                    SourceError(
+                        code="expiry_not_found",
+                        message=(
+                            f"{paper} não tem vencimento {maturity.isoformat()} na "
+                            f"estrutura a termo de {session.isoformat()}"
+                        ),
+                        hint="confira o vencimento da série na `chain` do papel",
+                    )
+                )
+            forward_brl = term_row.forward_brl
+            time_to_expiry = term_row.t
+            curve = self.rates_curve(session)
+            curve_nodes = [(node.du, node.rate_annual) for node in curve]
+            df = _structure_df(time_to_expiry, curve_nodes)
+
+        structure_legs: list[StructureLeg] = []
+        for leg in parsed:
+            if leg.kind == "stock":
+                structure_legs.append(
+                    StructureLeg(
+                        kind="stock",
+                        ticker=leg.ticker,
+                        side=leg.side,
+                        quantity=leg.quantity,
+                        price_brl=spot,
+                        price_low_brl=None,
+                        price_high_brl=None,
+                        is_liquid=True,
+                        option_side=None,
+                        style=None,
+                        strike_brl=None,
+                        iv_pct=None,
+                        delta=None,
+                        gamma=None,
+                        theta_brl=None,
+                        vega_brl=None,
+                        maturity=None,
+                    )
+                )
+                continue
+            row = by_ticker[leg.ticker]
+            if row.mid_brl is None or row.mid_brl <= 0:
+                raise SourceFailure(
+                    SourceError(
+                        code="metrics_missing",
+                        message=(
+                            f"a série {leg.ticker} não tem preço (`mid`) em "
+                            f"{session.isoformat()}: sem preço não há prêmio"
+                        ),
+                        hint=(
+                            "confira a `series` da série; zero/ausente é ausência de "
+                            "negócio, não preço"
+                        ),
+                    )
+                )
+            if row.strike_brl is None or row.strike_brl <= 0:
+                raise SourceFailure(
+                    SourceError(
+                        code="metrics_missing",
+                        message=(
+                            f"a série {leg.ticker} não tem strike válido em "
+                            f"{session.isoformat()} (strike {row.strike_brl!r})"
+                        ),
+                        hint=(
+                            "strike 0 em linha de opção é órfão de ajuste de grade "
+                            "(IBOV): a série não serve para payoff"
+                        ),
+                    )
+                )
+            price_low: float | None = None
+            price_high: float | None = None
+            if (
+                row.bid_brl is not None
+                and row.ask_brl is not None
+                and row.bid_brl > 0
+                and row.ask_brl > 0
+            ):
+                half_spread = (row.ask_brl - row.bid_brl) / 2.0
+                price_low = row.mid_brl - half_spread
+                price_high = row.mid_brl + half_spread
+            structure_legs.append(
+                StructureLeg(
+                    kind="option",
+                    ticker=leg.ticker,
+                    side=leg.side,
+                    quantity=leg.quantity,
+                    price_brl=row.mid_brl,
+                    price_low_brl=price_low,
+                    price_high_brl=price_high,
+                    is_liquid=row.is_liquid,
+                    option_side=row.side,
+                    style=row.style,
+                    strike_brl=row.strike_brl,
+                    iv_pct=row.iv_pct,
+                    delta=row.delta,
+                    gamma=row.gamma,
+                    theta_brl=row.theta_brl,
+                    vega_brl=row.vega_brl,
+                    maturity=row.maturity,
+                )
+            )
+
+        result = evaluate(
+            structure_legs,
+            spot_brl=spot,
+            forward_brl=forward_brl,
+            df=df,
+            t=time_to_expiry,
+            curve=curve_nodes,
+            maturity=maturity,
+            capital_brl=capital_brl,
+            scenarios=scenarios,
+        )
+        return StructureEval(
+            underlying=paper,
+            as_of_session=session,
+            model_version=self.derived_model_version() or MODEL_VERSION,
+            result=result,
+            notes=_structure_notes(result),
+        )
+
+    def _structure_paper(
+        self,
+        legs: Sequence[StructureLegInput],
+        underlying: str | None,
+        session: date,
+    ) -> str:
+        """Papel da estrutura: ISIN das opções (uma só), ou o ticker da ação.
+
+        Todas as opções têm de resolver para o **mesmo** papel; a perna de ação só
+        entra com o ticker do papel resolvido. Divergência (entre opções, entre a
+        ação e o papel, ou contra `underlying`) é `underlying_mismatch`.
+        """
+        wanted = _clean_ticker(underlying) if underlying is not None else None
+        option_tickers = [leg.ticker for leg in legs if leg.kind == "option"]
+        if option_tickers:
+            found, papers = self._option_papers(option_tickers, session)
+            for ticker in option_tickers:
+                if ticker not in found:
+                    raise SourceFailure(
+                        SourceError(
+                            code="ticker_not_found",
+                            message=(
+                                f"{ticker} não é série de opção (070/080) em "
+                                f"{session.isoformat()}"
+                            ),
+                            hint=(
+                                "confira o ticker da série e a sessão; a série "
+                                "existe no lake mas pode não ter negociado no dia"
+                            ),
+                        )
+                    )
+                if ticker not in papers:
+                    raise SourceFailure(
+                        SourceError(
+                            code="underlying_mismatch",
+                            message=(
+                                f"não foi possível resolver o papel de {ticker} pelo "
+                                f"ISIN em {session.isoformat()}"
+                            ),
+                            hint=(
+                                "o ISIN da série não casa com nenhuma linha 010/020 "
+                                "do dia (pode ser ISIN-placeholder de dia ex); "
+                                "escolha uma série com papel resolvido"
+                            ),
+                        )
+                    )
+            resolved = sorted(set(papers.values()))
+            if len(resolved) > 1:
+                raise SourceFailure(
+                    SourceError(
+                        code="underlying_mismatch",
+                        message=(
+                            "as opções da estrutura são de papéis diferentes: "
+                            + ", ".join(resolved)
+                        ),
+                        hint="a estrutura é de um único papel (opção→papel é pelo ISIN)",
+                    )
+                )
+            paper = resolved[0]
+            if wanted is not None and wanted != paper:
+                raise SourceFailure(
+                    SourceError(
+                        code="underlying_mismatch",
+                        message=(
+                            f"underlying pedido ({wanted}) difere do papel resolvido "
+                            f"pelas opções ({paper})"
+                        ),
+                        hint="ajuste `underlying` ou as séries da estrutura",
+                    )
+                )
+            foreign = sorted({leg.ticker for leg in legs if leg.kind == "stock"} - {paper})
+            if foreign:
+                raise SourceFailure(
+                    SourceError(
+                        code="underlying_mismatch",
+                        message=(
+                            f"perna de ação fora do papel da estrutura ({paper}): "
+                            + ", ".join(foreign)
+                        ),
+                        hint="a perna de ação tem de ser o próprio papel das opções",
+                    )
+                )
+            return paper
+
+        papers = sorted({leg.ticker for leg in legs})
+        if len(papers) > 1:
+            raise SourceFailure(
+                SourceError(
+                    code="underlying_mismatch",
+                    message=(
+                        "estrutura só de ação com mais de um papel: " + ", ".join(papers)
+                    ),
+                    hint="a estrutura é de um papel só; separe em duas avaliações",
+                )
+            )
+        paper = papers[0]
+        if wanted is not None and wanted != paper:
+            raise SourceFailure(
+                SourceError(
+                    code="underlying_mismatch",
+                    message=f"underlying pedido ({wanted}) difere da ação ({paper})",
+                    hint="ajuste `underlying` ou o ticker da perna de ação",
+                )
+            )
+        return paper
+
+    def _option_papers(
+        self, tickers: Sequence[str], session: date
+    ) -> tuple[set[str], dict[str, str]]:
+        """`(tickers presentes na sessão, ticker->papel)` — vínculo **pelo ISIN**.
+
+        O ponto de partida é o `raw_cotahist` da sessão (`070`/`080` →
+        `isin_underlying`), casado com a linha à vista (`010` antes de `020`) do
+        **mesmo dia**, como `_chain_rows`. Opção presente sem papel resolvido sai de
+        `papers` (e não de `found`): as duas ausências têm erros diferentes.
+        """
+        paths = self._partitions(session.year)
+        if not paths:
+            raise _missing_lake_failure(self.data_dir)
+        wanted = [str(ticker) for ticker in tickers]
+        sql = (
+            "WITH options AS ("
+            "  SELECT DISTINCT ticker, isin_underlying FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('070', '080')"
+            "    AND isin_underlying <> ''"
+            "    AND ticker IN (SELECT unnest($tickers::VARCHAR[]))"
+            "), spot AS ("
+            "  SELECT ticker, isin_underlying,"
+            "         row_number() OVER (PARTITION BY isin_underlying"
+            "           ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END) AS rn"
+            "  FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('010', '020')"
+            "    AND isin_underlying <> ''"
+            ")"
+            " SELECT o.ticker, s.ticker FROM options o"
+            " LEFT JOIN spot s ON s.isin_underlying = o.isin_underlying AND s.rn = 1"
+        )
+        rows = self._fetch_named(
+            sql,
+            {
+                "raw": [str(path) for path in paths],
+                "day": session,
+                "tickers": wanted,
+            },
+        )
+        found: set[str] = set()
+        papers: dict[str, str] = {}
+        for ticker, paper in rows:
+            found.add(str(ticker))
+            if paper is not None:
+                papers[str(ticker)] = str(paper)
+        return found, papers
+
+    def _structure_option_failure(
+        self, ticker: str, paper: str, session: date
+    ) -> SourceFailure:
+        """Ausência da série na cadeia do papel: métrica faltando ou ticker errado."""
+        metric_paths = self._partitions_for("metrics_series", session.year)
+        has_series = bool(
+            metric_paths
+            and self._fetch(
+                "SELECT 1 FROM read_parquet(?) WHERE ticker = ? AND refdate = ? LIMIT 1",
+                metric_paths,
+                ticker,
+                session,
+            )
+        )
+        if has_series:
+            return SourceFailure(
+                SourceError(
+                    code="metrics_missing",
+                    message=(
+                        f"a série {ticker} tem linha em metrics_series em "
+                        f"{session.isoformat()}, mas não entrou na cadeia de {paper}"
+                    ),
+                    hint=(
+                        "rode `b3o metrics` para a sessão e confira se o ISIN da "
+                        "série resolve para o papel no dia"
+                    ),
+                )
+            )
+        return SourceFailure(
+            SourceError(
+                code="ticker_not_found",
+                message=(
+                    f"{ticker} não é série de opção de {paper} com métrica em "
+                    f"{session.isoformat()}"
+                ),
+                hint=(
+                    "confira o ticker/série na `chain` do papel e se a sessão tem "
+                    "métricas gravadas (a linha de `metrics_series` é o que dá preço"
+                    " e gregas para avaliar)"
+                ),
+            )
         )
 
     # --------------------- internos das leituras do F3 -------------------- #
@@ -3068,6 +3518,158 @@ def _smile_rows(rows: Sequence[ChainRow], maturity: date) -> list[SmileRow]:
     ]
 
 
+# --------------------------------------------------------------------------- #
+# Helpers do structure_eval (F4.2, puros)
+# --------------------------------------------------------------------------- #
+
+_STRUCTURE_HINT = (
+    "cada perna é {kind: option|stock, ticker, side: long|short, "
+    "quantity: inteiro > 0 em ações}"
+)
+
+
+def _bad_legs(message: str) -> SourceFailure:
+    """`bad_legs` com a dica única do formato da perna (contrato §2)."""
+    return SourceFailure(
+        SourceError(code="bad_legs", message=message, hint=_STRUCTURE_HINT)
+    )
+
+
+def _parse_structure_legs(
+    legs: Sequence[Mapping[str, object] | StructureLegInput],
+) -> list[StructureLegInput]:
+    """Normaliza e valida a forma das pernas (contrato §2) — erro é `bad_legs`."""
+    try:
+        items = list(legs)
+    except TypeError as exc:
+        raise _bad_legs("legs precisa ser uma lista de pernas") from exc
+    if not items:
+        raise _bad_legs("legs está vazio: a estrutura precisa de ao menos uma perna")
+    parsed: list[StructureLegInput] = []
+    for index, item in enumerate(items, start=1):
+        if isinstance(item, StructureLegInput):
+            parsed.append(
+                _leg_input(index, item.kind, item.ticker, item.side, item.quantity)
+            )
+            continue
+        if not isinstance(item, Mapping):
+            raise _bad_legs(f"perna {index} não é um objeto {{kind, ticker, side, quantity}}")
+        parsed.append(
+            _leg_input(
+                index,
+                item.get("kind"),
+                item.get("ticker"),
+                item.get("side"),
+                item.get("quantity"),
+            )
+        )
+    return parsed
+
+
+def _leg_input(
+    index: int, kind: object, ticker: object, side: object, quantity: object
+) -> StructureLegInput:
+    """Uma perna validada (`kind`/`side` fechados, `quantity` inteiro > 0)."""
+    if not isinstance(kind, str) or kind not in ("option", "stock"):
+        raise _bad_legs(f"perna {index}: kind inválido ({kind!r}) — use option ou stock")
+    if not isinstance(side, str) or side not in ("long", "short"):
+        raise _bad_legs(f"perna {index}: side inválido ({side!r}) — use long ou short")
+    if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity <= 0:
+        raise _bad_legs(
+            f"perna {index}: quantity inválido ({quantity!r}) — inteiro de ações > 0"
+        )
+    if not isinstance(ticker, str) or not ticker.strip():
+        raise _bad_legs(f"perna {index}: ticker vazio")
+    return StructureLegInput(
+        kind=kind,
+        ticker=ticker.strip().upper(),
+        side=side,
+        quantity=quantity,
+    )
+
+
+def _parse_structure_capital(capital: object) -> float | None:
+    """Capital informado: R$ ≥ 0 e finito (senão `bad_request`)."""
+    if capital is None:
+        return None
+    if isinstance(capital, bool) or not isinstance(capital, int | float):
+        raise SourceFailure(
+            SourceError(
+                code="bad_request",
+                message=f"capital inválido ({capital!r})",
+                hint="capital é um valor em R$ ≥ 0 (opcional)",
+            )
+        )
+    value = float(capital)
+    if not math.isfinite(value) or value < 0:
+        raise SourceFailure(
+            SourceError(
+                code="bad_request",
+                message=f"capital precisa ser finito e ≥ 0: {value!r}",
+                hint="capital é um valor em R$ ≥ 0 (opcional)",
+            )
+        )
+    return value
+
+
+def _structure_df(t: float | None, curve: Sequence[tuple[int, float]]) -> float | None:
+    """DF do vencimento na sessão (`du = round(t × 252)`); `None` sem curva.
+
+    `du <= 0` (vencimento na própria sessão) é `df = 1`: `log_df_interp_or_none`
+    devolve o **primeiro nó** para `du <= 0`, o que aplicaria o desconto de um dia
+    que não existe. A armadilha fica fechada aqui (e o `T' = 0` do cenário também
+    usa intrínseco com `DF = 1`, nunca a curva).
+    """
+    if t is None:
+        return None
+    du = round(t * SESSIONS_PER_YEAR)
+    if du <= 0:
+        return 1.0
+    log_df = log_df_interp_or_none(du, curve)
+    return None if log_df is None else math.exp(log_df)
+
+
+def _structure_notes(result: StructureResult) -> list[str]:
+    """Explica em voz alta o que as flags da estrutura dizem (nunca número novo)."""
+    notes: list[str] = []
+    illiquid = [leg.ticker for leg in result.legs if not leg.is_liquid]
+    if illiquid:
+        notes.append(
+            "illiquid_leg: "
+            + ", ".join(illiquid)
+            + " entrou mesmo fora da regra de liquidez (§6.9); o preço é o gravado"
+        )
+    if result.scenarios is None and "scenarios_unavailable" in result.flags:
+        reasons: list[str] = []
+        if "forward_unavailable" in result.flags:
+            reasons.append("forward do vencimento não reconstruído pela paridade")
+        if "no_rates" in result.flags:
+            reasons.append("curva DI da sessão ausente ou sem o prazo restante")
+        if "no_iv" in result.flags:
+            missing = [
+                leg.ticker
+                for leg in result.legs
+                if leg.kind == "option" and leg.iv_pct is None
+            ]
+            reasons.append("IV não gravada em " + ", ".join(missing))
+        notes.append(
+            "scenarios: indisponível — "
+            + "; ".join(reasons or ["insumo ausente"])
+            + "; o payoff no vencimento continua sendo calculado"
+        )
+    if (
+        result.capital_over
+        and result.capital_input_brl is not None
+        and result.capital_committed_brl is not None
+    ):
+        notes.append(
+            "capital_over: capital informado R$ "
+            f"{result.capital_input_brl:.2f} é menor que o capital comprometido "
+            f"R$ {result.capital_committed_brl:.2f}"
+        )
+    return notes
+
+
 __all__ = [
     "PREPARE_STATE_FILE",
     "ChainResult",
@@ -3090,6 +3692,8 @@ __all__ = [
     "SmileRow",
     "SpotBar",
     "StrikeEventRow",
+    "StructureEval",
+    "StructureLegInput",
     "TermRow",
     "UnderlyingDetail",
     "UnderlyingMetricRow",

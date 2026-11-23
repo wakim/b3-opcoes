@@ -234,6 +234,7 @@ Regras de amostra:
 - `ex_date` = primeira data com mudança contígua no subjacente. Mudança não contígua é atribuída aos eventos já classificados; se não fechar com a soma deles → `leg_ambiguity`.
 - Validar contra `strike_adj_ind`; divergência → `leg_ambiguity`.
 - Em 2026, das 274 datas-evento contíguas com ≥ 2 strikes: 268 provento, 3 escala, 3 indeterminadas (BBDC, variação de 2–3 centavos entre strikes); mais 13 com um só strike.
+  *Nota de 23/11/2026 (contagem fechada na auditoria do C1):* o retrato acima é do arquivo até **22/10/2026**. Com o ano até 19/11 são **313 eventos** = 296 provento + 2 escala + 15 indeterminados (299 com ≥ 2 strikes, 14 com um só). A reconciliação item a item está no `AGENTS.md`, armadilha 2.
 
 ### 6.7 VRP
 `vrp = iv_atm_30d − rv30` (tenor casado). `vrp_z = (vrp − média252) / desvio252`.

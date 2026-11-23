@@ -21,10 +21,10 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…018) |
-| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 calculado no dado real** — convenções/forward/IV/gregas, realizada, ATM/VRP/skew/dist, validadores e `b3o metrics` (722 sessões) — **em aceitação**: as métricas precisam ser recalculadas inteiras com `model_version=2` (o backfill foi interrompido) e os critérios 3–6 medidos. Sem UI. |
-| Retomar em | `out/relatorio-sessao.md` §7.3 e §9 (estado exato e ordem do dia seguinte) |
-| Dados baixados | COTAHIST 2026 (221 sessões, 3.537.186 linhas dos 6 mercados), OI (10 sessões), curva DI (1 sessão; Selic plana em lote para o histórico), CVM ITR/DFP/FCA 2025+2026 |
+| Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…023) |
+| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2+ suspenso**: nenhum funil/ranking é construído sobre o sinal falsificado. Sem UI. |
+| Retomar em | Decisão do dono sobre o produto (ADR-023): redefinir como **painel descritivo** (o F2 precisa ser reescrito **sem** classes de sinal e sem ranking preditivo) ou estudar **momentum fora da amostra**, pré-registrado às cegas. O F2 como está escrito não é executável. |
+| Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
 
@@ -159,6 +159,8 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 ---
 
 # F2 — Funil
+
+> **Suspenso (ADR-023, ratificado em 23/11/2026).** O F2 abaixo depende das classes de sinal que o portão falsificou; ele só volta **reescrito como painel descritivo**, sem classe e sem ranking preditivo. Nada aqui é executável como está.
 
 **Objetivo:** do universo líquido para um ranking curto, com motivo.
 **Estimativa:** 1 sessão · **Depende de:** F1b

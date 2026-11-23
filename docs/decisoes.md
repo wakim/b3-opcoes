@@ -368,6 +368,15 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** nenhum componente chama `fetch` direto; erros `not_found` e de rede viram estados explícitos na tela (F5.3).
 - **Revisar em:** se as rotas passarem a declarar modelos Pydantic com schema (aí gerar a partir do OpenAPI passa a valer a pena).
 
+## ADR-033 — F5-PreB: ficha do Aprender em accordion independente
+
+- **Data:** 2026-11-23 · **Status:** ratificada pelo dono · **Custo de reverter:** baixo (um arquivo)
+- **Contexto:** a ficha do verbete abria no fim da página. O prompt da sessão recomendava bottom sheet, mas aceitava expandir/colapsar inline mediante ADR curto; o dono preferiu **accordion independente** — vários verbetes abertos ao mesmo tempo para comparar definições.
+- **Decisão:** `aprender.tsx` guarda um `Set<string>` de chaves abertas. Cada verbete é um `EntryRow` com `aria-expanded`/`aria-controls` e um painel `role="region"` sempre no DOM, com `hidden={!open}`; o corpo vem de `EntryDetail`, uma `useQuery` por chave com `staleTime` 1 h. Sem backdrop, sem trava de `overflow`, sem focus trap e sem `position: fixed`. O componente `Sheet` da primeira passagem foi removido.
+- **Por quê:** para consulta, comparar duas fichas vale mais que a garantia de `scrollY` inalterado do sheet; o accordion também remove toda a maquinaria de modal — menos código e nenhum estado de foco para manter.
+- **Consequência:** a explicação aparece logo abaixo do verbete tocado; se ele estiver no fim da viewport, é preciso um pequeno scroll para ler. Vários painéis abertos deixam a lista longa — custo aceito da comparação. `plain()` continua removendo `>`, `---` e links (B2 fechada).
+- **Revisar em:** F5-B, se o padrão de leitura pedir um sheet de métrica com o número do dia.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

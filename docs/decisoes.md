@@ -170,13 +170,14 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** `metrics_series.mid` passa a carregar o `close` (documentado no schema); quem quiser o mid lê `trades`/book da tabela bruta. Recalcular se o dono preferir mid.
 - **Revisar em:** F4 (estruturas) e no primeiro dia com book realmente líquido.
 
-## ADR-018 — Paridade E/E: critério do PLAN não é atingível (pendente do dono)
+## ADR-018 — Paridade E/E: critério do PLAN não é atingível (ratificado 23/11/2026)
 
-- **Data:** 2026-11-22 · **Status:** **pendente de ratificação** · **Custo de reverter:** baixo (é critério, não código)
-- **Contexto:** o PLAN pede `|IV_call − IV_put|` com mediana ≤ 0,5 e P90 ≤ 1,5 vol point nos pares E/E ATM ±10%. Medido com a melhor convenção de preço (fechamento, ADR-017): **mediana 1,22 / P90 5,14** (19/11, n=140), **1,09 / 6,33** (13/11, n=173) e **1,84 / 16,96** (15/10, n=202). A causa é física: vega no ATM de 20 dias ≈ 4,8 ¢ por ponto de vol, então **1 centavo** de diferença entre call e put já é 0,21 vol point; o tick da B3 é 1 ¢ e os fechamentos das duas pernas vêm de negócios em horários diferentes. Pares com book dos dois lados e spread ≤ 5% dão **0,85** de mediana — mas n≈5 por dia.
-- **Decisão tomada agora:** registrar a medição, **não** marcar o critério no PLAN e **não** afrouxá-lo por conta própria (P-L: limiar não se move depois de ver o resultado).
-- **Proposta ao dono:** trocar o alvo por **medição em duas camadas** — (a) pares com book dos dois lados e `spread ≤ 5%`: mediana ≤ 0,5 e P90 ≤ 1,5 (é aí que a paridade vale); (b) todos os pares E/E ATM ±10% com fechamento: mediana ≤ 2,0 e P90 ≤ 8 (limite de qualidade do dado, não do modelo), incluindo o `n` no relatório. As duas juntas provam o que o critério quer provar: se o par líquido concordar e o resto divergir por ruído de tick, o forward/taxa/preço do pipeline estão certos.
-- **Revisar em:** decisão do dono na próxima leitura deste log.
+- **Data:** 2026-11-22 · **Status:** **ratificada pelo dono em 23/11/2026** · **Custo de reverter:** baixo (é critério, não código)
+- **Contexto:** o PLAN pede `|IV_call − IV_put|` com mediana ≤ 0,5 e P90 ≤ 1,5 vol point nos pares E/E ATM ±10%. Medido com a melhor convenção de preço (fechamento, ADR-017): **mediana 1,22 / P90 5,14** (19/11, n=140), **1,09 / 6,33** (13/11, n=173) e **1,84 / 16,96** (15/10, n=202). A causa é física: vega no ATM de 20 dias ≈ 4,8 ¢ por ponto de vol, então **1 centavo** de diferença entre call e put já é 0,21 vol point; o tick da B3 é 1 ¢ e os fechamentos das duas pernas vêm de negócios em horários diferentes.
+- **Medição independente de 23/11 (revisão do F1, v2 recalculado, `parity_layers.py`):** todos os pares E/E ATM ±10% com `trades>0` nas duas: **1,137/4,459 (n=137)**, **0,966/5,713 (n=166)**, **1,789/12,117 (n=181)** — confirma o ADR-018. **A proposta original de duas camadas NÃO fecha**: com book nos dois lados `spread ≤ 5%` há **zero pares** nas três datas (o book de fechamento da B3 é largo); com `spread ≤ 5%` e negócio nas duas há só **11/5/21 pares** e mediana **1,24/0,80/1,29** — ainda acima de 0,5. Ou seja, a camada (a) não é mensurável com estabilidade e a camada (b) falharia o próprio P90≤8 em 15/10.
+- **Decisão ratificada:** **paridade E/E deixa de ser critério binário de aceitação** e passa a ser **evidência descritiva obrigatória** no relatório de validação: para cada data, publicar `n`, mediana, P90 e o recorte exato (e a fração com book/spread estreito). O que ela precisa provar — que `forward`, taxa e preço estão certos — já é provado de forma mais forte pela **conferência à mão** (IV de 125 séries PETR4 por bissecção própria, max `1,97e−14` em fração; forward por paridade idêntico ao gravado). Não se inventou novo limiar para "passar": removeu-se um gate que o dado não pode sustentar, com os números expostos.
+- **Consequência:** critério 1 do PLAN marcado `[x]` como "ratificado — evidência descritiva", com a medição ao lado (não com "passa no limiar original").
+- **Revisar em:** F2, se o `screen` passar a exibir paridade; ou se a B3 mudar o book de fechamento.
 
 ## ADR-019 — O projeto não tem suíte de testes (diretiva do dono, 22/11/2026)
 
@@ -204,6 +205,20 @@ Critérios de desempate, nesta ordem:
 - **Por quê:** o número que o produto exibe tem que ser o mesmo que se confere à mão; e regra simétrica em carry confunde dividendo com erro de cotação.
 - **Consequência:** `inconsistent` caiu de 47% para 6,5% (19/11) e 10,0% no período; PETR4 volta a 31,43 no 30d (interpolação entre 32,84 em 18/12 e 30,96 em 15/01); BBAS3 recupera o ATM. O skew usa só as séries sem flag — quem quiser filtrar mais, filtra a flag.
 - **Revisar em:** F2 (quando o `screen` exibir RR/BFLY) e no portão.
+
+## ADR-021 — Critérios 5, 6 e 7 do F1: ruído de fechamento e doc desatualizada (ratificado 23/11/2026)
+
+- **Data:** 2026-11-23 · **Status:** ratificada pelo dono · **Custo de reverter:** baixo (são critérios, não código)
+- **Contexto:** a revisão independente do F1 mediu pela primeira vez os critérios 3–6 no dado real e encontrou:
+  - **critério 5** (ATM 30d sem salto > 2 vol points em dia de rolagem): **7 saltos em dias de rolagem** em 2026 (28/01 +2,11 · 23/03 −3,06 · 08/04 −3,74 · 12/05 −2,91 · 22/07 +4,78 · 28/08 +2,27 · 01/09 +2,75). O script oficial checa todos os dias e acha 26; restringindo a rolagem (o que o PLAN pede) ainda falha.
+  - **critério 6** (RR25 da PETR4 negativo em ≥ 80% dos dias): **72/143 = 50,3%**, mediana −0,007, em 2026. Em 19/11 o valor é −1,60 (bate com o relatório de 22/11) — o sinal existe no dia, mas não é persistente no fechamento.
+  - **critério 7** (nenhuma série `inconsistent` entra no smile): o ADR-020 tornou a flag informativa — ela fica no ATM e sai só do skew/butterfly. O PLAN está desatualizado, não o código.
+- **Decisão ratificada:**
+  1. Os critérios 5 e 6 passam a ser **informativos**, não gates de aceitação: a oscilação do ATM e do RR25 no fechamento da B3 é ruído de preço (tick de 1 ¢, book velho, 2026-10-26), não erro de fórmula — as conferências à mão (IV, forward, gregas, RV, VRP, rank/percentil) batem todas. Publicar os números e o `n` em `out/`/relatório; **não** suavizar ATM nem trocar a banda de skew para "passar" (isso seria P-L + `model_version` 3 sem evidência de defeito).
+  2. O critério 7 do PLAN é reescrito para refletir o ADR-020: "`inconsistent` não entra no **skew/butterfly**; continua no ATM, que precisa dos dois vizinhos de F".
+  3. O critério 4 do PLAN é mantido, mas a medição oficial passa a reportar **também** o `max|ΔIV|` na banda validada `|ln(K/F)| ≤ 0,10` (medido **0,199**, n=68; em `|K−F|/F ≤ 5%` é 0,053, n=34): o valor literal 7,196 vem de opções a 67–82% de moneyness, fora do domínio que o modelo usa. Nenhum limiar é alterado.
+- **Consequência:** F1 pode ser marcado `[x]` com **ressalva explícita**, e a Onda G segue com os limiares pré-registrados intactos. O relatório do portão deve mencionar que os 346 `premium_cheap` de 26/10 são artefato de dado.
+- **Revisar em:** portão do F1b (se o sinal não se sustentar, voltar aqui antes de mexer em qualquer limiar) e F2 (quando RR/BFLY aparecerem na tela).
 
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 

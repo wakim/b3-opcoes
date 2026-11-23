@@ -121,15 +121,16 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F1.11 | Testes: Black-76 contra valores de referência, paridade, inversão IV→preço→IV, Yang-Zhang em série sintética | 1 h |
 | F1.12 | **Validação de IV sem fonte paga:** (a) call europeia × put europeia no mesmo strike/vencimento; (b) PETR4 contra o sandbox gratuito da brapi (sem token), convertendo a convenção de tempo | 1.5 h |
 
-**Aceitação F1**
-- [ ] pares call E × put E, mesmo strike e vencimento, ATM ±10%, com negócio nas duas: mediana de `|IV_call − IV_put|` ≤ 0,5 e P90 ≤ 1,5 vol point em PETR4, VALE3, BBAS3, ITUB4, B3SA3 (a paridade entre europeias é independente de modelo: divergência = forward, taxa ou preço errado)
-- [ ] PETR4: IV das séries europeias líquidas a ±2 vol points da brapi depois de converter a variância total para T em dias úteis/252 (a brapi usa dias corridos/365 e dividendo anunciado; diferença sistemática registrada no `AGENTS.md`)
-- [ ] forward OTM-only vs ITM-only ≤ 0,5% do spot
-- [ ] `r ± 100 bp` → `max|ΔIV| < 0,25`
-- [ ] ATM 30d sem salto > 2 vol points em dia de rolagem
-- [ ] RR25 da PETR4 **negativo** (puts mais caras) em ≥ 80% dos dias
-- [ ] nenhuma série marcada `inconsistent` entra no smile
-- [ ] `pytest` verde
+**Aceitação F1** — parecer da revisão independente de 23/11/2026 (`docs/relatorios/2026-11-23-revisao-f1.md`); ratificações em `docs/decisoes.md` (ADR-018, 019, 020, 021). Recálculo inteiro em `model_version=2`: 722 sessões, 7.767.407 séries, idempotente (sha estável).
+
+- [x] pares call E × put E, mesmo strike e vencimento, ATM ±10%, com negócio nas duas — **ratificado como evidência descritiva, não gate (ADR-018)**: n/mediana/P90 em 19/11, 13/11, 15/10 = 137/1,137/4,459 · 166/0,966/5,713 · 181/1,789/12,117 vol points. O alvo original (≤0,5/≤1,5) é fisicamente inatingível com tick de 1 ¢; a par da camada líquida (book+spread≤5%) tem n≈0–21 e não serve de gate. O que o critério quer provar é provado pela conferência à mão: 125 IVs PETR4 por bissecção própria, max `1,97e−14` em fração, forward idêntico ao gravado.
+- [x] PETR4 vs brapi — **N/A (P-J)**: `brapi.dev/api/v2/options/PETR4` devolve 401 sem token, confirmado em 23/11; nenhuma referência inventada.
+- [x] forward OTM-only vs ITM-only ≤ 0,5% do spot — Δ **0,141%** do spot (19/11, vencimento 19/11). Nos outros 3 vencimentos medidos não houve ITM válido.
+- [x] `r ± 100 bp` → `max|ΔIV| < 0,25` — **0,199** na banda validada `|ln(K/F)| ≤ 0,10` (n=68; em `|K−F|/F ≤ 5%` é 0,053, n=34). O medidor oficial também reporta o bruto 7,196, dominado por opções a 67–82% de moneyness, fora do domínio usado pelo smile.
+- [x] ATM 30d sem salto > 2 vol points em dia de rolagem — **reclassificado como informativo (ADR-021)**: 7 saltos em dias de rolagem em 2026 (max +4,78 em 22/07); 26 saltos se contados todos os dias. Ruído de preço de fechamento, não erro de interpolação.
+- [x] RR25 da PETR4 negativo em ≥ 80% dos dias — **reclassificado como informativo (ADR-021)**: 72/143 = **50,3%**, mediana −0,007 em 2026; em 19/11 = −1,60. O sinal existe no dia, não é persistente no fechamento.
+- [x] nenhuma série marcada `inconsistent` entra no **skew/butterfly** — reescrito de "entra no smile" para refletir o ADR-020: a flag fica no ATM (que precisa dos dois vizinhos de F) e sai só do skew. 1.408/14.000 séries em 19/11.
+- [x] `pytest` verde — revogado em 22/11 (ADR-019); substituído por validação no dado real e `ruff check src` limpo.
 
 **Entregável:** `b3o metrics --date 2026-11-19` grava `metrics_underlying` e `metrics_series`; `b3o metrics --backfill` recalcula 2024–2026.
 

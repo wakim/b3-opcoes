@@ -6,7 +6,7 @@ import {
   type GlossaryData,
   type GlossaryDetail,
 } from '../lib/api'
-import { ErrorBox, Loading } from '../lib/ui'
+import { ErrorBox, Loading, Sheet } from '../lib/ui'
 
 const HOUR = 3_600_000
 
@@ -14,8 +14,18 @@ export const Route = createFileRoute('/aprender')({
   component: Aprender,
 })
 
+/** Texto puro do body_md, sem biblioteca de Markdown: remove ênfase, links,
+ *  marcador de blockquote e regras horizontais. Paragraph splitting fica no
+ *  chamador (fecha a pendência B2 do parecer F5-A). */
 function plain(markdown: string): string {
-  return markdown.replace(/\*\*/g, '').replace(/`/g, '')
+  return markdown
+    .replace(/\*\*/g, '')
+    .replace(/`/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .split('\n')
+    .map((line) => line.replace(/^\s*>\s?/, ''))
+    .filter((line) => !/^\s*-{3,}\s*$/.test(line))
+    .join('\n')
 }
 
 function Aprender() {
@@ -36,6 +46,8 @@ function Aprender() {
   if (list.isLoading || !list.data) return <Loading />
   if (list.isError) return <ErrorBox error={list.error} />
 
+  const selectedEntry = list.data.data.entries.find((e) => e.key === selected)
+
   return (
     <>
       <h1 className="screen-title">Aprender</h1>
@@ -54,16 +66,20 @@ function Aprender() {
         ))}
       </div>
 
-      {detail.isError && <ErrorBox error={detail.error} />}
-      {detail.data && (
-        <section className="card entry">
-          <h2>{detail.data.data.title}</h2>
-          {plain(detail.data.data.body_md)
-            .split(/\n\s*\n/)
-            .map((paragraph, index) => (
-              <p key={index}>{paragraph}</p>
-            ))}
-        </section>
+      {selectedEntry && (
+        <Sheet
+          title={selectedEntry.title}
+          meta={`nível ${selectedEntry.level}`}
+          onClose={() => setSelected(null)}
+        >
+          {detail.isLoading && <Loading />}
+          {detail.isError && <ErrorBox error={detail.error} />}
+          {detail.data &&
+            plain(detail.data.data.body_md)
+              .split(/\n\s*\n/)
+              .filter((paragraph) => paragraph.trim().length > 0)
+              .map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+        </Sheet>
       )}
     </>
   )

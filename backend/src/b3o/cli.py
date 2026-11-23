@@ -238,6 +238,27 @@ def run_prepare(
             config.cotahist_base_url,
             client=client,
         )
+        # Virada de ano: o arquivo do ano corrente pode ainda não existir (404).
+        # Só no modo automático (sem --year) e SÓ em 404 — nunca em erro de rede/5xx,
+        # que devem falhar/re-tentar normalmente. Com --year explícito não há fallback.
+        if (
+            year is None
+            and fetch.status == "error"
+            and fetch.error is not None
+            and fetch.error.code == "source_not_found"
+        ):
+            fallback_year = reference_year - 1
+            lines.append(
+                f"cotahist   ano {reference_year} sem arquivo (404); "
+                f"usando o ano anterior {fallback_year}"
+            )
+            reference_year = fallback_year
+            fetch = fetch_cotahist(
+                reference_year,
+                data_dir / "raw",
+                config.cotahist_base_url,
+                client=client,
+            )
         if fetch.status == "error":
             failures.append(StageFailure("cotahist", fetch.error))
             lines.append(

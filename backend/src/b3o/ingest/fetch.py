@@ -157,9 +157,12 @@ def fetch_cotahist(
                         hint="a B3 está fora do ar ou em manutenção; re-tentar mais tarde",
                     )
                 else:
+                    # 404 = o arquivo do ano não existe (ex.: virada de ano, arquivo
+                    # ainda não publicado). Código distinto para o prepare poder cair
+                    # no ano anterior SÓ neste caso — nunca em erro de rede/5xx.
                     return _error_result(
                         SourceError(
-                            code="source_unavailable",
+                            code="source_not_found" if status == 404 else "source_unavailable",
                             message=f"HTTP {status} em {url}",
                             hint=_HINT_PERMANENT,
                         )

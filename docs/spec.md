@@ -246,7 +246,7 @@ Mínimo de 5 strikes entre 20Δ e 80Δ; abaixo disso `null` + `sparse_chain`.
 
 **Série líquida:** `trades ≥ 5` em 5 sessões **e** `spread_pct ≤ 10` **e** `bid > 0` (e `ask > 0`).
 **Papel no funil:** volume financeiro médio 20d `≥ R$ 5 M`.
-`days_to_liquidate = oi / média de volume 20d` (10 primeiros dias úteis).
+`days_to_liquidate = oi / média de quantidade (ações) 20d` (10 primeiros dias úteis) — o OI vem em ações do ativo-objeto, não em reais (ADR-020).
 
 Classes de sinal (as que os filtros da tela usam):
 

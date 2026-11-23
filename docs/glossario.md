@@ -152,7 +152,7 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 ## Dias para liquidar
 
-**O que é** — `OI / volume médio de 20 dias`. Quantos pregões seriam necessários para desmontar a posição média ao ritmo atual.
+**O que é** — `OI / quantidade média negociada (ações) em 20 dias`. Quantos pregões seriam necessários para desmontar a posição média ao ritmo atual. O OI da B3 vem em ações do ativo-objeto (`Total de posições`), então o denominador tem que ser a mesma unidade — usar volume financeiro daria um número sem sentido (ADR-020).
 
 **Erro comum** — achar que OI alto significa liquidez. Papel com OI enorme e volume quase zero demora semanas para sair — e você sai pelo preço que o mercado quiser.
 

@@ -133,7 +133,7 @@ grosseiros e não marca a asa de call normal de um smile em U.
 """
 
 SMILE_MONEYNESS_BAND = 0.10
-"""Banda de moneyness validada: `|ln(K/F)| ≤ 0,25` (≈ K/F em [0,78; 1,28]).
+"""Banda de moneyness validada: `|ln(K/F)| ≤ 0,10` (≈ K/F em [0,90; 1,11]).
 
 Fora dela a IV é pura asa de tick (PETR4 19/11 tem strikes com IV de 410% e
 195%) e nenhuma métrica do papel (ATM, 20Δ–80Δ) usa esses pontos. Validar a asa
@@ -143,13 +143,12 @@ banda de ±60%, contra <10% com esta.
 
 FORWARD_CARRY_TOL = 0.05
 FORWARD_DIVIDEND_MAX = 0.25
-"""Sanidade do forward contra a curva: `|ln(F/S)/T − r| > 5% a.a.` é outlier.
+"""Carry do forward contra a curva: `ln(F/S)/T = r − q` (ADR-020, assimétrico).
 
-O forward pela paridade é o preço do mercado; se o carry implícito se afasta da
-DI da sessão em mais de 5 pontos percentuais ao ano, o par que o produziu está
-errado (bracket de 2 pontos, print velho, série ilíquida). O vencimento fica
-sem `F`, as séries dele ganham `forward_outlier` e o ATM não o usa — nunca se
-"conserta" o forward na mão.
+`F` pode **cair** por provento legítimo (até `q = 25% a.a.`); só não pode subir
+acima da curva (rejeitado acima de `+5% a.a.` — nesse lado só existe print velho
+ou bracket de 2 pontos). Fora da faixa, o vencimento fica sem `F`, a série ganha
+`forward_outlier` e o ATM não o usa — nunca se "conserta" o forward na mão.
 """
 
 MIN_FORWARD_PAIRS = 3

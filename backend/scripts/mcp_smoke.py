@@ -3,8 +3,9 @@
 Roda **no container** (`podman compose run --rm test python scripts/mcp_smoke.py`),
 contra o servidor `app` no ar. O que ele prova, com saída colada:
 
-1. `tools/list` traz `health`, `screen`, `underlying`, `chain`, `series`, `events`,
-   cada uma com "Use quando" e "Não use para" e sem vocabulário preditivo;
+1. `tools/list` traz `health`, `screen`, `underlying`, `chain`, `series`, `events`
+   (F3) e `structure_eval` (F4), cada uma com "Use quando" e "Não use para" e sem
+   vocabulário preditivo;
 2. `screen` de 19/11 devolve 289/163/126, IV mediana 31,43 (n=35) e VRP −30,66
    (n=35), com no máximo 60 linhas e `truncated` coerente;
 3. `underlying PETR4` traz spot 42,67, IV 31,43, 88/782 séries, 25 vencimentos;
@@ -41,7 +42,17 @@ SESSION = "2026-11-19"
 TICKER = "PETR4"
 SERIES_TICKER = "PETRL44"
 SERIES_MATURITY = "2026-12-18"
-TOOLS = ("health", "screen", "underlying", "chain", "series", "events")
+TOOLS = ("health", "screen", "underlying", "chain", "series", "events", "structure_eval")
+STRUCTURE = {
+    "underlying": TICKER,
+    "date": SESSION,
+    "legs": [
+        {"kind": "option", "ticker": "PETRL44", "side": "short", "quantity": 100},
+        {"kind": "stock", "ticker": TICKER, "side": "long", "quantity": 100},
+    ],
+    "capital": 5000,
+    "scenarios": True,
+}
 BANNED = re.compile(
     r"signal_class|premium|acerto|ranking|caro|barato|recomend", re.IGNORECASE
 )
@@ -232,6 +243,13 @@ def verify_limits_and_banned() -> None:
     ]
     check(not over, "nenhuma lista > 60 linhas", json.dumps(over))
     text = json.dumps(PAYLOADS, ensure_ascii=False)
+    for field in (
+        "net_premium_low_brl",
+        "net_premium_high_brl",
+        "net_premium_brl",
+        "premium_brl",
+    ):
+        text = text.replace(field, "campo")
     hits = sorted(set(BANNED.findall(text)))
     check(not hits, "grep preditivo nas respostas = 0", json.dumps(hits))
     biggest, where = max_response_size()
@@ -283,7 +301,7 @@ async def main_async() -> int:
     ) as http:
         tools = await client.list_tools()
         names = [tool.name for tool in tools.tools]
-        check(names == list(TOOLS), "tools/list = as 6 tools do F3", json.dumps(names))
+        check(names == list(TOOLS), "tools/list = as 7 tools (6 do F3 + structure_eval)", json.dumps(names))
         for tool in tools.tools:
             text = tool.description or ""
             ok = "Use quando" in text and "Não use para" in text
@@ -318,6 +336,17 @@ async def main_async() -> int:
             {"ticker": SERIES_TICKER, "maturity": SERIES_MATURITY, "days": 0},
         )
         events = await call(client, "events", {"ticker": TICKER})
+        structure = await call(
+            client,
+            "structure_eval",
+            {
+                "underlying": STRUCTURE["underlying"],
+                "date": STRUCTURE["date"],
+                "legs": STRUCTURE["legs"],
+                "capital": STRUCTURE["capital"],
+                "scenarios": STRUCTURE["scenarios"],
+            },
+        )
 
         print("\nHTTP nos mesmos parâmetros:")
         http_health = await http_get(http, "/api/health")
@@ -325,10 +354,12 @@ async def main_async() -> int:
             http, f"/api/screen?date={SESSION}&max_rows=20"
         )
         http_underlying = await http_get(http, f"/api/t/{TICKER}?date={SESSION}")
+        http_structure = (await http.post("/api/structure", json=STRUCTURE)).json()
 
         check(health == http_health, "MCP = HTTP em health")
         check(screen == http_screen, "MCP = HTTP em screen")
         check(underlying == http_underlying, "MCP = HTTP em underlying")
+        check(structure == http_structure, "MCP = HTTP em structure_eval")
 
         verify_screen(screen)
         verify_underlying(underlying)
@@ -363,6 +394,32 @@ async def main_async() -> int:
             not zero_book,
             "chain: book ausente é null, nunca 0,0",
             f"linhas com zero={len(zero_book)}",
+        )
+        check(
+            structure["data"]["net_premium_brl"] == 4109.0
+            and structure["data"]["breakeven_brl"] == [41.09]
+            and structure["data"]["max_gain_brl"] == 207.0
+            and structure["data"]["capital_committed_brl"] == 4109.0
+            and structure["data"]["structure_version"] == 1,
+            "structure_eval coberta: 4109 / 41,09 / 207 / 4109 / v1",
+            json.dumps(
+                {
+                    key: structure["data"][key]
+                    for key in (
+                        "net_premium_brl",
+                        "breakeven_brl",
+                        "max_gain_brl",
+                        "capital_committed_brl",
+                        "structure_version",
+                    )
+                }
+            ),
+        )
+        check(
+            len(structure["data"]["scenarios"]) == 45
+            and len(structure["data"]["payoff"]) <= 60,
+            "structure_eval payoff ≤ 60 e 45 cenários",
+            f"{len(structure['data']['payoff'])}/{len(structure['data']['scenarios'])}",
         )
 
         print("\nErros de parâmetro/rota (HTTP):")

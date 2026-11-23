@@ -104,6 +104,7 @@ class StructureLeg:
     """R$/ação por 1 ponto de vol (como gravada)."""
 
     maturity: date | None
+    """Vencimento da série (`None` na perna de ação)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +130,7 @@ class LegRow:
     gamma: float | None
     theta_brl: float | None
     vega_brl: float | None
+    maturity: date | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,7 +240,15 @@ def evaluate(
 
     max_loss = None if pnl_min is None else max(0.0, -pnl_min)
     max_gain = None if pnl_max is None else max(0.0, pnl_max)
-    committed = net_premium if net_premium > 0.0 else max_loss
+    # Risco ilimitado não tem "capital comprometido": o débito pago não é o risco
+    # (ratio write compra ação no débito e vende mais calls do que tem — perda
+    # ilimitada). `None` aqui é a resposta honesta (contrato §3.3).
+    if max_loss is None:
+        committed = None
+    elif net_premium > 0.0:
+        committed = net_premium
+    else:
+        committed = max_loss
     capital_over = (
         capital_brl is not None and committed is not None and committed > capital_brl
     )
@@ -262,7 +272,13 @@ def evaluate(
             flags.update(causes)
             flags.add("scenarios_unavailable")
 
-    payoff = _payoff_curve(resolved, net_premium, spot_brl, [*kinks, *breakevens])
+    payoff = _payoff_curve(
+        resolved,
+        net_premium,
+        spot_brl,
+        [*kinks, *breakevens],
+        must_keep=breakevens,
+    )
     delta, gamma, theta, vega = _aggregate_greeks(resolved)
 
     return StructureResult(
@@ -366,6 +382,7 @@ def _leg_row(leg: StructureLeg) -> LegRow:
         gamma=leg.gamma,
         theta_brl=leg.theta_brl,
         vega_brl=leg.vega_brl,
+        maturity=leg.maturity,
     )
 
 
@@ -611,17 +628,29 @@ def _payoff_curve(
     net_premium: float,
     spot_brl: float,
     specials: Sequence[float],
+    must_keep: Sequence[float] = (),
 ) -> list[PayoffPoint]:
     """41 pontos entre `0,6·S` e `1,4·S` + strikes/breakevens, capado em 60 (§3.6).
 
-    Quando a união passa do teto, os strikes/breakevens são preservados e a grade
-    base é reduzida uniformemente — o gráfico perde resolução, nunca os kinks.
+    Prioridade quando não cabe tudo: **breakevens** (`must_keep`) primeiro, depois os
+    strikes e, por último, a grade base (reduzida uniformemente). O gráfico perde
+    resolução, nunca um breakeven — e um strike em excesso só sai se houver mais de
+    60 especiais, o que exige estrutura com dezenas de pernas.
     """
     low = 0.6 * spot_brl
     high = 1.4 * spot_brl
     inside = _unique(point for point in specials if low <= point <= high)
-    if len(inside) >= MAX_POINTS:
-        lattice = _thin(inside, MAX_POINTS)
+    must = _unique(point for point in must_keep if low <= point <= high)
+    if len(must) >= MAX_POINTS:
+        lattice = _thin(must, MAX_POINTS)
+    elif len(inside) >= MAX_POINTS:
+        remaining = MAX_POINTS - len(must)
+        others = [
+            point
+            for point in inside
+            if all(abs(point - kept) > _EPS for kept in must)
+        ]
+        lattice = _unique([*must, *_thin(others, remaining)])
     else:
         base = [
             low + (high - low) * index / (PAYOFF_BASE_POINTS - 1)

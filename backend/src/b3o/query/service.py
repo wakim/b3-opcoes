@@ -32,6 +32,7 @@ Regras que o `health` respeita:
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 import math
@@ -1821,6 +1822,14 @@ class QueryService:
         """
         parsed = _parse_structure_legs(legs)
         capital_brl = _parse_structure_capital(capital)
+        if date is not None and not isinstance(date, dt.date):
+            raise SourceFailure(
+                SourceError(
+                    code="bad_request",
+                    message=f"date inválida ({date!r}): esperado um objeto date",
+                    hint="use a sessão do lake em ISO AAAA-MM-DD (o `health` diz a última)",
+                )
+            )
         session = self._session(date)
         paper = self._structure_paper(parsed, underlying, session)
         self._require_underlying(paper)
@@ -1921,7 +1930,7 @@ class QueryService:
                 )
                 continue
             row = by_ticker[leg.ticker]
-            if row.mid_brl is None or row.mid_brl <= 0:
+            if row.mid_brl is None or not math.isfinite(row.mid_brl) or row.mid_brl <= 0:
                 raise SourceFailure(
                     SourceError(
                         code="metrics_missing",
@@ -1956,7 +1965,10 @@ class QueryService:
                 and row.ask_brl is not None
                 and row.bid_brl > 0
                 and row.ask_brl > 0
+                and row.bid_brl < row.ask_brl
             ):
+                # Book cruzado (`ask <= bid`) não é book de dois lados: a faixa fica
+                # `None` em vez de sair invertida (medido 1 linha no ano: BOVAV181).
                 half_spread = (row.ask_brl - row.bid_brl) / 2.0
                 price_low = row.mid_brl - half_spread
                 price_high = row.mid_brl + half_spread

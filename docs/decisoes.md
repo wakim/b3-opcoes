@@ -220,6 +220,39 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** F1 pode ser marcado `[x]` com **ressalva explícita**, e a Onda G segue com os limiares pré-registrados intactos. O relatório do portão deve mencionar que os 346 `premium_cheap` de 26/10 são artefato de dado.
 - **Revisar em:** portão do F1b (se o sinal não se sustentar, voltar aqui antes de mexer em qualquer limiar) e F2 (quando RR/BFLY aparecerem na tela).
 
+## ADR-022 — F1b: convenções do `rv_fwd20`, do recorte e da estatística (implementador)
+
+- **Data:** 2026-11-23 · **Status:** provisória · **Custo de reverter:** baixo (recarregar o backtest, ~1 min)
+- **Contexto:** a spec §6.13 e o contrato onda-fg §2 fixam *o quê* medir (Yang-Zhang das 20 sessões seguintes, `edge = iv_atm_30d − rv_fwd20`, classes gravadas), mas não fecham quatro detalhes de *como*: o número de barras do Yang-Zhang, o mercado, o que fazer sem barra na ponta da janela e a definição do recorte informativo da data-armadilha.
+- **Decisão:**
+  1. `rv_fwd20` reusa `derive/realized.yang_zhang_vol` com **`window = 21` barras** (a barra-base de `data` + as 20 futuras) → **20 retornos**, exatamente as 20 sessões `data+1 … data+20`. `window=20` daria 19 retornos — off-by-one que a spec não pede.
+  2. Usa o **mesmo mercado** (`underlying_market`, `010`/`020`) da linha de métrica, via método novo `QueryService.spot_bars_in_market` — nunca mistura lote padrão com fracionário na mesma série de RV.
+  3. Fator de escala acumulado nas barras **anteriores** ao evento (`corporate_events.event_factor_series`); gap de provento excluído pelas `ex_div_dates` do B2. A exclusão **puxa barras mais para trás** (a janela não encolhe — mesma convenção do `rv20/30/60` do pipeline); lookback de 120 dias corridos para a barra-base e o pullback.
+  4. Descarte **contado por motivo**: sem 20 sessões futuras no lake; sem barra na sessão final da janela (`data+20`); Yang-Zhang sem barras suficientes. Medido: 420 sem sessões futuras, 0 sem barra na ponta, 0 RV falhou (os 37 papéis com z são líquidos).
+  5. Recorte informativo da trap: janela de RV **passada** = 30 sessões até `data` (rv30) **ou futura** = 20 sessões seguintes; `2026-10-26` dentro dela marca a observação. **Só informativo** — o veredito usa o período completo (pré-registrado).
+  6. Estatística: mediana `statistics.median`; P10/P90 por **interpolação linear** entre ranks (convenção `linear`); taxas em %. `signal_backtest(signal_class, ticker=None)` é pura em `derive/backtest.py` (F2/F3 consome depois).
+- **Por quê:** menor escopo e mais reversível; tudo reaproveita o Yang-Zhang e o ajuste de escala já validados à mão no F1, sem reimplementar fórmula (que exigiria `model_version` 3).
+- **Consequência:** o `rv_fwd20` de papel que não negocia na sessão `data+20` sai (honesto, contado); a janela pode estender-se um pouco antes de `data` quando faltam barras intermediárias ou há provento — documentado no relatório. Nenhuma fórmula de `derive/realized.py` mudou.
+- **Revisar em:** ratificação do portão (ADR-023) e F2 (quando `signal_backtest` virar tool).
+
+## ADR-023 — F1b: o portão NÃO PASSA — decisão PENDENTE do dono
+
+- **Data:** 2026-11-23 · **Status:** **pendente do dono** (não ratificada) · **Custo de reverter:** médio (repensar F2+ se o sinal for trocado)
+- **Contexto:** o backtest rodou no histórico real (2024-01-02→2026-11-19, 722 sessões, `model_version=2`, 6.773 observações válidas após aquecimento de 252 sessões por papel, que começa em 2025-02-13). As três provas de que o resultado *pode estar errado* passaram: permutar o `rv_fwd20` muda o resultado (rich 42,3%→67,3%, mediana −1,41→+7,84); o z recalculado por fora bate exato e não vaza futuro; um `rv_fwd20` da PETR4 (2025-02-20) conferido à mão por Yang-Zhang independente bate com diferença 0. **O veredito abaixo é mecânico sobre os critérios pré-registrados; a decisão de seguir/parar não é do implementador (P-L).**
+- **Medição (período completo, como pré-registrado):**
+  | Classe | n | Acerto | Mediana edge | Base `none` | Margem | Veredito |
+  |---|---:|---:|---:|---:|---:|---|
+  | `premium_rich` | 617 | 42,3% | −1,41 | 43,7% (edge>0) | −1,4 p.p. | **NÃO PASSA** |
+  | `premium_cheap` | 498 | 49,8% | +0,00 | 56,3% (edge<0) | −6,5 p.p. | **NÃO PASSA** |
+  Nenhuma classe bate acerto ≥ 55%, mediana no sinal certo (≥ +1 / ≤ −1) nem margem ≥ +5 p.p. sobre `none`. `skew_anomaly` (n=29) e `event_pressure` (n=1117) só relatam distribuição.
+- **Leitura (até 10 linhas):** a tese de reversão do VRP não se sustenta neste dado EOD da B3. Quando a IV está cara vs a RV passada (`premium_rich`), a RV futura tende a ser **ainda mais alta** (acerto 42,3%, abaixo da base 43,7%; mediana de edge negativa) — vol clustering/momentum, não reversão. O `premium_cheap` é contaminado pela data-armadilha 2026-10-26 (33 obs com a trap na janela têm acerto 100% e mediana −32,8, RV inflada por split sem ajuste); **sem** a trap, o cheap cai para 46,2% de acerto e mediana +0,17 — também não passa. Ou seja, nem limpando o artefato o sinal aparece. O produto não deve seguir para F2+ sem o dono decidir.
+- **Proposta (o dono escolhe, não o implementador):**
+  1. **Parar no portão (default P-L):** não construir F2+ sobre este sinal; repensar a tese antes de continuar.
+  2. **Mudar limiar com justificativa *a priori*** (ex.: exigir `vrp` maior, ou tenor casado diferente) **e validar num período fora da amostra** — proibido otimizar no mesmo dado (P-L); qualquer mudança de fórmula sobe `model_version` e recalcula o histórico.
+  3. **Trocar o sinal:** testar uma tese de *momentum* de vol (a direção que o dado mostra) em vez de reversão, com novos critérios pré-registrados antes de olhar o resultado.
+- **Consequência:** `PLAN.md` F1b **não** marcado `[x]`; `AGENTS.md` **não** registra "o sinal passou". O relatório completo está em `data/out/backtest.md` (fora do git). Este ADR só se torna decisão quando o dono ratificar.
+- **Revisar em:** ratificação do dono (antes de qualquer F2).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

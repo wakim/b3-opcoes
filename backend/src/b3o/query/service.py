@@ -460,6 +460,27 @@ class SeriesDay:
     best_ask: int
 
 
+@dataclass(frozen=True, slots=True)
+class UnderlyingMetricRow:
+    """Uma linha de `metrics_underlying` para o backtest (F1b, contrato §4.3).
+
+    Só as colunas que o portão consome: a classe **gravada** (não se recalcula),
+    a IV ATM 30d e o `vrp_z_252` (aquecimento), mais `vrp`/`rv30` para a prova
+    de look-ahead do z. Unidades do contrato: IV/RV em % a.a., VRP em pontos de
+    vol. `model_version` viaja junto para o relatório não misturar modelos.
+    """
+
+    refdate: date
+    underlying: str
+    underlying_market: str
+    iv_atm_30d: float | None
+    rv30: float | None
+    vrp: float | None
+    vrp_z_252: float | None
+    signal_class: str
+    model_version: int
+
+
 class QueryService:
     """Leitura do lake: uma classe, um arquivo, nenhuma query fora daqui."""
 
@@ -686,6 +707,47 @@ class QueryService:
             for row in rows
         ]
 
+    def spot_bars_in_market(
+        self, underlying: str, start: date, end: date, market: str
+    ) -> list[SpotBar]:
+        """OHLC do papel **num mercado só** (`010` ou `020`), entre `start` e `end`.
+
+        O backtest (F1b) usa o mesmo mercado da linha de métrica (`underlying_market`):
+        misturar lote padrão com fracionário na mesma série de RV criaria retorno
+        artificial de um mercado para o outro. Diferente de `spot_bars`, não há
+        preferência nem `row_number` — o mercado é fixo. Sem linha no intervalo,
+        lista vazia (ausência de negócio não é erro).
+        """
+        years = range(start.year, end.year + 1)
+        paths = [path for year in years for path in self._partitions(year)]
+        if not paths:
+            return []
+        rows = self._fetch(
+            "SELECT refdate, open, high, low, close, tpmerc, qty, volume, trades "
+            "FROM read_parquet(?) "
+            "WHERE ticker = ? AND tpmerc = ? AND refdate BETWEEN ? AND ? "
+            "ORDER BY refdate",
+            paths,
+            underlying,
+            market,
+            start,
+            end,
+        )
+        return [
+            SpotBar(
+                refdate=row[0],
+                open=int(row[1]),
+                high=int(row[2]),
+                low=int(row[3]),
+                close=int(row[4]),
+                market=str(row[5]),
+                qty=int(row[6]),
+                volume=int(row[7]),
+                trades=int(row[8]),
+            )
+            for row in rows
+        ]
+
     def rates_curve(self, refdate: date) -> list[RateNode]:
         """Nós da curva da sessão, ordenados por `du`; `[]` quando não há curva.
 
@@ -848,6 +910,51 @@ class QueryService:
                 )
             )
         return result
+
+    def metrics_underlying_rows(
+        self, start: date | None = None, end: date | None = None
+    ) -> list[UnderlyingMetricRow]:
+        """Linhas de `metrics_underlying` (F1b), ordenadas por `(refdate, underlying)`.
+
+        `start`/`end` filtram o `refdate` (inclusive); `None` = sem corte. Sem
+        partição devolve `[]` (o `metrics` nunca rodou — ausência, não erro).
+        Parquet ilegível levanta `SourceFailure(storage_error)`. Uma ocorrência
+        de `read_parquet(?)` por consulta: o binding posicional é seguro aqui
+        (a armadilha do AGENTS é com **duas** tabelas na mesma consulta).
+        """
+        paths = self._partitions_for("metrics_underlying", None)
+        if not paths:
+            return []
+        sql = (
+            "SELECT refdate, underlying, underlying_market, iv_atm_30d, rv30, vrp, "
+            "vrp_z_252, signal_class, model_version FROM read_parquet(?)"
+        )
+        params: list[object] = [[str(path) for path in paths]]
+        clauses: list[str] = []
+        if start is not None:
+            clauses.append("refdate >= ?")
+            params.append(start)
+        if end is not None:
+            clauses.append("refdate <= ?")
+            params.append(end)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
+        sql += " ORDER BY refdate, underlying"
+        rows = self._fetch(sql, paths, *params[1:])
+        return [
+            UnderlyingMetricRow(
+                refdate=row[0],
+                underlying=str(row[1]),
+                underlying_market=str(row[2]),
+                iv_atm_30d=None if row[3] is None else float(row[3]),
+                rv30=None if row[4] is None else float(row[4]),
+                vrp=None if row[5] is None else float(row[5]),
+                vrp_z_252=None if row[6] is None else float(row[6]),
+                signal_class=str(row[7]),
+                model_version=int(row[8]),
+            )
+            for row in rows
+        ]
 
     # ------------------------------ health ------------------------------ #
 
@@ -1469,6 +1576,7 @@ __all__ = [
     "RateNode",
     "SeriesDay",
     "SpotBar",
+    "UnderlyingMetricRow",
     "load_prepare_state",
     "prepare_state_path",
     "save_prepare_state",

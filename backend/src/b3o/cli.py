@@ -45,6 +45,7 @@ from __future__ import annotations
 import json
 import logging
 import resource
+import subprocess
 import time
 import uuid
 import zipfile
@@ -79,6 +80,7 @@ from b3o.ingest.parse import KEPT_MARKETS, CotahistRow, iter_cotahist
 from b3o.ingest.rates import fetch_rates_di
 from b3o.ingest.selic import backfill_selic_flat
 from b3o.ingest.validate import ValidationReport, validate_cotahist
+from b3o.metrics.backtest import run_backtest
 from b3o.metrics.pipeline import run_metrics
 from b3o.query.service import PrepareState, QueryService, load_prepare_state, save_prepare_state
 from b3o.store.lake import read_cotahist_years, write_cotahist_year
@@ -1257,6 +1259,63 @@ def metrics(
             f"partição   metrics_series sha256 {summary.series_sha256[:12]}… · "
             f"metrics_underlying sha256 {summary.underlying_sha256[:12]}…"
         )
+
+
+@app.command()
+def backtest(
+    config: Annotated[
+        Path, typer.Option("--config", help="caminho do config.yaml (chaves planas, P-B)")
+    ] = DEFAULT_CONFIG_PATH,
+    from_: Annotated[
+        date | None, typer.Option("--from", help="primeira sessão do período")
+    ] = None,
+    to: Annotated[
+        date | None, typer.Option("--to", help="última sessão do período")
+    ] = None,
+) -> None:
+    """Backtest das classes de sinal (F1b, o portão): `edge = iv_atm_30d − rv_fwd20`.
+
+    Lê `metrics_underlying` (classe gravada, sem recalcular), resolve a RV das 20
+    sessões seguintes e agrega por classe/papel/recorte. Imprime o resumo de uma
+    tela e grava `data/out/backtest.md`. Os critérios do portão são pré-registrados
+    (contrato onda-fg §2): o comando preenche o veredito, **não decide** seguir/parar.
+    """
+    try:
+        settings = load_config(config)
+    except SourceFailure as exc:
+        typer.secho(f"config     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    configure_logging(settings.log_level)
+
+    try:
+        run = run_backtest(settings, start=from_, end=to, commit=_resolve_commit())
+    except SourceFailure as exc:
+        typer.secho(f"backtest   {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    for line in run.summary:
+        typer.echo(line)
+    target = settings.data_dir / "out" / "backtest.md"
+    _write_text_atomic(target, run.markdown)
+    typer.echo(f"relatório  {target}")
+
+
+def _resolve_commit() -> str | None:
+    """Commit curto do HEAD, se o git estiver disponível (no container geralmente não)."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and value else None
 
 
 def main() -> None:

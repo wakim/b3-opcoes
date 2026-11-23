@@ -7,7 +7,7 @@
 #   deps    → só dependências (cacheável entre edições de backend/src/)
 #   runtime → app sem dev-deps (serviços app, prepare, prepare-watch)
 #   dev     → com dev-deps e src (serviço test: container de ferramentas/python)
-#   web     → inerte até o F5.0 (só marca o lugar do build Node)
+#   web     → build do frontend (npm ci && npm run build) → /frontend/dist
 
 ########## deps ##########
 # Política de dependências (pré-requisito permanente do dono): bibliotecas e imagens de base
@@ -38,8 +38,14 @@ COPY backend/src /app/src
 # Instala o projeto b3o (editável) sobre as deps já resolvidas.
 RUN uv sync --frozen --no-dev
 
+# SPA do F5: o mesmo container serve /api, /mcp e o dist do Vite.
+COPY --from=web /frontend/dist /app/frontend/dist
+COPY docs/glossario.md /app/docs/glossario.md
+
 ENV PATH="/app/.venv/bin:$PATH" \
-    B3_DATA_DIR=/data
+    B3_DATA_DIR=/data \
+    B3_FRONTEND_DIR=/app/frontend/dist \
+    B3_GLOSSARY_PATH=/app/docs/glossario.md
 
 # CMD default: saúde do lake. O serviço `app` sobrepõe com o uvicorn (F3).
 CMD ["b3o", "health"]
@@ -53,16 +59,21 @@ RUN uv sync --frozen --no-install-project
 COPY backend/config.yaml /app/config.yaml
 COPY backend/src /app/src
 COPY backend/scripts /app/scripts
+COPY docs/glossario.md /app/docs/glossario.md
 RUN uv sync --frozen
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    B3_DATA_DIR=/data
+    B3_DATA_DIR=/data \
+    B3_GLOSSARY_PATH=/app/docs/glossario.md
 
 CMD ["b3o", "--help"]
 
-########## web (inerte até o F5.0) ##########
+########## web (build do frontend, F5.0) ##########
 # node:26-slim = Node 26 (LTS ativa e current em 22/11/2026; 22-slim era LTS de manutenção).
-# Política ADR-008: sempre a mais nova.
+# Política ADR-008: sempre a mais nova. `npm ci` exige package-lock versionado.
 FROM node:26-slim AS web
 WORKDIR /frontend
-RUN echo "Estágio do build do frontend (F5.0): npm ci && npm run build -> dist/" > README.txt
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build

@@ -2,11 +2,11 @@
 # era enviado ao daemon em toda construção — medido em 295 MB, achado da revisão do F0).
 data/
 out/
-docs/
 .git/
 .venv/
 node_modules/
 frontend/node_modules/
+frontend/dist/
 __pycache__/
 *.py[cod]
 *.parquet
@@ -18,3 +18,9 @@ __pycache__/
 .env
 .pytest_cache/
 .ruff_cache/
+
+# F5.2: o glossário é a fonte única de /api/glossary — precisa entrar na imagem.
+# `docs/*` re-exclui o conteúdo de docs (a linha antiga era `docs/`); a última
+# linha re-inclui só este arquivo, inclusive depois do `*.md` acima.
+docs/*
+!docs/glossario.md

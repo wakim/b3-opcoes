@@ -1,0 +1,291 @@
+@import "tailwindcss";
+
+/* Tokens de docs/direcao.md — "A · Bancada fria". Nesta sessão (F5-A) servem
+   de base ao wireframe; os 9 passes do unslop entram na F5-B. */
+:root {
+  --bg: #101418;
+  --surface: #171d24;
+  --surface-2: #1d242c;
+  --line: #232c36;
+  --line-strong: #33404e;
+  --text: #e7edf4;
+  --text-2: #8fa0b2;
+  --text-3: #5d6c7d;
+  --accent: #e9f2f9;
+  --accent-ink: #0f1317;
+  --pos: #7fb08a;
+  --neg: #c88383;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --r-control: 4px;
+  --r-card: 6px;
+  --r-sheet: 8px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+}
+
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.appbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.appbar h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.stamp {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.stamp strong {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+main {
+  flex: 1;
+  padding: 16px 16px 88px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.screen-title {
+  margin: 4px 0 16px;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.section-label {
+  margin: 24px 0 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.metric {
+  background: var(--surface);
+  padding: 10px 12px;
+}
+
+.metric .k {
+  display: block;
+  font-size: 11px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.metric .v {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text);
+}
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.rows {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rows th,
+.rows td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rows th:first-child,
+.rows td:first-child {
+  text-align: left;
+}
+
+.rows th {
+  color: var(--text-2);
+  font-weight: 500;
+  background: var(--surface-2);
+}
+
+.rows td {
+  color: var(--text);
+}
+
+.rows tbody tr:hover {
+  background: var(--surface);
+}
+
+.ticker-link {
+  color: var(--accent);
+}
+
+.note {
+  color: var(--text-3);
+  font-size: 11.5px;
+  margin: 10px 2px 0;
+}
+
+.error {
+  border: 1px solid var(--neg);
+  border-radius: var(--r-control);
+  padding: 10px 12px;
+  color: var(--text);
+  background: rgba(200, 131, 131, 0.08);
+  margin-bottom: 12px;
+}
+
+.error .code {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--neg);
+}
+
+.placeholder {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-card);
+  padding: 24px 16px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  z-index: 10;
+}
+
+.nav a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.nav a.active {
+  color: var(--accent);
+  background: var(--surface-2);
+}
+
+.glossary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.glossary-item {
+  width: 100%;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  padding: 12px 14px;
+  min-height: 44px;
+  color: var(--text);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.glossary-item .level {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.entry h2 {
+  font-size: 18px;
+  font-weight: 500;
+  margin: 0 0 12px;
+}
+
+.entry p {
+  margin: 0 0 12px;
+  color: var(--text-2);
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 12px;
+}

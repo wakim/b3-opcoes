@@ -68,9 +68,32 @@ services:
     profiles: [watch]
     command: ["b3o", "prepare", "--watch"]
 
-  # build do frontend (inerte até o F5.0 — não tem frontend/ ainda)
+  # build do frontend (F5.0): gera frontend/dist no bind, dentro do node:26-slim.
+  # node_modules vive em volume nomeado — no bind do Windows não preserva modo e é lento.
   web:
     image: node:26-slim
     profiles: [build]
     working_dir: /frontend
-    command: ["sh", "-c", "echo 'build do frontend entra no F5.0 (npm ci && npm run build)'; exit 0"]
+    volumes:
+      - ./frontend:/frontend
+      - b3o-node-modules:/frontend/node_modules
+    command: ["sh", "-c", "npm ci && npm run build"]
+
+  # Vite dev server (profile dev) — NÃO é o caminho oficial de build.
+  # CHOKIDAR_USEPOLLING compensa a vigilância de arquivo entre volumes no Windows.
+  web-dev:
+    image: node:26-slim
+    profiles: [dev]
+    working_dir: /frontend
+    environment:
+      CHOKIDAR_USEPOLLING: "1"
+    ports:
+      - "127.0.0.1:${B3_WEB_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/frontend
+      - b3o-node-modules:/frontend/node_modules
+    command: ["sh", "-c", "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"]
+
+volumes:
+  b3o-node-modules:
+

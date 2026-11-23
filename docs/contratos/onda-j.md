@@ -58,7 +58,7 @@ fora (spec §7/§6.10).
 |---|---|
 | `underlying` | opcional; se presente tem de ser o papel resolvido (senão `underlying_mismatch`) |
 | `date` | opcional; ISO; `None` → última sessão do lake; data sem sessão → `no_session` |
-| `legs` | **obrigatório**, lista não vazia; cada perna é `{kind, ticker, side, quantity}` |
+| `legs` | **obrigatório**, lista não vazia, no máximo **60 pernas** (é a lista que volta na resposta; `> 60` → `bad_legs`); cada perna é `{kind, ticker, side, quantity}` |
 | `kind` | `option` \| `stock` (outro → `bad_legs`) |
 | `side` | `long` \| `short` (outro → `bad_legs`) |
 | `quantity` | inteiro **> 0**, em ações (0, negativo ou não inteiro → `bad_legs`) |
@@ -256,7 +256,7 @@ structure_eval(legs, underlying=None, date=None, capital=None, scenarios=True) -
   "delta": 48.624814, "gamma": -0.098687, "theta_brl": 3.849762, "vega_brl": -4.793596,
   "payoff": [{"spot_brl": 25.6, "pnl_brl": -1549.0}, ...],
   "scenarios": [{"spot_brl": 34.13, "iv_shift_pts": -5.0, "days_forward": 0, "pnl_brl": ...}, ...],
-  "flags": ["illiquid_leg"],
+  "flags": [],
   "notes": []
 }
 ```

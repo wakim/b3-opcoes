@@ -3539,6 +3539,9 @@ _STRUCTURE_HINT = (
     "quantity: inteiro > 0 em ações}"
 )
 
+MAX_STRUCTURE_LEGS = 60
+"""Teto de pernas (contrato §0.5: nenhuma lista da resposta passa de 60)."""
+
 
 def _bad_legs(message: str) -> SourceFailure:
     """`bad_legs` com a dica única do formato da perna (contrato §2)."""
@@ -3557,6 +3560,11 @@ def _parse_structure_legs(
         raise _bad_legs("legs precisa ser uma lista de pernas") from exc
     if not items:
         raise _bad_legs("legs está vazio: a estrutura precisa de ao menos uma perna")
+    if len(items) > MAX_STRUCTURE_LEGS:
+        raise _bad_legs(
+            f"legs tem {len(items)} pernas; o teto é {MAX_STRUCTURE_LEGS} "
+            "(nenhuma lista da resposta passa de 60)"
+        )
     parsed: list[StructureLegInput] = []
     for index, item in enumerate(items, start=1):
         if isinstance(item, StructureLegInput):

@@ -443,6 +443,26 @@ async def main_async() -> int:
             errors.append(body)
             return body
 
+        too_many = {
+            "underlying": "PETR4",
+            "date": SESSION,
+            "legs": [
+                {
+                    "kind": "option",
+                    "ticker": "PETRL44",
+                    "side": "long",
+                    "quantity": 1,
+                }
+            ]
+            * 61,
+        }
+        too_many_legs = await http.post("/api/structure", json=too_many)
+        check(
+            too_many_legs.status_code == 400
+            and error_of(too_many_legs).get("error", {}).get("code") == "bad_legs",
+            "61 pernas → 400 bad_legs (nenhuma lista > 60)",
+            f"HTTP {too_many_legs.status_code}",
+        )
         bad_qty = await http.post(
             "/api/structure",
             json={
@@ -553,6 +573,20 @@ async def main_async() -> int:
         check(
             "Traceback" not in serialized and 'File "' not in serialized,
             "nenhum traceback nas respostas de erro",
+        )
+        broken_cli = subprocess.run(
+            ["b3o", "struct", "--date", SESSION, "--leg", "option:PETRL44:short"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        broken_text = broken_cli.stdout + broken_cli.stderr
+        check(
+            broken_cli.returncode == 1
+            and "bad_legs" in broken_text
+            and "Traceback" not in broken_text,
+            "CLI --leg malformado: exit 1 + bad_legs, sem traceback",
+            f"rc={broken_cli.returncode}",
         )
 
         print("\nLimites e vocabulário:")

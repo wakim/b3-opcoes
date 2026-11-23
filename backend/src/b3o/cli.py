@@ -1440,14 +1440,14 @@ def struct(
     from b3o.api import payloads
 
     service = QueryService(settings.data_dir)
-    body = {
-        "underlying": underlying,
-        "date": date_.isoformat() if date_ is not None else None,
-        "legs": _cli_legs(leg),
-        "capital": capital,
-        "scenarios": scenarios,
-    }
     try:
+        body = {
+            "underlying": underlying,
+            "date": date_.isoformat() if date_ is not None else None,
+            "legs": _cli_legs(leg),
+            "capital": capital,
+            "scenarios": scenarios,
+        }
         result = payloads.structure_payload(service, body)
     except SourceFailure as exc:
         typer.secho(f"struct     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
@@ -1465,7 +1465,7 @@ def struct(
     if json_out:
         typer.echo(json.dumps(result, ensure_ascii=False, indent=2))
         return
-    for line in _render_structure(result):
+    for line in _render_structure(result, requested=scenarios):
         typer.echo(line)
 
 
@@ -1503,7 +1503,7 @@ def _fmt_brl(value: object) -> str:
     return "—" if value is None else "R$ " + _fmt_number(value, 2)
 
 
-def _render_structure(payload: Mapping[str, Any]) -> list[str]:
+def _render_structure(payload: Mapping[str, Any], *, requested: bool = True) -> list[str]:
     """Resumo de uma tela do `b3o struct` (P-G) — só formata, não calcula."""
     data = payload["data"]
     lines = [
@@ -1556,7 +1556,11 @@ def _render_structure(payload: Mapping[str, Any]) -> list[str]:
             f"a {_fmt_brl(highest)}"
         )
     if data["scenarios"] is None:
-        lines.append("  cenários         — (indisponível; ver flags)")
+        lines.append(
+            "  cenários         — (não calculado: --no-scenarios)"
+            if not requested
+            else "  cenários         — (indisponível; ver flags)"
+        )
     else:
         lines.append(
             f"  cenários         {len(data['scenarios'])} pontos "

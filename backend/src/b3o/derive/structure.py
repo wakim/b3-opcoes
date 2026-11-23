@@ -633,9 +633,9 @@ def _payoff_curve(
     """41 pontos entre `0,6·S` e `1,4·S` + strikes/breakevens, capado em 60 (§3.6).
 
     Prioridade quando não cabe tudo: **breakevens** (`must_keep`) primeiro, depois os
-    strikes e, por último, a grade base (reduzida uniformemente). O gráfico perde
-    resolução, nunca um breakeven — e um strike em excesso só sai se houver mais de
-    60 especiais, o que exige estrutura com dezenas de pernas.
+    strikes e, por último, a grade base (reduzida uniformemente). Preserva os
+    breakevens até o teto de 60; acima disso (impossível com o limite de 60 pernas
+    do contrato) eles são reduzidos uniformemente.
     """
     low = 0.6 * spot_brl
     high = 1.4 * spot_brl

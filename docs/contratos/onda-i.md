@@ -176,7 +176,7 @@ Events(ticker, as_of_session, model_version, maturities: list[date],
 | `GET /api/t/{ticker}/events` | `events` |
 
 Fora do F3 (F4/F5): escritas, journal, positions, structure, glossary, briefing, tickers.
-Nada de `signal_backtest` (ADR-025).
+Nada de `signal_backtest` (ADR-027).
 
 ## 6. MCP
 

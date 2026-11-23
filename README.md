@@ -32,6 +32,7 @@ O trabalho segue o [`PLAN.md`](PLAN.md), fase por fase. O caminho oficial de exe
 | [`docs/ui-mockup.html`](docs/ui-mockup.html) | mockup desktop (tabela larga da cadeia) |
 | [`AGENTS.md`](AGENTS.md) | regras e armadilhas do dado, para quem (ou o que) mexer no código |
 | [`docs/decisoes.md`](docs/decisoes.md) | **log de decisões**: o que foi decidido sem o dono, com padrão adotado, motivo e ponto de revisão |
+| [`docs/relatorios/`](docs/relatorios) | pareceres e autos-relatórios das sessões (inclui o da F5-PreB) |
 | [`docs/prompts/`](docs/prompts) | prompts de execução autônoma por fase (`f0-f1b`, `f3`, `f4`, validações) |
 | [`BACKLOG.md`](BACKLOG.md) | o que fica para depois, e por quê |
 
@@ -112,5 +113,10 @@ A SPA tem seis rotas file-based em `frontend/src/routes/`: Hoje, Carteira, Diár
 Aprender e os drill-downs Ticker/Série. Nesta sessão Carteira e Diário são
 placeholders explícitos ("F6"); o desenho final com os 9 passes do unslop, os
 gráficos SVG, o builder de estrutura e o modo offline vêm em F5-B/F5-C.
+
+A aba Aprender já abre a ficha do verbete inline, em **accordion independente**
+(vários verbetes podem ficar abertos; ADR-033, relatório em
+`docs/relatorios/2026-11-23-f5-pre-b.md`). O `MetricSheet` das telas de métrica é
+componente à parte, previsto para F5-B.
 
 Os serviços e as regras do ambiente estão na spec (§4.1) e em [`PLAN.md`](PLAN.md#ambiente).

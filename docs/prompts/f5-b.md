@@ -134,9 +134,11 @@ Não inventar chave: confira com `/api/glossary` (o smoke/auditoria de cobertura
    limpo; `npm run build` (script `rm -rf dist && vite build`) com hash estável em duas rodadas.
 4. `podman compose build app` + `up -d app` (8081); `/api/health` `model_version 2`;
    `mcp_smoke.py` **53/53** e `structure_smoke.py` **93/93**.
-5. `git diff --name-only 623ad7e..HEAD -- backend/ docs/direcao.md docs/ui-mobile.html
+5. `git diff --name-only <base>..HEAD -- backend/ docs/direcao.md docs/ui-mobile.html
    docs/ui-mockup.html frontend/src/routes/aprender.tsx frontend/src/styles.css
-   frontend/src/lib/ui.tsx` = **vazio** (prova que você não invadiu os arquivos paralelos).
+   frontend/src/lib/ui.tsx` = **vazio** (prova que você não invadiu os arquivos paralelos). Use como
+   `<base>` o commit da sua worktree **após** o rebase — `b7a4d24` se o F5-PreB já estiver em `main`.
+   O antigo `623ad7e..HEAD` agora inclui os commits `4ddaf63`/`b7a4d24` e daria falso positivo.
 6. Nenhum arquivo em `data/` muda por GET.
 
 ---

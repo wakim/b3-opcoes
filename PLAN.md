@@ -316,7 +316,19 @@ Contrato em `docs/prompts/f5-a.md`; ADR-029…032. Critérios provados com saíd
 - [x] Zero escrita em `data/` por GET; zero vocabulário preditivo novo; sem biblioteca de gráfico; sem SSR/servidor no frontend.
 - [x] ADRs 029–032 (stack/dispatcher/glossário/cliente), armadilhas no `AGENTS.md`, `README.md` com os comandos e push por pacote verde.
 
-**Não entregue aqui (escopo das próximas sessões):** 9 passes do unslop/desenho final, sheet de métrica e gráficos (F5-B); builder de estrutura, Carteira/Diário reais e PWA/offline (F5-C); Tailscale/instalação no celular (F5-D). Os placeholders de Carteira/Diário dizem "F6" explicitamente.
+**Não entregue aqui (escopo das próximas sessões):** 9 passes do unslop/desenho final, sheet de métrica e gráficos (F5-B); builder de estrutura, Carteira/Diário reais e PWA/offline (F5-C); Tailscale/instalação no celular (F5-D). Os placeholders de Carteira/Diário dizem "F6" explicitamente. A aba Aprender foi tratada à parte, na sessão F5-PreB (accordion independente, ADR-033).
+
+### F5-PreB — ajuste pontual do Aprender (antes do F5-B)
+
+Contrato em `docs/prompts/f5-pre-b.md`; ADR-033; evidência em `docs/relatorios/2026-11-23-f5-pre-b.md`. Commits `4ddaf63` → `b7a4d24` (push em `main`).
+
+- [x] a ficha abre **no lugar**, inline, logo abaixo do verbete tocado: 30 botões com `aria-expanded` e painel `role="region"` com `hidden={!open}`; **vários abertos ao mesmo tempo** (medido: 2 painéis visíveis, `openCount 2`) e cada um colapsa de forma independente.
+- [x] uma `useQuery` por verbete com `staleTime` 1 h; `fetch` continua **só** em `lib/api.ts`; carimbo `sessão 2026-11-19 · D-1` visível e **zero erros de console** no navegador.
+- [x] B2 fechada: `plain()` remove blockquote (`>`), regra (`---`) e links Markdown, sem biblioteca nova.
+- [x] `lint` + `typecheck` limpos; duas builds com hashes idênticos (`index-B8W31Zfi.css` / `index-smFPNgpz.js`); app reconstruído em 8081; `mcp_smoke` **53/53** e `structure_smoke` **93/93**; `model_version` **2**.
+- [x] nenhum arquivo congelado tocado; `data/` inalterado (201 arquivos). O bottom sheet da primeira passagem foi revertido a pedido do dono (ADR-033).
+
+**Não entregue aqui:** B1 (`/api/tickers` sem UI de busca) segue para F5-C; **F5-B continua em aberto** — unslop, régua, gráficos SVG e o `MetricSheet` de Hoje/Ticker/Série (componente distinto da ficha do Aprender).
 
 **Aceitação F5**
 - [ ] instalado no celular pelo domínio `*.ts.net` (HTTPS)

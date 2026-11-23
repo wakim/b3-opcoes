@@ -44,6 +44,8 @@ from pathlib import Path
 import duckdb
 
 from b3o.derive.calendar import trading_sessions
+from b3o.derive.dist import expected_move_1s
+from b3o.derive.forward import ParityQuote, forward_by_parity
 from b3o.derive.liquidity import DAYS_WINDOW, VOLUME_MIN_CENTS
 from b3o.derive.realized import DEFAULT_GAP_THRESHOLD, flag_unexplained
 from b3o.fsutil import replace_file
@@ -578,6 +580,187 @@ class ScreenBundle:
     rows: list[ScreenRow]
     outside_universe: list[str]
     earnings_coverage_start: date | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TermRow:
+    """Um vencimento na estrutura a termo do papel (F3.2).
+
+    `iv_atm` é a IV da série com `|Δ|` mais próximo de 0,5 **já gravada** no lake
+    (seleção, não recálculo); `forward_brl` é a paridade put-call reconstruída dos
+    `mid`s gravados com `derive.forward.forward_by_parity` (a mesma função pura do
+    pipeline); `exp_move_1s` é `1,25 × straddle ATM / spot` (§6.10) em **fração**.
+    """
+
+    maturity: date
+    t: float
+    """`t` gravado do vencimento, em dias úteis / 252."""
+    iv_atm: float | None
+    """% a.a.; `None` quando nenhuma série com IV/Δ existe no vencimento."""
+    atm_strike_brl: float | None
+    forward_brl: float | None
+    forward_method: str
+    """`crossing` | `ols` | `none` (o que a paridade conseguiu)."""
+    exp_move_1s: float | None
+    """Fração do spot (0,06 = 6%)."""
+    n_strikes: int
+    """Strikes distintos (> 0) com série do papel no dia."""
+    n_liquid_strikes: int
+    """Strikes distintos com ao menos uma série `is_liquid`."""
+
+
+@dataclass(frozen=True, slots=True)
+class SmileRow:
+    """Uma série no smile de um vencimento (F3.2), ordenada por `(strike, side)`."""
+
+    strike_brl: float
+    iv_pct: float | None
+    delta: float | None
+    side: str
+    is_liquid: bool
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryRow:
+    """Uma sessão do histórico do papel (`metrics_underlying`, F3.2)."""
+
+    date: date
+    iv_atm_30d: float | None
+    rv30: float | None
+    vrp: float | None
+    vrp_z_252: float | None
+    rr25: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class UnderlyingDetail:
+    """Leitura de um papel (spec §7: `underlying`), montada só com o que existe."""
+
+    ticker: str
+    as_of_session: date
+    model_version: int
+    in_universe: bool
+    """Papel está no recorte de liquidez da sessão (senão `summary` é `None`)."""
+    summary: ScreenRow | None
+    """A **mesma** linha do `screen_bundle` (sem `signal_class`, que nem existe)."""
+    term: list[TermRow]
+    smile: list[SmileRow]
+    smile_maturity: date | None
+    history: list[HistoryRow]
+    notes: list[str]
+    """Explicações de seção vazia/flag, nunca número inventado."""
+
+
+@dataclass(frozen=True, slots=True)
+class ChainRow:
+    """Uma série na cadeia do papel (F3.2), preço em **R$ por ação**.
+
+    `iv_pct` em % a.a., `t` em du/252, `theta_brl` em R$/ação por dia útil e
+    `vega_brl` em R$/ação por 1 ponto de vol — como gravados em `metrics_series`.
+    `mid_brl` é o preço usado na IV (ADR-017: o fechamento); `close_brl` é o
+    fechamento do dia dividido pelo `FATCOT` (o mesmo número, exposto nos dois
+    nomes que o contrato pede).
+    """
+
+    ticker: str
+    side: str
+    style: str | None
+    maturity: date
+    strike_brl: float
+    t: float
+    bid_brl: float | None
+    ask_brl: float | None
+    mid_brl: float | None
+    close_brl: float | None
+    iv_pct: float | None
+    delta: float | None
+    gamma: float | None
+    theta_brl: float | None
+    vega_brl: float | None
+    spread_brl: float | None
+    spread_pct: float | None
+    is_liquid: bool
+    flags: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class ChainResult:
+    """A cadeia filtrada + o total **antes** do corte de `max_rows`."""
+
+    ticker: str
+    as_of_session: date
+    model_version: int
+    rows: list[ChainRow]
+    total: int
+    notes: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesPoint:
+    """Um dia de uma série (F3.2): preço em R$/ação, IV em % a.a."""
+
+    date: date
+    close_brl: float | None
+    mid_brl: float | None
+    iv_pct: float | None
+    delta: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesDetail:
+    """Identidade + última linha + histórico de uma série (`ticker`, `maturity`)."""
+
+    ticker: str
+    maturity: date
+    side: str
+    style: str | None
+    strike_brl: float
+    leg_id: str
+    t: float
+    is_liquid: bool
+    flags: list[str]
+    gamma: float | None
+    theta_brl: float | None
+    vega_brl: float | None
+    last: SeriesPoint
+    history: list[SeriesPoint]
+    as_of_session: date
+    model_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class StrikeEventRow:
+    """Um evento de ajuste de strike do papel (B2, §6.6)."""
+
+    date: date
+    kind: str
+    delta_strike: int | None
+    factor: float | None
+    n_series: int
+    ambiguous: bool
+
+
+@dataclass(frozen=True, slots=True)
+class EarningsEventRow:
+    """Uma data do calendário da CVM (`actual`) ou estimada (`estimated`)."""
+
+    date: date
+    ref_period: date
+    kind: str
+
+
+@dataclass(frozen=True, slots=True)
+class EventsDetail:
+    """Vencimentos, eventos de strike e resultados de um papel (`events`)."""
+
+    ticker: str
+    as_of_session: date
+    model_version: int
+    maturities: list[date]
+    strike_events: list[StrikeEventRow]
+    earnings: list[EarningsEventRow]
+    next_earnings: EarningsEventRow | None
+    notes: list[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1253,6 +1436,552 @@ class QueryService:
             rows=rows,
             outside_universe=sorted(set(metrics) - set(universe)),
             earnings_coverage_start=earnings_coverage_start,
+        )
+
+    # ---------------------- leituras do F3 (MCP/API) --------------------- #
+
+    def underlying(
+        self,
+        ticker: str,
+        date: date | None = None,
+        sections: Sequence[str] = ("summary", "term", "smile", "history"),
+        expiry: date | None = None,
+        days: int = 60,
+    ) -> UnderlyingDetail:
+        """Leitura de um papel em `sections` (`summary`/`term`/`smile`/`history`).
+
+        Regras do contrato onda-i §4.1:
+
+        - `summary` é **a mesma linha** de `screen_bundle` (o número do `screen`
+          não pode divergir do da tool); papel fora do universo sai sem resumo,
+          com nota — não desaparece;
+        - `term` seleciona a IV ATM por `|Δ| ≈ 0,5` do que está gravado e
+          reconstrói o forward por paridade com `derive.forward`; `exp_move` usa
+          a constante da §6.10 (`derive.dist`). Nenhuma métrica é recalculada;
+        - `smile` é uma linha por série com IV, ordenado por `(strike, side)`;
+          `expiry=None` escolhe o vencimento de `t` mais próximo de 30/252;
+        - `history` vem de `metrics_underlying`, só `date <= as_of_session`.
+
+        Ticker que não é papel à vista nem tem métrica → `ticker_not_found`.
+        """
+        paper = _clean_ticker(ticker)
+        session = self._session(date)
+        self._require_underlying(paper)
+        wanted = {str(section) for section in sections}
+        notes: list[str] = []
+        summary: ScreenRow | None = None
+        in_universe = paper in load_prepare_state(self.data_dir).universe
+        model_version = self.derived_model_version() or MODEL_VERSION
+
+        if "summary" in wanted:
+            bundle = self.screen_bundle(session)
+            model_version = bundle.model_version
+            summary = next((row for row in bundle.rows if row.underlying == paper), None)
+            in_universe = summary is not None
+            if summary is None:
+                if paper in bundle.outside_universe:
+                    notes.append(
+                        f"{paper} tem métrica na sessão mas está fora do universo de "
+                        "liquidez (volume médio 20d < R$ 5 M): não entra no screen"
+                    )
+                else:
+                    notes.append(
+                        f"{paper} não está no universo de liquidez da sessão e não tem "
+                        "linha em metrics_underlying"
+                    )
+
+        rows = (
+            self._chain_rows(paper, session) if {"term", "smile"} & wanted else []
+        )
+        spot = self._spot_brl(paper, session)
+        if {"term", "smile"} & wanted and not rows:
+            notes.append(
+                "no_options: nenhuma série de opção do papel com métrica nesta sessão "
+                "(confira o `chain` e o motivo no `screen`)"
+            )
+
+        term = _term_rows(rows, spot) if "term" in wanted else []
+        if "term" in wanted and rows and not term:
+            notes.append("term: nenhum vencimento com série utilizável nesta sessão")
+
+        smile: list[SmileRow] = []
+        smile_maturity: date | None = None
+        if "smile" in wanted:
+            smile_maturity = expiry or _nearest_expiry(rows)
+            if smile_maturity is None:
+                if rows:
+                    notes.append("smile: nenhum vencimento com IV na sessão")
+            else:
+                available = {row.maturity for row in rows}
+                if smile_maturity not in available:
+                    raise SourceFailure(
+                        SourceError(
+                            code="expiry_not_found",
+                            message=(
+                                f"{paper} não tem série no vencimento "
+                                f"{smile_maturity.isoformat()} em "
+                                f"{session.isoformat()}"
+                            ),
+                            hint=(
+                                "vencimentos com série: "
+                                + _sample_sorted(available)
+                                + " — use um deles ou omita `expiry`"
+                            ),
+                        )
+                    )
+                smile = _smile_rows(rows, smile_maturity)
+                if not smile:
+                    notes.append(
+                        f"smile: o vencimento {smile_maturity.isoformat()} não tem "
+                        "série com IV gravada"
+                    )
+
+        history = self._history_rows(paper, session, days) if "history" in wanted else []
+        if "history" in wanted and not history:
+            notes.append(
+                "history: nenhuma linha em metrics_underlying até a sessão "
+                "(rode `b3o metrics` se o lake tem a sessão)"
+            )
+
+        if model_version is None:
+            model_version = MODEL_VERSION
+        return UnderlyingDetail(
+            ticker=paper,
+            as_of_session=session,
+            model_version=model_version,
+            in_universe=in_universe,
+            summary=summary,
+            term=term,
+            smile=smile,
+            smile_maturity=smile_maturity,
+            history=history,
+            notes=notes,
+        )
+
+    def chain(
+        self,
+        ticker: str,
+        expiry: date | None = None,
+        date: date | None = None,
+        delta_range: tuple[float, float] | None = (0.25, 0.75),
+        liquidity: str = "strict",
+        max_rows: int = 60,
+    ) -> ChainResult:
+        """Cadeia do papel na sessão, uma linha por série (contrato §4.2).
+
+        `liquidity="strict"` usa o `is_liquid` **gravado** (§6.9); `"all"` não
+        filtra. `delta_range` aplica a `|Δ|` (puts têm Δ negativo) e `None` não
+        filtra; `expiry` desconhecido → `expiry_not_found`. O corte de
+        `max_rows` é **depois** do filtro e pega as primeiras linhas da ordem
+        `(maturity, strike, side)` — nunca "as melhores".
+        """
+        paper = _clean_ticker(ticker)
+        session = self._session(date)
+        self._require_underlying(paper)
+        if liquidity not in ("strict", "all"):
+            raise SourceFailure(
+                SourceError(
+                    code="bad_request",
+                    message=f"liquidity inválido ({liquidity!r})",
+                    hint="use liquidity=strict (regra §6.9 gravada) ou liquidity=all",
+                )
+            )
+        rows = self._chain_rows(paper, session)
+        notes: list[str] = []
+        filtered = rows
+        if not rows:
+            notes.append(
+                "no_options: nenhuma série do papel com métrica nesta sessão"
+            )
+        if expiry is not None:
+            available = {row.maturity for row in rows}
+            if expiry not in available:
+                raise SourceFailure(
+                    SourceError(
+                        code="expiry_not_found",
+                        message=(
+                            f"{paper} não tem série no vencimento {expiry.isoformat()} "
+                            f"em {session.isoformat()}"
+                        ),
+                        hint="vencimentos com série: " + _sample_sorted(available),
+                    )
+                )
+            filtered = [row for row in filtered if row.maturity == expiry]
+        if liquidity == "strict":
+            filtered = [row for row in filtered if row.is_liquid]
+        if delta_range is not None:
+            low, high = delta_range
+            filtered = [
+                row
+                for row in filtered
+                if row.delta is not None and low <= abs(row.delta) <= high
+            ]
+        if rows and not filtered:
+            notes.append(
+                "filtros (liquidez/delta) não deixaram nenhuma série; use "
+                "liquidity=all ou amplie delta_range para ver a grade"
+            )
+        total = len(filtered)
+        limit = max(0, int(max_rows))
+        return ChainResult(
+            ticker=paper,
+            as_of_session=session,
+            model_version=self.derived_model_version() or MODEL_VERSION,
+            rows=filtered[:limit],
+            total=total,
+            notes=notes,
+        )
+
+    def series(
+        self, ticker: str, maturity: date, days: int = 60
+    ) -> SeriesDetail:
+        """Identidade, última linha e histórico de uma série (contrato §4.3).
+
+        A sessão é a última do lake (a série é `(ticker, maturity)`). Ticker que
+        não existe no lake → `ticker_not_found`; vencimento que não é da série →
+        `maturity_not_found` com amostra; série sem métrica → `metrics_missing`.
+        """
+        code = _clean_ticker(ticker)
+        session = self._session(None)
+        paths = self._partitions_for("metrics_series", None)
+        rows = (
+            self._fetch(
+                "SELECT refdate, mid, iv, delta, gamma, theta_brl, vega_brl, is_liquid,"
+                " flags, side, style, strike, leg_id, t, model_version"
+                " FROM read_parquet(?) WHERE ticker = ? AND maturity = ? AND refdate <= ?"
+                " ORDER BY refdate",
+                paths,
+                code,
+                maturity,
+                session,
+            )
+            if paths
+            else []
+        )
+        if not rows:
+            self._series_failure(code, maturity, paths)
+        last = rows[-1]
+        points = [
+            SeriesPoint(
+                date=row[0],
+                close_brl=float(row[1]) / 100.0,
+                mid_brl=float(row[1]) / 100.0,
+                iv_pct=None if row[2] is None else float(row[2]),
+                delta=None if row[3] is None else float(row[3]),
+            )
+            for row in rows[-max(0, int(days)) :]
+        ]
+        return SeriesDetail(
+            ticker=code,
+            maturity=maturity,
+            side=str(last[9]),
+            style=None if last[10] is None else str(last[10]),
+            strike_brl=float(last[11]) / 100.0,
+            leg_id=str(last[12]),
+            t=float(last[13]),
+            is_liquid=bool(last[7]),
+            flags=[str(flag) for flag in (last[8] or ())],
+            gamma=None if last[4] is None else float(last[4]),
+            theta_brl=None if last[5] is None else float(last[5]),
+            vega_brl=None if last[6] is None else float(last[6]),
+            last=points[-1],
+            history=points,
+            as_of_session=session,
+            model_version=int(last[14]),
+        )
+
+    def events(self, ticker: str) -> EventsDetail:
+        """Vencimentos, eventos de strike e resultados do papel (contrato §4.4)."""
+        paper = _clean_ticker(ticker)
+        session = self._session(None)
+        self._require_underlying(paper)
+        rows = self._chain_rows(paper, session)
+        maturities = sorted({row.maturity for row in rows})
+        strike_events = [
+            StrikeEventRow(
+                date=event.date,
+                kind=event.kind,
+                delta_strike=event.delta_strike,
+                factor=event.factor,
+                n_series=event.n_series,
+                ambiguous=event.ambiguous,
+            )
+            for event in self.strike_events()
+            if event.underlying == paper
+        ]
+        earnings_all = [
+            EarningsEventRow(date=row.date, ref_period=row.ref_period, kind=row.kind)
+            for row in self.earnings_rows()
+            if row.ticker == paper
+        ]
+        earnings_all.sort(key=lambda row: (row.date, 0 if row.kind == "actual" else 1))
+        next_earnings = next(
+            (row for row in earnings_all if row.date >= session), None
+        )
+        notes: list[str] = []
+        coverage_start = min((row.date for row in self.earnings_rows()), default=None)
+        if not earnings_all:
+            notes.append(
+                f"earnings: nenhuma data de resultado para {paper} no calendário da CVM"
+            )
+        if coverage_start is not None and session < coverage_start:
+            notes.append(
+                f"calendário da CVM começa em {coverage_start.isoformat()}; a sessão "
+                f"{session.isoformat()} é anterior — a ausência não é 'sem resultado'"
+            )
+        return EventsDetail(
+            ticker=paper,
+            as_of_session=session,
+            model_version=self._model_version_for(),
+            maturities=maturities,
+            strike_events=strike_events,
+            earnings=earnings_all,
+            next_earnings=next_earnings,
+            notes=notes,
+        )
+
+    # --------------------- internos das leituras do F3 -------------------- #
+
+    def _session(self, date: date | None) -> date:
+        """Sessão pedida (ou a última do lake); fora do lake → `no_session`."""
+        lake = self.lake_calendar()
+        if not lake:
+            raise _missing_lake_failure(self.data_dir)
+        if date is None:
+            return lake[-1]
+        if date not in lake:
+            raise SourceFailure(
+                SourceError(
+                    code="no_session",
+                    message=f"sessão {date.isoformat()} não existe no lake",
+                    hint=(
+                        f"o lake tem {len(lake)} sessão(ões), de "
+                        f"{lake[0].isoformat()} a {lake[-1].isoformat()} — use uma "
+                        "data desse intervalo ou rode `b3o prepare`"
+                    ),
+                )
+            )
+        return date
+
+    def _require_underlying(self, ticker: str) -> None:
+        """Papel existe como `010`/`020` (em qualquer ano) ou em `metrics_underlying`."""
+        paths = self._partitions(None)
+        if not paths:
+            raise _missing_lake_failure(self.data_dir)
+        rows = self._fetch(
+            "SELECT 1 FROM read_parquet(?) WHERE ticker = ? AND tpmerc IN ('010', '020')"
+            " LIMIT 1",
+            paths,
+            ticker,
+        )
+        if rows:
+            return
+        metrics = self._partitions_for("metrics_underlying", None)
+        if metrics and self._fetch(
+            "SELECT 1 FROM read_parquet(?) WHERE underlying = ? LIMIT 1",
+            metrics,
+            ticker,
+        ):
+            return
+        raise SourceFailure(
+            SourceError(
+                code="ticker_not_found",
+                message=f"{ticker} não é um papel do mercado à vista (010/020) no lake",
+                hint=(
+                    "confira o ticker (maiúsculas, sem sufixo); para série de opção use "
+                    "`series`/`chain` com o ticker da série"
+                ),
+            )
+        )
+
+    def _chain_rows(self, ticker: str, session: date) -> list[ChainRow]:
+        """Séries do papel na sessão: `metrics_series` + book/fechamento do raw.
+
+        O vínculo opção→papel é pelo **ISIN** (armadilha 1 do AGENTS): o mesmo
+        prefixo de ticker serve PETR3 e PETR4. Só entram séries com linha em
+        `metrics_series` na sessão (a métrica é a fonte de IV/gregas/liquidez).
+        """
+        raw_paths = self._partitions(session.year)
+        if not raw_paths:
+            raise _missing_lake_failure(self.data_dir)
+        metric_paths = self._partitions_for("metrics_series", session.year)
+        if not metric_paths:
+            return []
+        sql = (
+            "WITH spot AS ("
+            "  SELECT ticker, isin_underlying,"
+            "         row_number() OVER (PARTITION BY isin_underlying"
+            "           ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END) AS rn"
+            "  FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('010', '020')"
+            "    AND isin_underlying <> ''"
+            "), options AS ("
+            "  SELECT DISTINCT ticker, isin_underlying FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('070', '080')"
+            "    AND isin_underlying <> ''"
+            "), mapped AS ("
+            "  SELECT o.ticker FROM options o JOIN spot s"
+            "    ON s.isin_underlying = o.isin_underlying AND s.rn = 1"
+            "  WHERE s.ticker = $ticker"
+            "), bars AS ("
+            "  SELECT ticker, best_bid, best_ask, close, quote_factor,"
+            "         row_number() OVER (PARTITION BY ticker ORDER BY volume DESC) AS rn"
+            "  FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('070', '080')"
+            ")"
+            " SELECT m.ticker, m.maturity, m.side, m.style, m.strike, m.t, m.mid, m.iv,"
+            "        m.delta, m.gamma, m.theta_brl, m.vega_brl, m.is_liquid, m.flags,"
+            "        m.model_version, b.best_bid, b.best_ask, b.close, b.quote_factor"
+            " FROM read_parquet($metrics) m"
+            " JOIN mapped p ON p.ticker = m.ticker"
+            " LEFT JOIN bars b ON b.ticker = m.ticker AND b.rn = 1"
+            " WHERE m.refdate = $day"
+            " ORDER BY m.maturity, m.strike, m.side"
+        )
+        rows = self._fetch_named(
+            sql,
+            {
+                "raw": [str(path) for path in raw_paths],
+                "metrics": [str(path) for path in metric_paths],
+                "day": session,
+                "ticker": ticker,
+            },
+        )
+        result: list[ChainRow] = []
+        for row in rows:
+            factor = int(row[18]) if row[18] else 1
+            bid = None if row[15] is None else float(row[15]) / factor / 100.0
+            ask = None if row[16] is None else float(row[16]) / factor / 100.0
+            close = None if row[17] is None else float(row[17]) / factor / 100.0
+            spread_brl = None
+            spread_pct = None
+            if bid is not None and ask is not None and bid > 0 and ask > 0:
+                spread_brl = ask - bid
+                mid_book = (bid + ask) / 2.0
+                if mid_book > 0:
+                    spread_pct = (ask - bid) / mid_book * 100.0
+            result.append(
+                ChainRow(
+                    ticker=str(row[0]),
+                    side=str(row[2]),
+                    style=None if row[3] is None else str(row[3]),
+                    maturity=row[1],
+                    strike_brl=float(row[4]) / 100.0,
+                    t=float(row[5]),
+                    bid_brl=bid,
+                    ask_brl=ask,
+                    mid_brl=float(row[6]) / 100.0,
+                    close_brl=close,
+                    iv_pct=None if row[7] is None else float(row[7]),
+                    delta=None if row[8] is None else float(row[8]),
+                    gamma=None if row[9] is None else float(row[9]),
+                    theta_brl=None if row[10] is None else float(row[10]),
+                    vega_brl=None if row[11] is None else float(row[11]),
+                    spread_brl=spread_brl,
+                    spread_pct=spread_pct,
+                    is_liquid=bool(row[12]),
+                    flags=[str(flag) for flag in (row[13] or ())],
+                )
+            )
+        return result
+
+    def _spot_brl(self, ticker: str, session: date) -> float | None:
+        """Fechamento do papel em R$ (mercado `010` antes de `020`), se houver."""
+        paths = self._partitions(session.year)
+        if not paths:
+            return None
+        rows = self._fetch(
+            "SELECT close FROM read_parquet(?) WHERE refdate = ? AND ticker = ?"
+            " AND tpmerc IN ('010', '020')"
+            " ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END LIMIT 1",
+            paths,
+            session,
+            ticker,
+        )
+        return float(rows[0][0]) / 100.0 if rows else None
+
+    def _history_rows(
+        self, ticker: str, session: date, days: int
+    ) -> list[HistoryRow]:
+        """Últimas `days` linhas de `metrics_underlying` até a sessão (crescente)."""
+        paths = self._partitions_for("metrics_underlying", None)
+        if not paths or days <= 0:
+            return []
+        rows = self._fetch(
+            "SELECT refdate, iv_atm_30d, rv30, vrp, vrp_z_252, rr25"
+            " FROM read_parquet(?) WHERE underlying = ? AND refdate <= ?"
+            " ORDER BY refdate",
+            paths,
+            ticker,
+            session,
+        )
+        return [
+            HistoryRow(
+                date=row[0],
+                iv_atm_30d=None if row[1] is None else float(row[1]),
+                rv30=None if row[2] is None else float(row[2]),
+                vrp=None if row[3] is None else float(row[3]),
+                vrp_z_252=None if row[4] is None else float(row[4]),
+                rr25=None if row[5] is None else float(row[5]),
+            )
+            for row in rows[-int(days) :]
+        ]
+
+    def _model_version_for(self) -> int:
+        """Maior versão das tabelas derivadas; sem tabela, a constante do código."""
+        return self.derived_model_version() or MODEL_VERSION
+
+    def _series_failure(self, ticker: str, maturity: date, paths: Sequence[Path]) -> None:
+        """Classifica a ausência da série: ticker, vencimento ou métrica faltando."""
+        any_rows = (
+            self._fetch(
+                "SELECT DISTINCT maturity FROM read_parquet(?) WHERE ticker = ?"
+                " ORDER BY maturity",
+                list(paths),
+                ticker,
+            )
+            if paths
+            else []
+        )
+        if any_rows:
+            available = [row[0] for row in any_rows]
+            raise SourceFailure(
+                SourceError(
+                    code="maturity_not_found",
+                    message=(
+                        f"{ticker} não tem série no vencimento {maturity.isoformat()} "
+                        "em metrics_series"
+                    ),
+                    hint="vencimentos disponíveis: " + _sample_sorted(set(available)),
+                )
+            )
+        raw_paths = self._partitions(None)
+        exists = bool(
+            raw_paths
+            and self._fetch(
+                "SELECT 1 FROM read_parquet(?) WHERE ticker = ?"
+                " AND tpmerc IN ('070', '080') LIMIT 1",
+                raw_paths,
+                ticker,
+            )
+        )
+        if exists:
+            raise SourceFailure(
+                SourceError(
+                    code="metrics_missing",
+                    message=(
+                        f"a série {ticker} existe no lake, mas não tem linha em "
+                        "metrics_series para o vencimento pedido"
+                    ),
+                    hint="rode `b3o metrics --date <sessão>` (sem métrica não há IV/gregas)",
+                )
+            )
+        raise SourceFailure(
+            SourceError(
+                code="ticker_not_found",
+                message=f"{ticker} não existe como série de opção (070/080) no lake",
+                hint="confira o ticker (maiúsculas) e o vencimento; para papel use `chain`",
+            )
         )
 
     def _screen_volumes(self, window: Sequence[date]) -> dict[str, int]:
@@ -2158,11 +2887,180 @@ def _float_or_none(value: object) -> float | None:
     return float(value)
 
 
+# --------------------------------------------------------------------------- #
+# Helpers das leituras do F3 (puros, sem I/O)
+# --------------------------------------------------------------------------- #
+
+TENOR_30D = 30.0 / 252.0
+"""Alvo do `smile`/ATM quando o chamador não escolhe vencimento (spec §6.4)."""
+
+
+def _clean_ticker(ticker: str) -> str:
+    """Ticker normalizado (maiúsculas, sem espaço); vazio é `bad_request`."""
+    code = str(ticker).strip().upper()
+    if not code:
+        raise SourceFailure(
+            SourceError(
+                code="bad_request",
+                message="ticker vazio",
+                hint="informe o ticker do papel (ex.: PETR4) ou da série (ex.: PETRL5)",
+            )
+        )
+    return code
+
+
+def _sample_sorted(values: Iterable[date | str]) -> str:
+    """Amostra legível de datas/tickers para a dica de erro (não despeja tudo)."""
+    ordered = sorted(values)
+    sample = ordered[:8]
+    text = ", ".join(
+        item.isoformat() if isinstance(item, date) else str(item) for item in sample
+    )
+    remaining = len(ordered) - len(sample)
+    return text + (f" (+{remaining})" if remaining else "") if ordered else "nenhum"
+
+
+def _strike_cents(row: ChainRow) -> int:
+    """Strike em centavos inteiros (a chave que reconcilia call e put)."""
+    return int(round(row.strike_brl * 100))
+
+
+def _group_by_strike(rows: Sequence[ChainRow]) -> dict[int, dict[str, ChainRow]]:
+    """`strike (¢) -> {lado: linha}` — call e put do mesmo strike no mesmo grupo."""
+    grouped: dict[int, dict[str, ChainRow]] = defaultdict(dict)
+    for row in rows:
+        grouped[_strike_cents(row)][row.side] = row
+    return grouped
+
+
+def _maturity_t(rows: Sequence[ChainRow], maturity: date) -> float:
+    """`t` do vencimento (todas as séries do dia carregam o mesmo `t`)."""
+    return max((row.t for row in rows if row.maturity == maturity), default=0.0)
+
+
+def _nearest_expiry(rows: Sequence[ChainRow]) -> date | None:
+    """Vencimento com IV de `t` mais próximo de 30/252 (None se não houver IV)."""
+    maturities = {row.maturity for row in rows if row.iv_pct is not None}
+    if not maturities:
+        return None
+    return min(maturities, key=lambda maturity: abs(_maturity_t(rows, maturity) - TENOR_30D))
+
+
+def _atm_row(rows: Sequence[ChainRow], reference: float | None) -> ChainRow | None:
+    """Linha com `|Δ|` mais próximo de 0,5 (desempate: strike perto do forward/spot).
+
+    É uma **seleção** sobre a IV/Δ gravados, não uma nova interpolação: o ATM
+    oficial do papel (30d, variância total) vive em `metrics_underlying`.
+    """
+    candidates = [
+        row for row in rows if row.iv_pct is not None and row.delta is not None
+    ]
+    if not candidates:
+        return None
+    anchor = reference if reference is not None and reference > 0 else None
+
+    def key(row: ChainRow) -> tuple[float, float]:
+        distance = abs(abs(row.delta or 0.0) - 0.5)  # type: ignore[arg-type]
+        tie = abs(row.strike_brl - anchor) if anchor is not None else 0.0
+        return (distance, tie)
+
+    return min(candidates, key=key)
+
+
+def _term_rows(rows: Sequence[ChainRow], spot: float | None) -> list[TermRow]:
+    """Estrutura a termo: um `TermRow` por vencimento (contrato onda-i §4.1).
+
+    O forward é reconstruído por paridade dos `mid`s gravados, com a **mesma**
+    função pura do pipeline (`forward_by_parity`); sem par honesto ele é `None`
+    e `forward_method` diz `none`. `exp_move_1s` usa a constante da spec §6.10.
+    """
+    by_maturity: dict[date, list[ChainRow]] = defaultdict(list)
+    for row in rows:
+        by_maturity[row.maturity].append(row)
+    result: list[TermRow] = []
+    for maturity in sorted(by_maturity):
+        bucket = by_maturity[maturity]
+        by_strike = _group_by_strike(bucket)
+        quotes: list[ParityQuote] = []
+        for cents in sorted(by_strike):
+            pair = by_strike[cents]
+            call = pair.get("C")
+            put = pair.get("P")
+            if call is None or put is None:
+                continue
+            if not call.mid_brl or not put.mid_brl or call.mid_brl <= 0 or put.mid_brl <= 0:
+                continue
+            quotes.append(
+                ParityQuote(
+                    strike=float(cents) / 100.0,
+                    call_mid=call.mid_brl,
+                    put_mid=put.mid_brl,
+                    call_style=call.style,
+                    put_style=put.style,
+                    call_ex_div="american_call_ex_div" in call.flags,
+                )
+            )
+        parity = forward_by_parity(quotes, spot=spot)
+        atm = _atm_row(bucket, parity.forward if parity.forward is not None else spot)
+        straddle: float | None = None
+        if atm is not None:
+            pair = by_strike[_strike_cents(atm)]
+            call = pair.get("C")
+            put = pair.get("P")
+            if call is not None and put is not None and call.mid_brl and put.mid_brl:
+                straddle = call.mid_brl + put.mid_brl
+        exp_move = (
+            None
+            if straddle is None or spot is None
+            else expected_move_1s(straddle, spot)
+        )
+        strikes = {cents for cents in by_strike if cents > 0}
+        liquid_strikes = {
+            cents
+            for cents in strikes
+            if any(row.is_liquid for row in by_strike[cents].values())
+        }
+        result.append(
+            TermRow(
+                maturity=maturity,
+                t=_maturity_t(bucket, maturity),
+                iv_atm=None if atm is None else atm.iv_pct,
+                atm_strike_brl=None if atm is None else atm.strike_brl,
+                forward_brl=parity.forward,
+                forward_method=parity.method,
+                exp_move_1s=exp_move,
+                n_strikes=len(strikes),
+                n_liquid_strikes=len(liquid_strikes),
+            )
+        )
+    return result
+
+
+def _smile_rows(rows: Sequence[ChainRow], maturity: date) -> list[SmileRow]:
+    """Uma linha por série com IV no vencimento, na ordem de `(strike, side)`."""
+    return [
+        SmileRow(
+            strike_brl=row.strike_brl,
+            iv_pct=row.iv_pct,
+            delta=row.delta,
+            side=row.side,
+            is_liquid=row.is_liquid,
+        )
+        for row in rows
+        if row.maturity == maturity and row.iv_pct is not None and row.strike_brl > 0
+    ]
+
+
 __all__ = [
     "PREPARE_STATE_FILE",
+    "ChainResult",
+    "ChainRow",
+    "EarningsEventRow",
     "EarningsRow",
     "EventRow",
+    "EventsDetail",
     "Health",
+    "HistoryRow",
     "OptionDay",
     "PrepareState",
     "QueryService",
@@ -2170,7 +3068,13 @@ __all__ = [
     "ScreenBundle",
     "ScreenRow",
     "SeriesDay",
+    "SeriesDetail",
+    "SeriesPoint",
+    "SmileRow",
     "SpotBar",
+    "StrikeEventRow",
+    "TermRow",
+    "UnderlyingDetail",
     "UnderlyingMetricRow",
     "load_prepare_state",
     "prepare_state_path",

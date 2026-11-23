@@ -20,6 +20,11 @@ dependencies = [
     "duckdb>=2.0.1",
     # config.yaml plano (P-B)
     "pyyaml>=6.0.4",
+    # API HTTP + /mcp (F3) — ADR-026
+    "fastapi>=0.165.0",
+    "uvicorn>=0.54.0",
+    # SDK MCP (Streamable HTTP em /mcp) — ADR-026
+    "mcp>=2.3.0",
 ]
 
 [project.scripts]

@@ -17,7 +17,7 @@ x-runtime: &runtime-base
     - ./data:/data
 
 services:
-  # FastAPI + /mcp (entra no F3). Até lá o serviço valida mas não sobe.
+  # FastAPI + /mcp (F3). Monta a API HTTP e o MCP Streamable HTTP no mesmo processo.
   app:
     <<: *runtime-base
     ports:

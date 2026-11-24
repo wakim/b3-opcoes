@@ -617,8 +617,8 @@ preservando o contrato visual, os gráficos SVG e a responsividade já validados
 - [x] F8.1 configurada (`components.json`, alias `@`, primitives Button/Input/Select/Table/Dialog);
 - [x] revisão tipográfica desktop aprovada e aplicada por tokens `@theme` + utilitários `lg:` (ADR-043);
 - [x] F8.2 migrar Carteira/detalhe, modais, formulários, tabelas e estados — commit `1230b69`;
-- [ ] F8.3 migrar as demais telas e remover CSS artesanal redundante;
-- [ ] F8.4 regressão visual/funcional em 412, 1280 e 1440 px.
+- [x] F8.3 migrar as demais telas e remover CSS artesanal redundante — commit `54e7489` (146 regras sem referência removidas);
+- [x] F8.4 regressão visual/funcional em 412, 1280 e 1440 px — comparação de computed style e foco contra a imagem de `701d89e`, zero diferença de geometria/fonte/cor.
 
 F6 e F7 continuam pendentes de aceitação real; a autorização paralela está registrada na ADR-044.
 
@@ -629,10 +629,10 @@ F6 e F7 continuam pendentes de aceitação real; a autorização paralela está 
 - [x] lint/typecheck/cobertura, duas builds limpas idênticas e console limpo.
 
 **Aceitação F8**
-- [ ] componentes shadcn cobrem os padrões interativos sem perder acessibilidade ou foco
-- [ ] Tailwind é a camada principal de layout/espaçamento/tipografia; CSS global só para tokens e base
-- [ ] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px
-- [ ] duas builds limpas idênticas e navegador sem erros de console
+- [x] componentes shadcn cobrem os padrões interativos sem perder acessibilidade ou foco (F8.2: diálogos/formulários; F8.3: ordem e contorno de foco idênticos ao legado)
+- [ ] Tailwind é a camada principal de layout/espaçamento/tipografia; CSS global só para tokens e base — **não atingido**: `styles-view.css` ainda tem 1.097 linhas (gráficos, régua, tabelas sticky, cartões de posição, `.note`/`.quiet`/`.num`, `.block-*`)
+- [ ] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px — gráfico/alvo/número sem regressão; offline não reexercitado e `mcp_smoke` 57/58 por causa da ADR-045 (falha já presente em `701d89e`)
+- [x] duas builds limpas idênticas e navegador sem erros de console
 
 ---
 

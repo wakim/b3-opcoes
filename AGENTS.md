@@ -312,6 +312,9 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 
 - O `html` continua em **13,5 px** no mobile. Tokens de tipografia desktop em `rem` não produzem os px pedidos; a escala F8 usa **px** em `@theme` e utilitários `lg:`.
 - Não nomear o token de input como `--text-input` quando existe `--color-input`: o Tailwind resolve `text-input` como **cor**, não como tamanho. O nome usado é `--text-control` / `lg:text-control`.
+- **Utilitário de espaço em rem é errado no mobile** (F8.3, 24/11/2026): com `html` a 13,5 px, `px-2` = 6,75 px, `py-3` = 10,1 px, `mb-4` = 13,5 px. Copie o valor do CSS legado em px arbitrário (`px-[8px]`, `py-[10px]`).
+- **Os primitives shadcn vazam defaults que o CSS legado não tinha:** `TableHead` (padding em rem, `text-foreground`, `text-left`), `Input`/`NativeSelect` (`dark:bg-input/30` — precisa de `dark:bg-card`/`dark:bg-muted`, não só `bg-*`), `Button` (peso 500, raio em rem, `whitespace-nowrap`) e foco por `ring` com `outline-none`. `focus-visible:outline-2` sozinho não desenha nada: falta `focus-visible:outline-solid`. As classes do builder/cadeia ficam em `frontend/src/lib/controls.ts`.
+- **Prova de “pixel-idêntico” é comparação contra a imagem anterior, não inspeção:** duas imagens `runtime` no mesmo lago (referência do commit anterior + nova), computed style e retângulo de cada elemento em 412/1280/1440, antes e depois de abrir cadeia/builder/dicas, e uma sequência de Tab registrando o contorno de foco. Na F8.3 isso achou 15 classes de regressão que lint, typecheck e build não pegam. Com `podman run` no Git Bash use `MSYS_NO_PATHCONV=1`, senão `-e B3_DATA_DIR=/data` vira `C:/Program Files/Git/data` e o lake some (`lake_missing`).
 
 ---
 

@@ -85,7 +85,8 @@ def _api_error(status_code: int, content: dict[str, Any]) -> JSONResponse:
 _API_HINT = (
     "rotas: /api/health, /api/screen, /api/tickers, /api/glossary, "
     "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, /api/liquid, "
-    "/api/positions, /api/positions/{id}, /api/s/{ticker}/{maturity} e POST /api/structure"
+    "/api/positions, /api/positions/{id}, /api/journal, /api/journal/calibration, "
+    "/api/journal/{id}, /api/s/{ticker}/{maturity} e POST /api/structure"
 )
 
 
@@ -355,6 +356,43 @@ def create_app() -> FastAPI:
             _service(), date=_date(date), limit=limit
         )
 
+    @app.get("/api/journal")
+    def api_journal(
+        date: str | None = None,
+        max_rows: int = DEFAULT_MAX_ROWS,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Decisões do dono + previsão/observado/status, paginadas."""
+        return payloads.journal_payload(
+            _service(),
+            date=_date(date),
+            max_rows=max_rows,
+            offset=offset,
+        )
+
+    @app.get("/api/journal/calibration")
+    def api_journal_calibration(
+        max_rows: int = DEFAULT_MAX_ROWS,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Calibração pessoal por métrica + horizonte; void separado, sem ranking."""
+        return payloads.journal_calibration_payload(
+            _service(),
+            max_rows=max_rows,
+            offset=offset,
+        )
+
+    @app.get("/api/journal/{decision_id}")
+    def api_journal_decision(decision_id: str) -> dict[str, Any]:
+        """Detalhe de uma decisão; leitura liberada na tailnet."""
+        return payloads.journal_decision_payload(_service(), decision_id)
+
+    @app.post("/api/journal", dependencies=[Depends(require_write_token)])
+    async def api_journal_open(request: Request) -> dict[str, Any]:
+        """Registra decisão sem posição; token validado antes do corpo JSON."""
+        body = await _json_object_body(request)
+        return payloads.journal_open_payload(_service(), body)
+
     @app.get("/api/positions")
     def api_positions(
         date: str | None = None,
@@ -423,7 +461,7 @@ def create_app() -> FastAPI:
         raise SourceFailure(
             SourceError(
                 code="not_found",
-                message=f"rota /api/{rest} não existe no F3/F4/F5/F6",
+                message=f"rota /api/{rest} não existe no F3/F4/F5/F6/F7",
                 hint=_API_HINT,
             )
         )

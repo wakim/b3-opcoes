@@ -42,8 +42,10 @@ _STATUS_BY_CODE = {
     "metrics_missing": 404,
     "not_found": 404,
     "position_not_found": 404,
+    "decision_not_found": 404,
     "position_closed": 409,
     "position_id_conflict": 409,
+    "decision_id_conflict": 409,
     "method_not_allowed": 405,
     "frontend_missing": 503,
     "app_token_missing": 503,
@@ -67,6 +69,16 @@ def clamp_page_size(value: int | None) -> int:
     if limit < 1:
         raise request_error("max_rows precisa ser pelo menos 1", "use um inteiro entre 1 e 60")
     return limit
+
+
+def parse_offset(value: object) -> int:
+    """Offset 0-based dentro do int64; zero é válido, texto/bool não."""
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2**63 - 1:
+        raise request_error(
+            "offset precisa ser inteiro não negativo dentro do int64",
+            "use 0 para a primeira página",
+        )
+    return value
 
 
 def jsonable(value: Any) -> Any:

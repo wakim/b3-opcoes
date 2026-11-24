@@ -32,6 +32,8 @@ from sqlalchemy import (
     Table,
     Text,
     create_engine,
+    func,
+    or_,
     select,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -46,7 +48,9 @@ _MAX_INT64 = 2**63 - 1
 _HINT_PAYLOAD = "confira os campos da posição, das pernas e da previsão antes de gravar"
 _HINT_STORAGE = "confira DATABASE_URL, o serviço PostgreSQL e as migrations Alembic"
 _PREDICTION_STATUSES = frozenset({"pending", "hit", "miss", "void"})
+_EVALUATION_STATUSES = frozenset({"hit", "miss", "void"})
 _OPERATORS = frozenset({"<", "<=", ">", ">="})
+_DECISION_TYPES = frozenset({"no_entry", "entry", "exit", "hold", "watch", "other"})
 
 metadata = MetaData()
 position_table = Table(
@@ -94,7 +98,8 @@ prediction_table = Table(
     "prediction",
     metadata,
     Column("id", String(36), primary_key=True),
-    Column("position_id", String(36), ForeignKey("position.id"), nullable=False),
+    Column("position_id", String(36), ForeignKey("position.id"), nullable=True),
+    Column("decision_id", String(36), ForeignKey("decision.id"), nullable=True),
     Column("metric", String(64), nullable=False),
     Column("operator", String(8), nullable=False),
     Column("value", Float, nullable=False),
@@ -102,6 +107,33 @@ prediction_table = Table(
     Column("evaluate_on", Date, nullable=False),
     Column("status", String(16), nullable=False),
     Column("observed", Float, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+decision_table = Table(
+    "decision",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("underlying", String(32), nullable=False),
+    Column("session", Date, nullable=False),
+    Column("decision_type", String(32), nullable=False),
+    Column("context", Text, nullable=False),
+    Column("notes", Text, nullable=False),
+    Column("position_id", String(36), ForeignKey("position.id"), nullable=True),
+    Column("client_decision_id", String(36), nullable=True),
+    Column("request_fingerprint", String(128), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+prediction_evaluation_table = Table(
+    "prediction_evaluation",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("prediction_id", String(36), ForeignKey("prediction.id"), nullable=False),
+    Column("session", Date, nullable=False),
+    Column("observed", Float, nullable=True),
+    Column("status", String(16), nullable=False),
+    Column("void_reason", String(64), nullable=True),
+    Column("source", String(32), nullable=False),
+    Column("model_version", String(16), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 Index("position_opened_idx", position_table.c.opened_session, position_table.c.id)
@@ -112,6 +144,19 @@ Index(
     position_event_table.c.id,
 )
 Index("prediction_parent_idx", prediction_table.c.position_id, prediction_table.c.id)
+Index("decision_session_idx", decision_table.c.session, decision_table.c.id)
+Index(
+    "decision_underlying_idx",
+    decision_table.c.underlying,
+    decision_table.c.session,
+    decision_table.c.id,
+)
+Index(
+    "prediction_evaluation_parent_idx",
+    prediction_evaluation_table.c.prediction_id,
+    prediction_evaluation_table.c.session,
+    prediction_evaluation_table.c.id,
+)
 
 
 def _new_id() -> str:
@@ -170,10 +215,30 @@ class PositionEventRecord:
 
 
 @dataclass(frozen=True, slots=True)
-class PredictionRecord:
-    """Previsão estruturada da spec §6.12, opcional na abertura."""
+class PredictionEvaluationRecord:
+    """Evento imutável que fixa observado/status no primeiro pregão posterior."""
 
-    position_id: str
+    prediction_id: str
+    session: date
+    status: str
+    source: str
+    model_version: str
+    observed: float | None = None
+    void_reason: str | None = None
+    id: str = field(default_factory=_new_id)
+    created_at: datetime = field(default_factory=_utc_now)
+
+
+@dataclass(frozen=True, slots=True)
+class PredictionRecord:
+    """Previsão estruturada da spec §6.12; estado corrente vem do evento.
+
+    `status`/`observed` continuam na linha por compatibilidade com a migration
+    F6, mas ficam sempre `pending`/`null`. A leitura os substitui pelo último
+    evento de avaliação, sem UPDATE.
+    """
+
+    position_id: str | None
     metric: str
     operator: str
     value: float
@@ -181,8 +246,34 @@ class PredictionRecord:
     evaluate_on: date
     status: str
     observed: float | None
+    decision_id: str | None = None
+    underlying: str | None = None
+    evaluation: PredictionEvaluationRecord | None = None
     id: str = field(default_factory=_new_id)
     created_at: datetime = field(default_factory=_utc_now)
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionRecord:
+    """Evento append-only de decisão; pode existir sem posição."""
+
+    underlying: str
+    session: date
+    decision_type: str
+    context: str
+    notes: str
+    position_id: str | None = None
+    client_decision_id: str | None = None
+    request_fingerprint: str | None = None
+    id: str = field(default_factory=_new_id)
+    created_at: datetime = field(default_factory=_utc_now)
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionOpen(DecisionRecord):
+    """Decisão com previsão opcional e desfecho derivado."""
+
+    prediction: PredictionRecord | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,14 +327,31 @@ class JournalStore:
             raise _bad_request(
                 f"kind {prepared.kind!r} diverge do derivado das pernas: {derived_kind!r}"
             )
-        prepared_prediction = _prepare_prediction(prepared, prediction)
-        if prepared_prediction is not None and prepared_prediction.status != "pending":
-            raise _bad_request("a previsão na abertura precisa ter status pending")
         fingerprint = (
             None
             if request_fingerprint is None
             else _required_text(request_fingerprint, "request_fingerprint", max_length=128)
         )
+        prepared_prediction = _prepare_prediction(prepared, prediction)
+        if prepared_prediction is not None and prepared_prediction.status != "pending":
+            raise _bad_request("a previsão na abertura precisa ter status pending")
+        decision = _prepare_decision(
+            DecisionRecord(
+                underlying=prepared.underlying,
+                session=prepared.opened_session,
+                decision_type="entry",
+                context="position_open",
+                notes=prepared.notes,
+                position_id=prepared.id,
+                request_fingerprint=fingerprint,
+            )
+        )
+        if prepared_prediction is not None:
+            prepared_prediction = replace(
+                prepared_prediction,
+                position_id=prepared.id,
+                decision_id=None,
+            )
 
         with self._write_connection() as connection:
             inserted_id = connection.execute(
@@ -268,6 +376,7 @@ class JournalStore:
                 position_leg_table.insert(),
                 [_leg_values(leg) for leg in prepared_legs],
             )
+            connection.execute(decision_table.insert(), _decision_values(decision))
             if prepared_prediction is not None:
                 connection.execute(
                     prediction_table.insert(),
@@ -301,6 +410,217 @@ class JournalStore:
             legs=prepared_legs,
             prediction=prepared_prediction,
         )
+
+    def record_decision(
+        self,
+        decision: DecisionRecord,
+        prediction: PredictionRecord | None = None,
+        *,
+        request_fingerprint: str | None = None,
+    ) -> DecisionOpen:
+        """Grava decisão sem posição e previsão opcional na mesma transação."""
+        if not isinstance(decision, DecisionRecord):
+            raise _bad_request("decision precisa ser DecisionRecord")
+        prepared = _prepare_decision(decision)
+        if prepared.position_id is not None:
+            raise _bad_request("POST /api/journal não cria posição")
+        fingerprint = _optional_fingerprint(request_fingerprint)
+        if prepared.client_decision_id is not None and fingerprint is None:
+            raise _bad_request("client_decision_id exige request_fingerprint")
+        prepared = replace(prepared, request_fingerprint=fingerprint)
+        prepared_prediction = _prepare_prediction_for_decision(prepared, prediction)
+
+        with self._write_connection() as connection:
+            inserted_id = connection.execute(
+                pg_insert(decision_table)
+                .values(_decision_values(prepared))
+                .on_conflict_do_nothing()
+                .returning(decision_table.c.id)
+            ).scalar_one_or_none()
+            if inserted_id is None:
+                existing = _existing_decision(connection, prepared)
+                if existing is None:
+                    raise _storage_error("ler decisão idempotente", RuntimeError("linha ausente"))
+                if (
+                    prepared.client_decision_id is not None
+                    and existing.request_fingerprint != fingerprint
+                ):
+                    raise _decision_id_conflict(prepared.client_decision_id)
+                loaded = _load_decisions(connection, [existing])[0]
+                return loaded
+
+            if prepared_prediction is not None:
+                connection.execute(
+                    prediction_table.insert(),
+                    _prediction_values(prepared_prediction),
+                )
+        return DecisionOpen(
+            underlying=prepared.underlying,
+            session=prepared.session,
+            decision_type=prepared.decision_type,
+            context=prepared.context,
+            notes=prepared.notes,
+            position_id=prepared.position_id,
+            client_decision_id=prepared.client_decision_id,
+            request_fingerprint=prepared.request_fingerprint,
+            id=prepared.id,
+            created_at=prepared.created_at,
+            prediction=prepared_prediction,
+        )
+
+    def list_decisions(
+        self,
+        *,
+        session: date | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[DecisionOpen], int]:
+        """Lista paginada de decisões com desfecho derivado do evento."""
+        _date_or_none(session, "session")
+        page_offset = _nonnegative_int(offset, "offset")
+        page_limit = _positive_int(limit, "limit", maximum=60)
+        with self._read_connection() as connection:
+            try:
+                query = select(decision_table)
+                count_query = select(func.count()).select_from(decision_table)
+                if session is not None:
+                    query = query.where(decision_table.c.session == session)
+                    count_query = count_query.where(decision_table.c.session == session)
+                total = int(connection.execute(count_query).scalar_one())
+                rows = connection.execute(
+                    query.order_by(
+                        decision_table.c.session.desc(),
+                        decision_table.c.created_at.desc(),
+                        decision_table.c.id,
+                    )
+                    .offset(page_offset)
+                    .limit(page_limit)
+                )
+                records = [_decision_from_row(row) for row in rows]
+                return _load_decisions(connection, records), total
+            except (TypeError, ValueError) as exc:
+                raise _bad_journal(exc) from exc
+
+    def get_decision(self, decision_id: str) -> DecisionOpen | None:
+        """Lê uma decisão; id ausente devolve `None`."""
+        identifier = _uuid4(decision_id)
+        with self._read_connection() as connection:
+            try:
+                row = connection.execute(
+                    select(decision_table).where(decision_table.c.id == identifier)
+                ).first()
+                if row is None:
+                    return None
+                return _load_decisions(connection, [_decision_from_row(row)])[0]
+            except (TypeError, ValueError) as exc:
+                raise _bad_journal(exc) from exc
+
+    def list_predictions(self) -> list[PredictionRecord]:
+        """Todas as previsões, de posições ou decisões, com estado derivado."""
+        with self._read_connection() as connection:
+            try:
+                records = [
+                    _prediction_from_row(row)
+                    for row in connection.execute(
+                        select(prediction_table).order_by(
+                            prediction_table.c.created_at, prediction_table.c.id
+                        )
+                    )
+                ]
+                return _attach_evaluations(connection, records)
+            except (TypeError, ValueError) as exc:
+                raise _bad_journal(exc) from exc
+
+    def pending_predictions(self, as_of: date) -> list[PredictionRecord]:
+        """Previsões pendentes cujo `evaluate_on` já passou na sessão informada."""
+        cutoff = _date_value(as_of, "as_of")
+        with self._read_connection() as connection:
+            try:
+                records = [
+                    _prediction_from_row(row)
+                    for row in connection.execute(
+                        select(prediction_table)
+                        .where(prediction_table.c.evaluate_on < cutoff)
+                        .order_by(prediction_table.c.evaluate_on, prediction_table.c.id)
+                    )
+                ]
+                return [
+                    prediction
+                    for prediction in _attach_evaluations(connection, records)
+                    if prediction.evaluation is None
+                ]
+            except (TypeError, ValueError) as exc:
+                raise _bad_journal(exc) from exc
+
+    def record_evaluation(
+        self,
+        prediction_id: str,
+        *,
+        session: date,
+        observed: float | None,
+        status: str,
+        void_reason: str | None,
+        source: str,
+        model_version: str,
+    ) -> tuple[PredictionEvaluationRecord, bool]:
+        """Insere uma avaliação; lock e índice único serializam concorrência."""
+        identifier = _uuid4(prediction_id)
+        evaluation_session = _date_value(session, "session")
+        evaluation_status = _required_text(status, "status", max_length=16).lower()
+        if evaluation_status not in _EVALUATION_STATUSES:
+            raise _bad_request(f"status de avaliação inválido: {status!r}")
+        evaluation_observed = _optional_number(observed, "observed")
+        reason = None
+        if void_reason is not None:
+            reason = _required_text(void_reason, "void_reason", max_length=64)
+        if evaluation_status == "void":
+            if evaluation_observed is not None or reason is None:
+                raise _bad_request("avaliação void exige observed null e void_reason")
+        elif evaluation_observed is None or reason is not None:
+            raise _bad_request("avaliação hit/miss exige observed e sem void_reason")
+        event = PredictionEvaluationRecord(
+            prediction_id=identifier,
+            session=evaluation_session,
+            observed=evaluation_observed,
+            status=evaluation_status,
+            void_reason=reason,
+            source=_required_text(source, "source", max_length=32),
+            model_version=_required_text(model_version, "model_version", max_length=16),
+        )
+        with self._write_connection() as connection:
+            row = connection.execute(
+                select(prediction_table.c.id)
+                .where(prediction_table.c.id == identifier)
+                .with_for_update()
+            ).first()
+            if row is None:
+                raise _bad_request(f"previsão não encontrada: {identifier}")
+            latest = _latest_evaluation(connection, identifier)
+            if latest is not None:
+                return latest, False
+            inserted = connection.execute(
+                pg_insert(prediction_evaluation_table)
+                .values(_evaluation_values(event))
+                .on_conflict_do_nothing(
+                    index_elements=[
+                        prediction_evaluation_table.c.prediction_id,
+                        prediction_evaluation_table.c.session,
+                    ]
+                )
+                .returning(prediction_evaluation_table.c.id)
+            ).scalar_one_or_none()
+            if inserted is None:
+                existing = connection.execute(
+                    select(prediction_evaluation_table)
+                    .where(
+                        prediction_evaluation_table.c.prediction_id == identifier,
+                        prediction_evaluation_table.c.session == evaluation_session,
+                    )
+                ).first()
+                if existing is None:
+                    raise _storage_error("ler avaliação idempotente", RuntimeError("linha ausente"))
+                return _evaluation_from_row(existing), False
+        return event, True
 
     def list_positions(self) -> list[PositionOpen]:
         """Lista posições com pernas/previsão; banco vazio devolve lista vazia."""
@@ -423,13 +743,17 @@ def _load_positions(
     ):
         leg = _leg_from_row(row)
         legs[leg.position_id].append(leg)
-    for row in connection.execute(
-        select(prediction_table)
-        .where(prediction_table.c.position_id.in_(identifiers))
-        .order_by(prediction_table.c.created_at, prediction_table.c.id)
-    ):
-        prediction = _prediction_from_row(row)
-        predictions[prediction.position_id] = prediction
+    prediction_records = [
+        _prediction_from_row(row)
+        for row in connection.execute(
+            select(prediction_table)
+            .where(prediction_table.c.position_id.in_(identifiers))
+            .order_by(prediction_table.c.created_at, prediction_table.c.id)
+        )
+    ]
+    for prediction in _attach_evaluations(connection, prediction_records):
+        if prediction.position_id is not None:
+            predictions[prediction.position_id] = prediction
     for row in connection.execute(
         select(position_event_table)
         .where(
@@ -459,6 +783,165 @@ def _load_positions(
         )
         for record in records
     ]
+
+
+def _attach_underlyings(
+    connection: Connection,
+    records: Sequence[PredictionRecord],
+) -> list[PredictionRecord]:
+    position_ids = tuple(
+        record.position_id for record in records if record.position_id is not None
+    )
+    decision_ids = tuple(
+        record.decision_id for record in records if record.decision_id is not None
+    )
+    underlyings: dict[tuple[str, str], str] = {}
+    if position_ids:
+        for row in connection.execute(
+            select(position_table.c.id, position_table.c.underlying).where(
+                position_table.c.id.in_(position_ids)
+            )
+        ):
+            underlyings[("position", str(row[0]))] = str(row[1])
+    if decision_ids:
+        for row in connection.execute(
+            select(decision_table.c.id, decision_table.c.underlying).where(
+                decision_table.c.id.in_(decision_ids)
+            )
+        ):
+            underlyings[("decision", str(row[0]))] = str(row[1])
+    return [
+        replace(
+            record,
+            underlying=(
+                record.underlying
+                or (
+                    underlyings.get(("position", record.position_id))
+                    if record.position_id is not None
+                    else underlyings.get(("decision", record.decision_id or ""))
+                )
+            ),
+        )
+        for record in records
+    ]
+
+
+def _attach_evaluations(
+    connection: Connection,
+    records: Sequence[PredictionRecord],
+) -> list[PredictionRecord]:
+    if not records:
+        return []
+    records = _attach_underlyings(connection, records)
+    identifiers = tuple(record.id for record in records)
+    latest: dict[str, PredictionEvaluationRecord] = {}
+    for row in connection.execute(
+        select(prediction_evaluation_table)
+        .where(prediction_evaluation_table.c.prediction_id.in_(identifiers))
+        .order_by(
+            prediction_evaluation_table.c.prediction_id,
+            prediction_evaluation_table.c.session,
+            prediction_evaluation_table.c.created_at,
+            prediction_evaluation_table.c.id,
+        )
+    ):
+        event = _evaluation_from_row(row)
+        latest[event.prediction_id] = event
+    return [
+        replace(
+            record,
+            status=latest[record.id].status,
+            observed=latest[record.id].observed,
+            evaluation=latest[record.id],
+        )
+        if record.id in latest
+        else record
+        for record in records
+    ]
+
+
+def _latest_evaluation(
+    connection: Connection,
+    prediction_id: str,
+) -> PredictionEvaluationRecord | None:
+    row = connection.execute(
+        select(prediction_evaluation_table)
+        .where(prediction_evaluation_table.c.prediction_id == prediction_id)
+        .order_by(
+            prediction_evaluation_table.c.session.desc(),
+            prediction_evaluation_table.c.created_at.desc(),
+            prediction_evaluation_table.c.id.desc(),
+        )
+        .limit(1)
+    ).first()
+    return None if row is None else _evaluation_from_row(row)
+
+
+def _load_decisions(
+    connection: Connection,
+    records: Sequence[DecisionRecord],
+) -> list[DecisionOpen]:
+    if not records:
+        return []
+    identifiers = tuple(record.id for record in records)
+    decision_by_position = {
+        record.position_id: record.id
+        for record in records
+        if record.position_id is not None
+    }
+    predictions: dict[str, PredictionRecord] = {}
+    prediction_query = select(prediction_table).where(
+        prediction_table.c.decision_id.in_(identifiers)
+    )
+    if decision_by_position:
+        prediction_query = prediction_query.where(
+            or_(
+                prediction_table.c.decision_id.in_(identifiers),
+                prediction_table.c.position_id.in_(tuple(decision_by_position)),
+            )
+        )
+    prediction_records = [
+        _prediction_from_row(row)
+        for row in connection.execute(
+            prediction_query.order_by(prediction_table.c.created_at, prediction_table.c.id)
+        )
+    ]
+    for prediction in _attach_evaluations(connection, prediction_records):
+        decision_id = prediction.decision_id
+        if decision_id is None and prediction.position_id is not None:
+            decision_id = decision_by_position.get(prediction.position_id)
+        if decision_id is not None:
+            predictions[decision_id] = prediction
+    return [
+        DecisionOpen(
+            underlying=record.underlying,
+            session=record.session,
+            decision_type=record.decision_type,
+            context=record.context,
+            notes=record.notes,
+            position_id=record.position_id,
+            client_decision_id=record.client_decision_id,
+            request_fingerprint=record.request_fingerprint,
+            id=record.id,
+            created_at=record.created_at,
+            prediction=predictions.get(record.id),
+        )
+        for record in records
+    ]
+
+
+def _existing_decision(
+    connection: Connection,
+    decision: DecisionRecord,
+) -> DecisionRecord | None:
+    if decision.client_decision_id is not None:
+        query = select(decision_table).where(
+            decision_table.c.client_decision_id == decision.client_decision_id
+        )
+    else:
+        query = select(decision_table).where(decision_table.c.id == decision.id)
+    row = connection.execute(query).first()
+    return None if row is None else _decision_from_row(row)
 
 
 def _close_event(connection: Connection, position_id: str) -> PositionEventRecord | None:
@@ -526,6 +1009,7 @@ def _prediction_values(record: PredictionRecord) -> dict[str, object]:
     return {
         "id": record.id,
         "position_id": record.position_id,
+        "decision_id": record.decision_id,
         "metric": record.metric,
         "operator": record.operator,
         "value": record.value,
@@ -533,6 +1017,35 @@ def _prediction_values(record: PredictionRecord) -> dict[str, object]:
         "evaluate_on": record.evaluate_on,
         "status": record.status,
         "observed": record.observed,
+        "created_at": record.created_at,
+    }
+
+
+def _decision_values(record: DecisionRecord) -> dict[str, object]:
+    return {
+        "id": record.id,
+        "underlying": record.underlying,
+        "session": record.session,
+        "decision_type": record.decision_type,
+        "context": record.context,
+        "notes": record.notes,
+        "position_id": record.position_id,
+        "client_decision_id": record.client_decision_id,
+        "request_fingerprint": record.request_fingerprint,
+        "created_at": record.created_at,
+    }
+
+
+def _evaluation_values(record: PredictionEvaluationRecord) -> dict[str, object]:
+    return {
+        "id": record.id,
+        "prediction_id": record.prediction_id,
+        "session": record.session,
+        "observed": record.observed,
+        "status": record.status,
+        "void_reason": record.void_reason,
+        "source": record.source,
+        "model_version": record.model_version,
         "created_at": record.created_at,
     }
 
@@ -589,7 +1102,16 @@ def _leg_from_row(row: Any) -> PositionLegRecord:
 def _prediction_from_row(row: Any) -> PredictionRecord:
     return PredictionRecord(
         id=str(_value(row, "id")),
-        position_id=str(_value(row, "position_id")),
+        position_id=(
+            None
+            if _value(row, "position_id") is None
+            else str(_value(row, "position_id"))
+        ),
+        decision_id=(
+            None
+            if _value(row, "decision_id") is None
+            else str(_value(row, "decision_id"))
+        ),
         metric=str(_value(row, "metric")),
         operator=str(_value(row, "operator")),
         value=float(_value(row, "value")),
@@ -597,6 +1119,42 @@ def _prediction_from_row(row: Any) -> PredictionRecord:
         evaluate_on=_parse_date(_value(row, "evaluate_on"), "evaluate_on"),
         status=str(_value(row, "status")),
         observed=_optional_float(_value(row, "observed")),
+        created_at=_parse_timestamp(_value(row, "created_at"), "created_at"),
+    )
+
+
+def _decision_from_row(row: Any) -> DecisionRecord:
+    position_id = _value(row, "position_id")
+    client_id = _value(row, "client_decision_id")
+    fingerprint = _value(row, "request_fingerprint")
+    return DecisionRecord(
+        id=str(_value(row, "id")),
+        underlying=str(_value(row, "underlying")),
+        session=_parse_date(_value(row, "session"), "session"),
+        decision_type=str(_value(row, "decision_type")),
+        context=str(_value(row, "context")),
+        notes=str(_value(row, "notes")),
+        position_id=None if position_id is None else str(position_id),
+        client_decision_id=None if client_id is None else str(client_id),
+        request_fingerprint=None if fingerprint is None else str(fingerprint),
+        created_at=_parse_timestamp(_value(row, "created_at"), "created_at"),
+    )
+
+
+def _evaluation_from_row(row: Any) -> PredictionEvaluationRecord:
+    return PredictionEvaluationRecord(
+        id=str(_value(row, "id")),
+        prediction_id=str(_value(row, "prediction_id")),
+        session=_parse_date(_value(row, "session"), "session"),
+        observed=_optional_float(_value(row, "observed")),
+        status=str(_value(row, "status")),
+        void_reason=(
+            None
+            if _value(row, "void_reason") is None
+            else str(_value(row, "void_reason"))
+        ),
+        source=str(_value(row, "source")),
+        model_version=str(_value(row, "model_version")),
         created_at=_parse_timestamp(_value(row, "created_at"), "created_at"),
     )
 
@@ -693,12 +1251,69 @@ def _prepare_legs(
     return tuple(prepared)
 
 
+def _prepare_decision(decision: DecisionRecord) -> DecisionRecord:
+    _date_value(decision.session, "session")
+    _timestamp(decision.created_at, "created_at")
+    decision_type = _required_text(decision.decision_type, "decision_type", max_length=32).lower()
+    if decision_type not in _DECISION_TYPES:
+        raise _bad_request(f"decision_type inválido: {decision.decision_type!r}")
+    position_id = (
+        None if decision.position_id is None else _uuid4(decision.position_id)
+    )
+    client_id = (
+        None
+        if decision.client_decision_id is None
+        else _uuid4(decision.client_decision_id)
+    )
+    return replace(
+        decision,
+        id=client_id or _uuid4(decision.id),
+        underlying=_required_text(decision.underlying, "underlying", max_length=32).upper(),
+        session=decision.session,
+        decision_type=decision_type,
+        context=_text(decision.context, "context", max_length=500),
+        notes=_text(decision.notes, "notes", max_length=4000),
+        position_id=position_id,
+        client_decision_id=client_id,
+        request_fingerprint=_optional_fingerprint(decision.request_fingerprint),
+    )
+
+
 def _prepare_prediction(
     position: PositionRecord,
     prediction: PredictionRecord | None,
 ) -> PredictionRecord | None:
     if prediction is None:
         return None
+    return _prepare_prediction_record(
+        prediction,
+        position_id=position.id,
+        decision_id=None,
+        underlying=position.underlying,
+    )
+
+
+def _prepare_prediction_for_decision(
+    decision: DecisionRecord,
+    prediction: PredictionRecord | None,
+) -> PredictionRecord | None:
+    if prediction is None:
+        return None
+    return _prepare_prediction_record(
+        prediction,
+        position_id=None,
+        decision_id=decision.id,
+        underlying=decision.underlying,
+    )
+
+
+def _prepare_prediction_record(
+    prediction: PredictionRecord,
+    *,
+    position_id: str | None,
+    decision_id: str | None,
+    underlying: str,
+) -> PredictionRecord:
     if not isinstance(prediction, PredictionRecord):
         raise _bad_request("prediction precisa ser PredictionRecord")
     _timestamp(prediction.created_at, "created_at")
@@ -707,28 +1322,38 @@ def _prepare_prediction(
     status = _required_text(prediction.status, "status", max_length=16).lower()
     if operator not in _OPERATORS:
         raise _bad_request(f"operator inválido: {prediction.operator!r}")
-    if status not in _PREDICTION_STATUSES:
-        raise _bad_request(f"status de previsão inválido: {prediction.status!r}")
+    if status != "pending" or prediction.observed is not None:
+        raise _bad_request("a previsão nasce pending e sem observed")
+    if prediction.evaluation is not None:
+        raise _bad_request("a previsão nasce sem evento de avaliação")
     if (
         isinstance(prediction.horizon_sessions, bool)
         or not isinstance(prediction.horizon_sessions, int)
         or not 0 < prediction.horizon_sessions <= _MAX_INT64
     ):
         raise _bad_request("horizon_sessions precisa ser inteiro positivo dentro do int64")
-    if (
-        prediction.position_id
-        and _required_text(prediction.position_id, "position_id") != position.id
-    ):
-        raise _bad_request("position_id da previsão diverge da posição")
+    if position_id is not None:
+        if prediction.position_id not in (None, position_id):
+            raise _bad_request("position_id da previsão diverge da posição")
+        if prediction.decision_id is not None:
+            raise _bad_request("previsão de posição não pode trazer decision_id")
+    if decision_id is not None:
+        if prediction.position_id is not None:
+            raise _bad_request("previsão de decisão não pode trazer position_id")
+        if prediction.decision_id not in (None, decision_id):
+            raise _bad_request("decision_id da previsão diverge da decisão")
     return replace(
         prediction,
         id=_uuid4(prediction.id),
-        position_id=position.id,
-        metric=_required_text(prediction.metric, "metric", max_length=64),
+        position_id=position_id,
+        decision_id=decision_id,
+        underlying=underlying,
+        metric=_required_text(prediction.metric, "metric", max_length=64).lower(),
         operator=operator,
         value=_number(prediction.value, "value"),
-        status=status,
-        observed=_optional_number(prediction.observed, "observed"),
+        status="pending",
+        observed=None,
+        evaluation=None,
     )
 
 
@@ -803,9 +1428,37 @@ def _timestamp(value: object, name: str) -> datetime:
     return value
 
 
+def _nonnegative_int(value: object, name: str) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= _MAX_INT64
+    ):
+        raise _bad_request(f"{name} precisa ser inteiro não negativo dentro do int64")
+    return value
+
+
+def _positive_int(value: object, name: str, *, maximum: int) -> int:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 < value <= maximum
+    ):
+        raise _bad_request(f"{name} precisa ser inteiro entre 1 e {maximum}")
+    return value
+
+
+def _optional_fingerprint(value: object) -> str | None:
+    if value is None:
+        return None
+    return _required_text(value, "request_fingerprint", max_length=128)
+
+
 def _number(value: object, name: str, *, minimum: float | None = None) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise _bad_request(f"{name} precisa ser número")
+    if isinstance(value, int) and not -(_MAX_INT64 + 1) <= value <= _MAX_INT64:
+        raise _bad_request(f"{name} inteiro fora do int64")
     try:
         number = float(value)
     except OverflowError as exc:
@@ -886,6 +1539,19 @@ def _position_id_conflict(position_id: str) -> SourceFailure:
             hint=(
                 "mantenha o mesmo UUID apenas para repetir a mesma abertura; "
                 "use outro para outra posição"
+            ),
+        )
+    )
+
+
+def _decision_id_conflict(decision_id: str) -> SourceFailure:
+    return SourceFailure(
+        SourceError(
+            code="decision_id_conflict",
+            message=f"client_decision_id {decision_id} já foi usado com outro conteúdo",
+            hint=(
+                "mantenha o mesmo UUID apenas para repetir a mesma decisão; "
+                "use outro para outra decisão"
             ),
         )
     )

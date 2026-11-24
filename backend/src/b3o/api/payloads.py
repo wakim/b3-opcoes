@@ -25,12 +25,14 @@ from b3o.api.serialize import (
     envelope,
     jsonable,
     parse_date,
+    parse_offset,
     parse_sections,
     request_error,
 )
 from b3o.derive.screen import aggregate
 from b3o.ingest.errors import SourceError, SourceFailure
-from b3o.query.service import QueryService
+from b3o.prediction import METRIC_SPECS
+from b3o.query.service import PredictionRecord, QueryService
 
 
 def health_payload(service: QueryService) -> dict[str, Any]:
@@ -251,6 +253,8 @@ def positions_payload(
 def _position_detail_payload(detail: Any) -> dict[str, Any]:
     """Serializa `PositionDetail`; payoff parcial nunca é apresentado como completo."""
     data = jsonable(detail)
+    if detail.prediction is not None:
+        data["prediction"] = _prediction_payload(detail.prediction)
     payload = envelope(
         data,
         as_of_session=detail.session,
@@ -298,6 +302,119 @@ def position_close_payload(
 ) -> dict[str, Any]:
     """`POST /api/positions/{id}/close`: grava fechamento e devolve o detalhe."""
     return _position_detail_payload(service.close_position(position_id, body))
+
+
+def _prediction_payload(prediction: PredictionRecord) -> dict[str, Any]:
+    evaluation = prediction.evaluation
+    spec = METRIC_SPECS.get(prediction.metric)
+    return {
+        "id": prediction.id,
+        "metric": prediction.metric,
+        "operator": prediction.operator,
+        "value": prediction.value,
+        "unit": spec.unit if spec is not None else "unknown",
+        "horizon_sessions": prediction.horizon_sessions,
+        "evaluate_on": prediction.evaluate_on.isoformat(),
+        "status": prediction.status,
+        "observed": prediction.observed,
+        "evaluated_on": evaluation.session.isoformat() if evaluation is not None else None,
+        "void_reason": evaluation.void_reason if evaluation is not None else None,
+        "source": evaluation.source if evaluation is not None else None,
+        "model_version": evaluation.model_version if evaluation is not None else None,
+    }
+
+
+def _decision_payload(decision: Any) -> dict[str, Any]:
+    return {
+        "id": decision.id,
+        "underlying": decision.underlying,
+        "session": decision.session.isoformat(),
+        "decision_type": decision.decision_type,
+        "context": decision.context,
+        "notes": decision.notes,
+        "position_id": decision.position_id,
+        "created_at": decision.created_at.isoformat(),
+        "prediction": (
+            _prediction_payload(decision.prediction)
+            if decision.prediction is not None
+            else None
+        ),
+    }
+
+
+def journal_payload(
+    service: QueryService,
+    date: Any = None,
+    max_rows: int | None = DEFAULT_MAX_ROWS,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """`GET /api/journal`: decisões + desfecho, paginadas."""
+    start = parse_offset(offset)
+    page = service.journal_page(
+        _as_date(date),
+        max_rows=clamp_page_size(max_rows),
+        offset=start,
+    )
+    payload = envelope(
+        {"decisions": [_decision_payload(row) for row in page.decisions]},
+        as_of_session=page.as_of_session,
+        model_version=page.model_version,
+        list_key="decisions",
+        total=page.total,
+    )
+    meta = payload["meta"]
+    next_offset = start + int(meta["returned"])
+    meta["offset"] = start
+    meta["next_offset"] = next_offset if next_offset < page.total else None
+    return payload
+
+
+def journal_decision_payload(service: QueryService, decision_id: str) -> dict[str, Any]:
+    """`GET /api/journal/{id}`: detalhe da decisão."""
+    decision = service.journal_decision(decision_id)
+    return envelope(
+        {"decision": _decision_payload(decision)},
+        as_of_session=decision.as_of_session,
+        model_version=decision.model_version,
+    )
+
+
+def journal_calibration_payload(
+    service: QueryService,
+    max_rows: int | None = DEFAULT_MAX_ROWS,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """`GET /api/journal/calibration`: métrica + horizonte, com `n` e void."""
+    start = parse_offset(offset)
+    report = service.journal_calibration(
+        max_rows=clamp_page_size(max_rows),
+        offset=start,
+    )
+    payload = envelope(
+        {
+            "groups": [jsonable(group) for group in report.groups],
+            "totals": jsonable(report.totals),
+        },
+        as_of_session=report.as_of_session,
+        model_version=report.model_version,
+        list_key="groups",
+        total=report.total,
+    )
+    meta = payload["meta"]
+    next_offset = start + int(meta["returned"])
+    meta["offset"] = start
+    meta["next_offset"] = next_offset if next_offset < report.total else None
+    return payload
+
+
+def journal_open_payload(service: QueryService, body: Any) -> dict[str, Any]:
+    """`POST /api/journal`: grava decisão e devolve o mesmo detalhe do GET."""
+    decision = service.record_decision(body)
+    return envelope(
+        {"decision": _decision_payload(decision)},
+        as_of_session=decision.as_of_session,
+        model_version=decision.model_version,
+    )
 
 
 def series_payload(

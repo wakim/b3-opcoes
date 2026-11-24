@@ -83,6 +83,7 @@ from b3o.ingest.parse import KEPT_MARKETS, CotahistRow, iter_cotahist
 from b3o.ingest.rates import fetch_rates_di
 from b3o.ingest.selic import backfill_selic_flat
 from b3o.ingest.validate import ValidationReport, validate_cotahist
+from b3o.journal_eval import evaluate_predictions
 from b3o.metrics.backtest import run_backtest
 from b3o.metrics.pipeline import run_metrics
 from b3o.query.service import PrepareState, QueryService, load_prepare_state, save_prepare_state
@@ -190,6 +191,12 @@ def _up_to_date(config: Config, fetch: FetchResult, service: QueryService) -> da
     except SourceFailure:
         return None
     if not any(row.refdate >= state.last_session for row in rows):
+        return None
+    try:
+        pending = service.journal.pending_predictions(state.last_session)
+    except SourceFailure:
+        return None
+    if pending:
         return None
     return state.last_session
 
@@ -469,6 +476,24 @@ def run_prepare(
             lines.append(f"metrics    FALHOU: {metrics_error.error.message}")
         else:
             lines.extend(_metrics_lines(metrics_summary or {}))
+
+        # 9c. Diário (F7): avalia no primeiro pregão posterior a `evaluate_on`.
+        #     Só roda com métricas verdes; falha global do lago não vira `void`.
+        if metrics_error is None:
+            journal_summary, journal_error = _stage(
+                "journal_eval",
+                lambda: evaluate_predictions(service, as_of=lake_last).to_dict(),
+            )
+            if journal_error is not None:
+                failures.append(journal_error)
+                lines.append(f"diário     FALHOU: {journal_error.error.message}")
+            else:
+                summary = journal_summary or {}
+                lines.append(
+                    f"diário     {summary.get('evaluated', 0)} avaliação(ões) · "
+                    f"hit {summary.get('hit', 0)} / miss {summary.get('miss', 0)} / "
+                    f"void {summary.get('void', 0)} · pending {summary.get('pending', 0)}"
+                )
 
         # 10. ingest_state + sidecar de diagnóstico (D3, último erro, RSS).
         try:
@@ -1250,6 +1275,40 @@ def _run_once(config_path: Path, year: int | None, *, skip_unchanged: bool = Fal
             )
             typer.echo(f"    dica: {failure.error.hint}")
     return result.exit_code
+
+
+@app.command()
+def evaluate(
+    config: Annotated[
+        Path, typer.Option("--config", help="caminho do config.yaml (chaves planas, P-B)")
+    ] = DEFAULT_CONFIG_PATH,
+    session: Annotated[
+        str | None,
+        typer.Option("--date", help="sessão limite do lote (default: última do lake)"),
+    ] = None,
+) -> None:
+    """Avalia previsões pendentes no primeiro pregão posterior a `evaluate_on`."""
+    try:
+        settings = load_config(config)
+    except SourceFailure as exc:
+        typer.secho(f"config     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    cutoff = None
+    if session is not None:
+        try:
+            cutoff = date.fromisoformat(session)
+        except ValueError as exc:
+            typer.secho("diário     --date inválido: use AAAA-MM-DD", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
+    configure_logging(settings.log_level)
+    try:
+        result = evaluate_predictions(QueryService(settings.data_dir), as_of=cutoff)
+    except SourceFailure as exc:
+        typer.secho(f"diário     {exc.code}: {exc.message}", fg=typer.colors.RED, err=True)
+        typer.secho(f"           dica: {exc.hint}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps(result.to_dict(), ensure_ascii=False, sort_keys=True))
 
 
 @app.command()

@@ -501,6 +501,31 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** `APP_TOKEN` continua só no `.env`; logs e documentação nunca o revelam. A migration inicial não precisa migrar SQLite. `model_version` continua inalterado.
 - **Revisar em:** F7 (avaliação de previsão por evento) ou quando houver destino de backup/múltiplos usuários.
 
+## ADR-042 — F7: decisão e avaliação como eventos append-only
+
+- **Data:** 2026-11-24 · **Status:** provisória · **Custo de reverter:** médio (schema/API novos)
+- **Contexto:** a spec §6.12 pede previsão avaliável, e o prompt F7 exige decisões sem posição,
+  avaliação no lote EOD e estado corrente sem UPDATE. A migration F6 já é imutável.
+- **Decisão:**
+  1. `decision` é o próprio evento append-only da decisão. `prediction` continua semente imutável;
+     `status`/`observed` legados ficam `pending`/`null`. `prediction_evaluation` guarda observado,
+     status e motivo de `void`; a leitura deriva o evento mais recente.
+  2. `0002_f7_journal` acrescenta `decision_id` e o `CHECK` de um pai; `0003_f7_prediction_parent`
+     torna `prediction.position_id` nullable. A abertura F6 espelha uma decisão `entry` vinculada,
+     pois a previsão de posição também entra na calibração.
+  3. Idempotência da decisão por `client_decision_id` + fingerprint; avaliação por índice único
+     `(prediction_id, session)` e lock. Triggers bloqueiam UPDATE/DELETE/TRUNCATE nas seis tabelas.
+  4. O lote usa o primeiro pregão real posterior a `evaluate_on`. Métrica ausente vira `void` com
+     motivo; fechar posição não cancela previsão. `prepare-watch` aplica Alembic e roda o lote após
+     métricas verdes.
+  5. Calibração pessoal agrega por métrica + horizonte, com `n`, `hit`, `miss`, `void` e taxa sobre
+     `hit + miss`. Não compara com o F1b, não ranqueia e não recomenda (ADR-023/024).
+- **Por quê:** preserva a história auditável e permite medir as afirmações do dono sem fabricar
+  desfecho ou transformar o produto em sinal.
+- **Consequência:** a aceitação F7 depende de uso real (30 dias e ≥ 10 previsões avaliadas), não da
+  implementação. `model_version` continua 2.
+- **Revisar em:** aceitação de uso real ou se o dono quiser múltiplos usuários.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

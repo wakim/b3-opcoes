@@ -161,7 +161,14 @@ def official_counts(engine: Engine) -> dict[str, int | None]:
     """Retrato read-only do schema oficial; o smoke só compara antes/depois."""
     counts: dict[str, int | None] = {}
     with engine.connect() as connection:
-        for table in ("position", "position_leg", "position_event", "prediction"):
+        for table in (
+            "position",
+            "position_leg",
+            "position_event",
+            "prediction",
+            "decision",
+            "prediction_evaluation",
+        ):
             exists = connection.execute(
                 text("SELECT to_regclass(:name)"), {"name": f"public.{table}"}
             ).scalar_one()
@@ -188,8 +195,16 @@ def schema_assertions(engine: Engine) -> None:
             )
         }
         check(
-            tables == {"position", "position_leg", "position_event", "prediction"},
-            "schema temporário tem as quatro tabelas do journal",
+            tables
+            == {
+                "position",
+                "position_leg",
+                "position_event",
+                "prediction",
+                "decision",
+                "prediction_evaluation",
+            },
+            "schema temporário tem as seis tabelas do journal",
             ", ".join(sorted(tables)),
         )
         triggers = {
@@ -211,10 +226,14 @@ def schema_assertions(engine: Engine) -> None:
                 "position_leg_no_update_delete",
                 "position_event_no_update_delete",
                 "prediction_no_update_delete",
+                "decision_no_update_delete",
+                "prediction_evaluation_no_update_delete",
                 "position_no_truncate",
                 "position_leg_no_truncate",
                 "position_event_no_truncate",
                 "prediction_no_truncate",
+                "decision_no_truncate",
+                "prediction_evaluation_no_truncate",
             },
             "triggers append-only de UPDATE/DELETE/TRUNCATE estão instalados",
         )
@@ -348,7 +367,7 @@ def main() -> int:
                 timeout=120,
                 check=False,
             )
-            check(migration.returncode == 0, "Alembic aplica 0001_f6_initial no schema temporário")
+            check(migration.returncode == 0, "Alembic aplica 0001…0003 no schema temporário")
             if migration.returncode != 0:
                 print(migration.stdout[-2000:])
                 print(migration.stderr[-2000:])

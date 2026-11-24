@@ -71,12 +71,14 @@ from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.ingest.parse import KEPT_MARKETS
 from b3o.journal import (
+    DecisionOpen,
     JournalStore,
     PositionLegRecord,
     PositionOpen,
     PositionRecord,
     PredictionRecord,
 )
+from b3o.prediction import METRIC_SPECS
 from b3o.store.lake import cotahist_partition_path
 from b3o.store.state import MODEL_VERSION, IngestState, load_ingest_state
 
@@ -94,6 +96,11 @@ _POSITION_KEYS = frozenset(
 )
 _PREDICTION_KEYS = frozenset({"metric", "operator", "value", "horizon_sessions", "evaluate_on"})
 _PREDICTION_OPERATORS = frozenset({"<", "<=", ">", ">="})
+MAX_PREDICTION_HORIZON_SESSIONS = 252
+_JOURNAL_KEYS = frozenset(
+    {"client_decision_id", "underlying", "date", "decision_type", "context", "notes", "prediction"}
+)
+_DECISION_TYPES = frozenset({"no_entry", "entry", "exit", "hold", "watch", "other"})
 
 
 def _bad_request(message: str) -> SourceFailure:
@@ -154,12 +161,20 @@ def _position_prediction(
     evaluate_on = _body_date(value.get("evaluate_on"), "evaluate_on")
     if not isinstance(metric, str) or not metric.strip() or "\x00" in metric:
         raise _bad_request("prediction.metric precisa ser texto não vazio, sem NUL")
-    if len(metric.strip()) > 64:
+    metric = metric.strip().lower()
+    if len(metric) > 64:
         raise _bad_request("prediction.metric excede 64 caracteres")
+    if metric not in METRIC_SPECS:
+        raise _bad_request(
+            "prediction.metric não suportado: "
+            + ", ".join(METRIC_SPECS)
+        )
     if not isinstance(operator, str) or operator not in _PREDICTION_OPERATORS:
         raise _bad_request("prediction.operator inválido")
     if isinstance(threshold, bool) or not isinstance(threshold, int | float):
         raise _bad_request("prediction.value precisa ser número")
+    if isinstance(threshold, int) and not -(2**63) <= threshold <= 2**63 - 1:
+        raise _bad_request("prediction.value inteiro fora do int64")
     try:
         threshold_value = float(threshold)
     except OverflowError as exc:
@@ -169,10 +184,11 @@ def _position_prediction(
     if (
         isinstance(horizon, bool)
         or not isinstance(horizon, int)
-        or not 0 < horizon <= 2**63 - 1
+        or not 0 < horizon <= MAX_PREDICTION_HORIZON_SESSIONS
     ):
         raise _bad_request(
-            "prediction.horizon_sessions precisa ser inteiro positivo dentro do int64"
+            "prediction.horizon_sessions precisa ser inteiro entre 1 e "
+            f"{MAX_PREDICTION_HORIZON_SESSIONS}"
         )
     if evaluate_on is None:
         raise _bad_request("prediction.evaluate_on é obrigatório")
@@ -185,14 +201,41 @@ def _position_prediction(
             "prediction.evaluate_on não corresponde ao horizonte_sessions no calendário B3"
         )
     return PredictionRecord(
-        position_id="",
-        metric=metric.strip(),
+        position_id=None,
+        metric=metric,
         operator=operator,
         value=threshold_value,
         horizon_sessions=horizon,
         evaluate_on=evaluate_on,
         status="pending",
         observed=None,
+    )
+
+
+def _calibration_counts(predictions: Sequence[PredictionRecord]) -> CalibrationCounts:
+    counts = Counter(
+        prediction.evaluation.status
+        for prediction in predictions
+        if prediction.evaluation is not None
+    )
+    reasons = Counter(
+        prediction.evaluation.void_reason
+        for prediction in predictions
+        if prediction.evaluation is not None
+        and prediction.evaluation.status == "void"
+        and prediction.evaluation.void_reason is not None
+    )
+    decided = counts["hit"] + counts["miss"]
+    return CalibrationCounts(
+        n=len(predictions),
+        hit=counts["hit"],
+        miss=counts["miss"],
+        void=counts["void"],
+        hit_rate_pct=(100.0 * counts["hit"] / decided if decided else None),
+        void_reasons=[
+            {"reason": reason, "count": count}
+            for reason, count in sorted(reasons.items(), key=lambda item: (-item[1], item[0]))
+        ],
     )
 
 
@@ -213,6 +256,29 @@ def _client_position_id(value: object) -> str | None:
     if identifier.version != 4:
         raise _bad_request("client_position_id precisa ser UUID4")
     return str(identifier)
+
+
+def _client_decision_id(value: object) -> str | None:
+    """UUID4 opcional do navegador; estável enquanto o rascunho está aberto."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value.strip()) > 36:
+        raise _bad_request("client_decision_id precisa ser UUID4 ou null")
+    try:
+        identifier = uuid.UUID(value.strip())
+    except (ValueError, AttributeError) as exc:
+        raise _bad_request("client_decision_id precisa ser UUID4") from exc
+    if identifier.version != 4:
+        raise _bad_request("client_decision_id precisa ser UUID4")
+    return str(identifier)
+
+
+def _journal_text(value: object, name: str, *, maximum: int, nullable: bool = False) -> str:
+    if value is None and nullable:
+        return ""
+    if not isinstance(value, str) or "\x00" in value or len(value) > maximum:
+        raise _bad_request(f"{name} precisa ser texto de até {maximum} caracteres, sem NUL")
+    return value
 
 
 def _request_fingerprint(body: Mapping[str, object]) -> str:
@@ -1102,6 +1168,73 @@ class Portfolio:
     positions: list[PositionSummary]
     total: int
     totals: PortfolioTotals
+
+
+@dataclass(frozen=True, slots=True)
+class PredictionObservation:
+    """Valor observado de uma métrica suportada, já na unidade da previsão."""
+
+    underlying: str
+    metric: str
+    value: float
+    unit: str
+    source: str
+    model_version: int
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionSummary:
+    """Evento de decisão + previsão/desfecho derivado quando existem."""
+
+    id: str
+    underlying: str
+    session: date
+    decision_type: str
+    context: str
+    notes: str
+    position_id: str | None
+    created_at: dt.datetime
+    as_of_session: date
+    model_version: int
+    prediction: PredictionRecord | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class JournalPage:
+    """Página de decisões; total conta o recorte inteiro antes da paginação."""
+
+    as_of_session: date
+    model_version: int
+    decisions: list[DecisionSummary]
+    total: int
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationCounts:
+    n: int
+    hit: int
+    miss: int
+    void: int
+    hit_rate_pct: float | None
+    void_reasons: list[dict[str, object]]
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationGroup(CalibrationCounts):
+    metric: str
+    unit: str
+    horizon_sessions: int
+
+
+@dataclass(frozen=True, slots=True)
+class CalibrationReport:
+    """Calibração das previsões do dono, sem classe de sinal ou ranking."""
+
+    as_of_session: date
+    model_version: int
+    groups: list[CalibrationGroup]
+    total: int
+    totals: CalibrationCounts
 
 
 @dataclass(frozen=True, slots=True)
@@ -2581,6 +2714,243 @@ class QueryService:
             model_version=self.derived_model_version() or MODEL_VERSION,
             result=result,
             notes=_structure_notes(result),
+        )
+
+    # --------------------------- diário (F7) ----------------------------- #
+
+    def record_decision(self, body: Mapping[str, object]) -> DecisionSummary:
+        """Valida e grava decisão sem posição, com previsão opcional."""
+        if not isinstance(body, Mapping):
+            raise _bad_request("corpo da decisão precisa ser um objeto")
+        unknown = sorted(str(key) for key in body if str(key) not in _JOURNAL_KEYS)
+        if unknown:
+            raise _bad_request(f"campos desconhecidos na decisão: {unknown}")
+        session = self._session(_body_date(body.get("date"), "date"))
+        underlying = body.get("underlying")
+        if not isinstance(underlying, str) or not underlying.strip() or "\x00" in underlying:
+            raise _bad_request("underlying precisa ser texto não vazio, sem NUL")
+        underlying = underlying.strip().upper()
+        if len(underlying) > 32:
+            raise _bad_request("underlying excede 32 caracteres")
+        if not self.spot_ticker_exists(underlying, session):
+            raise SourceFailure(
+                SourceError(
+                    code="ticker_not_found",
+                    message=f"{underlying} não é papel do mercado à vista na sessão {session}",
+                    hint="informe o ticker do ativo-objeto, nunca o ticker da opção",
+                )
+            )
+        decision_type = body.get("decision_type")
+        if not isinstance(decision_type, str) or decision_type not in _DECISION_TYPES:
+            raise _bad_request("decision_type inválido: " + ", ".join(sorted(_DECISION_TYPES)))
+        context = _journal_text(body.get("context", ""), "context", maximum=500)
+        notes = _journal_text(body.get("notes", ""), "notes", maximum=4000, nullable=True)
+        client_id = _client_decision_id(body.get("client_decision_id"))
+        prediction = _position_prediction(
+            body.get("prediction"),
+            session,
+            self.lake_calendar(),
+        )
+        decision = DecisionOpen(
+            id=client_id or str(uuid.uuid4()),
+            underlying=underlying,
+            session=session,
+            decision_type=decision_type,
+            context=context,
+            notes=notes,
+            client_decision_id=client_id,
+        )
+        stored = self.journal.record_decision(
+            decision,
+            prediction,
+            request_fingerprint=_request_fingerprint(body),
+        )
+        return self._decision_summary(stored)
+
+    def journal_page(
+        self,
+        date: date | None = None,
+        max_rows: int = 20,
+        offset: int = 0,
+    ) -> JournalPage:
+        """Decisões paginadas, opcionalmente restritas a uma sessão."""
+        session = None if date is None else self._session(date)
+        decisions, total = self.journal.list_decisions(
+            session=session,
+            offset=offset,
+            limit=max_rows,
+        )
+        as_of = self._session(None)
+        model_version = self._model_version_for()
+        return JournalPage(
+            as_of_session=as_of,
+            model_version=model_version,
+            decisions=[
+                self._decision_summary(row, as_of_session=as_of, model_version=model_version)
+                for row in decisions
+            ],
+            total=total,
+        )
+
+    def journal_decision(self, decision_id: str) -> DecisionSummary:
+        """Detalhe de uma decisão; ausente vira erro canônico 404."""
+        record = self.journal.get_decision(decision_id)
+        if record is None:
+            raise SourceFailure(
+                SourceError(
+                    code="decision_not_found",
+                    message=f"decisão {decision_id} não existe no journal",
+                    hint="confira o id retornado por POST /api/journal",
+                )
+            )
+        return self._decision_summary(record)
+
+    def journal_calibration(
+        self,
+        max_rows: int = 20,
+        offset: int = 0,
+    ) -> CalibrationReport:
+        """Agrega previsões avaliadas por métrica + horizonte; void fica separado."""
+        if (
+            isinstance(max_rows, bool)
+            or not isinstance(max_rows, int)
+            or not 1 <= max_rows <= 60
+        ):
+            raise _bad_request("max_rows precisa ser inteiro entre 1 e 60")
+        if (
+            isinstance(offset, bool)
+            or not isinstance(offset, int)
+            or not 0 <= offset <= 2**63 - 1
+        ):
+            raise _bad_request("offset precisa ser inteiro não negativo dentro do int64")
+        evaluated = [
+            prediction
+            for prediction in self.journal.list_predictions()
+            if prediction.evaluation is not None
+        ]
+        grouped: dict[tuple[str, int], list[PredictionRecord]] = defaultdict(list)
+        for prediction in evaluated:
+            grouped[(prediction.metric, prediction.horizon_sessions)].append(prediction)
+        groups: list[CalibrationGroup] = []
+        for (metric, horizon), records in sorted(grouped.items()):
+            counts = _calibration_counts(records)
+            groups.append(
+                CalibrationGroup(
+                    metric=metric,
+                    unit=METRIC_SPECS[metric].unit if metric in METRIC_SPECS else "unknown",
+                    horizon_sessions=horizon,
+                    n=counts.n,
+                    hit=counts.hit,
+                    miss=counts.miss,
+                    void=counts.void,
+                    hit_rate_pct=counts.hit_rate_pct,
+                    void_reasons=counts.void_reasons,
+                )
+            )
+        return CalibrationReport(
+            as_of_session=self._session(None),
+            model_version=self._model_version_for(),
+            groups=groups[offset : offset + max_rows],
+            total=len(groups),
+            totals=_calibration_counts(evaluated),
+        )
+
+    def prediction_observations(
+        self,
+        session: date,
+        underlyings: Sequence[str] | None = None,
+    ) -> dict[tuple[str, str], PredictionObservation]:
+        """Observações EOD das métricas suportadas, já na unidade da previsão.
+
+        IV/VRP/RR vêm de `metrics_underlying`. `spot` usa o fechamento dessa
+        linha; para papel sem opção, cai no fechamento `010`/`020` do COTAHIST.
+        Nenhum campo ausente vira zero.
+        """
+        session = self._session(session)
+        wanted = (
+            None
+            if underlyings is None
+            else {str(ticker).strip().upper() for ticker in underlyings}
+        )
+        metrics = self._screen_metrics(session)
+        observations: dict[tuple[str, str], PredictionObservation] = {}
+        for underlying, row in metrics.items():
+            if wanted is not None and underlying not in wanted:
+                continue
+            values = {
+                "iv_atm_30d": row.iv_atm_30d,
+                "vrp": row.vrp,
+                "rr25": row.rr25,
+                "spot": (
+                    row.spot_cents
+                    if row.spot_cents is not None and row.spot_cents > 0
+                    else None
+                ),
+            }
+            for metric, spec in METRIC_SPECS.items():
+                raw = values[metric]
+                if raw is None:
+                    continue
+                value = float(raw) * spec.scale
+                if math.isfinite(value) and (metric != "spot" or value > 0):
+                    observations[(underlying, metric)] = PredictionObservation(
+                        underlying=underlying,
+                        metric=metric,
+                        value=value,
+                        unit=spec.unit,
+                        source=spec.source,
+                        model_version=row.model_version,
+                    )
+        if wanted is not None:
+            fallback_version = self._model_version_for()
+            for underlying in sorted(wanted):
+                if (underlying, "spot") in observations:
+                    continue
+                spot = self._spot_brl(underlying, session)
+                if spot is not None and math.isfinite(spot) and spot > 0:
+                    observations[(underlying, "spot")] = PredictionObservation(
+                        underlying=underlying,
+                        metric="spot",
+                        value=spot,
+                        unit=METRIC_SPECS["spot"].unit,
+                        source="raw_cotahist",
+                        model_version=fallback_version,
+                    )
+        return observations
+
+    def spot_ticker_exists(self, ticker: str, session: date) -> bool:
+        """True se o ticker é ativo-objeto `010`/`020` na sessão (não opção)."""
+        paths = self._partitions(session.year)
+        if not paths:
+            return False
+        rows = self._fetch(
+            "SELECT 1 FROM read_parquet(?) WHERE refdate = ? AND ticker = ?"
+            " AND tpmerc IN ('010', '020') LIMIT 1",
+            paths,
+            session,
+            ticker,
+        )
+        return bool(rows)
+
+    def _decision_summary(
+        self,
+        record: DecisionOpen,
+        *,
+        as_of_session: date | None = None,
+        model_version: int | None = None,
+    ) -> DecisionSummary:
+        return DecisionSummary(
+            id=record.id,
+            underlying=record.underlying,
+            session=record.session,
+            decision_type=record.decision_type,
+            context=record.context,
+            notes=record.notes,
+            position_id=record.position_id,
+            created_at=record.created_at,
+            as_of_session=as_of_session or self._session(None),
+            model_version=model_version or self._model_version_for(),
+            prediction=record.prediction,
         )
 
     # --------------------------- posições (F6) ---------------------------- #

@@ -208,6 +208,20 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - `TZ=America/Sao_Paulo` no container. A data de referência **nunca** vem do relógio: vem do arquivo.
 - BuildKit `RUN --mount=type=cache` funciona no Podman, mas não é necessário: a imagem tem que construir do zero em < 5 min sem cache (critério do F0).
 
+## Armadilhas do F7 (Diário e calibração)
+
+- **`prediction.position_id` só fica nullable na `0003_f7_prediction_parent`.** A `0002` cria o pai
+  `decision_id` e o `CHECK`; aplicar só ela ainda dá `NotNullViolation` ao gravar previsão de decisão.
+  Schema oficial precisa estar em `0003`.
+- **`prediction.status`/`observed` da linha F6 continuam `pending`/`null` para sempre.** A avaliação é evento em `prediction_evaluation`; o estado corrente é o evento mais recente por `(session, created_at, id)`. Fazer UPDATE para “marcar hit” viola o trigger e o contrato.
+- **A abertura F6 agora espelha uma decisão `entry`.** `prediction` tem exatamente um pai (`position_id` ou `decision_id`); a previsão de posição fechada continua avaliável. Não filtrar o lote por posição aberta.
+- **O lote avalia no primeiro pregão real posterior a `evaluate_on`, não no dia em que rodou.** Se `evaluate_on = 19/11/2026`, o primeiro pregão seguinte é **23/11**: 20/11/2026 (Consciência Negra) e o fim de semana não existem no lake. A nota antiga “20/11 ainda não verificável” foi resolvida: não há sessão em 20/11.
+- **`void` é desfecho final, não placeholder.** Métrica ausente na sessão correta vira `void metric_unavailable`; não tentar “reavaliar amanhã” nem transformar em `miss`. Lote repetido/concorrente usa lock + único `(prediction_id, session)`.
+- **Spot de decisão sem opção tem fallback explícito.** IV/VRP/RR25 vêm de `metrics_underlying`; `spot` usa essa linha e, se faltar, o fechamento `010`/`020` do COTAHIST. Papel sem opção não impede decisão, mas métrica de grade ausente vira `void`.
+- **`prepare-watch` precisa de `DATABASE_URL` e Alembic.** O serviço roda `alembic upgrade head && b3o prepare --watch`; o atalho de “nada novo” também consulta previsões pendentes elegíveis. Imagem `runtime` copia código: mudou F7 → rebuild de `prepare-watch`.
+- **Diário é HTTP-only.** Não criar tool MCP de escrita. `/api/journal*` fica `NetworkOnly` antes da rota genérica `/api/`, para GET cacheado não sobrescrever decisão confirmada.
+- **Smoke F7 isola por schema PostgreSQL.** `journal_smoke.py` usa `f7_smoke_<uuid>` e `search_path` próprio, compara o schema oficial antes/depois e não aceita `B3_JOURNAL_PATH`.
+
 ## Armadilhas do runtime F3 (API/MCP, medidas em 23/11/2026)
 
 - **MCP SDK 2.x não tem `FastMCP` no caminho antigo.** Em `mcp 2.3.0` o servidor é `from mcp.server import MCPServer` e o cliente é `from mcp import Client` (aceita a URL e negocia Streamable HTTP). `CallToolResult.structured_content` traz o dicionário da tool; `content` traz o texto. `@mcp.tool(description=...)` + docstring viram descrição/schema.

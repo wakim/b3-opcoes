@@ -890,20 +890,18 @@ def _load_decisions(
         if record.position_id is not None
     }
     predictions: dict[str, PredictionRecord] = {}
-    prediction_query = select(prediction_table).where(
-        prediction_table.c.decision_id.in_(identifiers)
-    )
+    prediction_filter = prediction_table.c.decision_id.in_(identifiers)
     if decision_by_position:
-        prediction_query = prediction_query.where(
-            or_(
-                prediction_table.c.decision_id.in_(identifiers),
-                prediction_table.c.position_id.in_(tuple(decision_by_position)),
-            )
+        prediction_filter = or_(
+            prediction_table.c.decision_id.in_(identifiers),
+            prediction_table.c.position_id.in_(tuple(decision_by_position)),
         )
     prediction_records = [
         _prediction_from_row(row)
         for row in connection.execute(
-            prediction_query.order_by(prediction_table.c.created_at, prediction_table.c.id)
+            select(prediction_table)
+            .where(prediction_filter)
+            .order_by(prediction_table.c.created_at, prediction_table.c.id)
         )
     ]
     for prediction in _attach_evaluations(connection, prediction_records):

@@ -558,6 +558,21 @@ def main() -> int:
                         and len(page0["data"]["decisions"]) == 2,
                         "paginação offset/next_offset é honesta",
                     )
+                    linked_page = client.get(
+                        "/api/journal", params={"max_rows": 60}
+                    ).json()
+                    PAYLOADS.append(linked_page)
+                    linked_decision = next(
+                        row
+                        for row in linked_page["data"]["decisions"]
+                        if row["position_id"] == position_id
+                    )
+                    check(
+                        linked_decision["prediction"]["id"]
+                        == position["data"]["prediction"]["id"]
+                        and linked_decision["prediction"]["metric"] == "spot",
+                        "decisão espelhada da posição exibe a previsão vinculada",
+                    )
                     check(
                         client.get("/api/journal", params={"max_rows": 0}).status_code == 400,
                         "max_rows=0 não gera cursor parado",

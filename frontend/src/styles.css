@@ -325,3 +325,45 @@ main {
   font-family: var(--mono);
   font-size: 12px;
 }
+
+/* F5-F — legibilidade no desktop. O corte < 1024 px continua exatamente como
+   acima; só tamanho de texto/line-height muda, sem cor ou espaço novo. */
+@media (min-width: 1024px) {
+  html,
+  body {
+    font-size: 15px;
+  }
+
+  .stamp {
+    font-size: 12px;
+  }
+
+  .screen-title {
+    font-size: 32px;
+  }
+
+  .section-label,
+  .metric .k,
+  .note,
+  .error .code,
+  .nav a,
+  .glossary-item .level {
+    font-size: 12px;
+  }
+
+  .metric .v {
+    font-size: 18px;
+  }
+
+  .rows {
+    font-size: 12.5px;
+  }
+
+  .acc-sign {
+    font-size: 18px;
+  }
+
+  .back {
+    font-size: 13px;
+  }
+}

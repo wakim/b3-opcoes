@@ -1,7 +1,7 @@
 # Direção visual — aprovada
 
 **Caráter escolhido:** A · Bancada fria (ver `direcao.html`)
-**Status:** aprovada pelo dono em 22/11/2026 · provisória até o F5.0 (se a primeira tela construída pedir ajuste, ajusta-se aqui, não no componente)
+**Status:** aprovada pelo dono em 22/11/2026 · escala desktop ajustada no F5-F em 24/11/2026, sem alterar a direção nem o mobile
 
 ---
 
@@ -54,6 +54,26 @@ Dentro do gráfico, se duas séries precisarem se distinguir, a regra é **branc
 | Título de tela | 28–30 px |
 
 Hierarquia por **tamanho e cor**, nunca por peso. Nada de caixa alta com tracking, nada de itálico.
+
+### Desktop ≥ 1024 px (F5-F)
+
+O mobile/tablet (< 1024 px) mantém a escala acima. No desktop, a leitura a 100% usa:
+
+| Elemento | Tamanho |
+|---|---:|
+| base (`body`) | **15 px** |
+| título de tela | **32 px** |
+| título de bloco / lede | **15 px / 14 px** |
+| rótulos e notas | **12 px** |
+| valor de métrica / ênfase | **18 px / 24 px** |
+| tabela / cabeçalho | **12,5 px / 12 px** |
+| cadeia / detalhe | **13 px / 12 px** |
+| eixos, legendas e tooltip de gráfico | **11 px** |
+| busca (nome / meta) | **12,5 px / 11,5 px** |
+| builder (rótulos / inputs) | **12 px / 13 px** |
+| modal (texto / título) | **15 px / 20 px** |
+
+Só tamanho e line-height mudam. Cor, matiz, espaço vertical, raio e hierarquia continuam os mesmos.
 
 ### Espaço, raio, movimento
 

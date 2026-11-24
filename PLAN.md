@@ -21,9 +21,9 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…038) |
+| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…039) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5-F — tipografia do desktop.** F5-D fechado (Android confirmado) e F5-E entregue: bloco Liquidez no Hoje com 33 papéis/séries líquidas, top 10 + “Ver todos”, `/api/liquid` com 102 séries ordenadas por volume e smoke 24/24. Agora aumentar a legibilidade desktop (base 15 px, rótulos ≥ 12 px) sem alterar o mobile. |
+| Retomar em | **F6 — Posições/Carteira.** F5 concluído: Android instalado, HTTPS tailnet, builder/PWA offline, busca, cobertura, bloco Liquidez + `/api/liquid` e tipografia desktop (base 15 px; mobile com diferença zero). |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -491,28 +491,31 @@ Números em mono continuam tabulares e alinhados à direita; não mexer em cor, 
 vertical ou hierarquia — só tamanho e o que o tamanho exigir (line-height/altura de linha).
 
 **Aceitação F5-F**
-- [ ] em 1280 e 1440 px: `body` 15 px, rótulos ≥ 12 px, tabela ≥ 12,5 px; sem overflow horizontal
+- [x] em 1280 e 1440 px: `body` 15 px, rótulos ≥ 12 px, tabela ≥ 12,5 px; sem overflow horizontal
       fora do `.table-wrap`; coluna sticky e tabela de Hoje intactas.
-- [ ] Hoje, Ticker, Série, Aprender, busca, builder, modal e os três gráficos legíveis; eixos/legendas
+- [x] Hoje, Ticker, Série, Aprender, busca, builder, modal e os três gráficos legíveis; eixos/legendas
       sem colidir; o gráfico em largura total continua sem clipping.
-- [ ] 412 px **sem mudança** de tamanho (comparar computed styles antes/depois); alvos ≥ 44 px.
-- [ ] `docs/direcao.md` atualizado com a escala desktop (e o ADR, se a mudança for registrada).
-- [ ] `lint`/`typecheck`/duas builds idênticas; console limpo; zero mudança de dado.
-- [ ] capturas em 1280/1440 e 412 no relatório.
+- [x] 412 px **sem mudança** de tamanho (comparar computed styles antes/depois); alvos ≥ 44 px.
+- [x] `docs/direcao.md` atualizado com a escala desktop (e o ADR, se a mudança for registrada).
+- [x] `lint`/`typecheck`/duas builds idênticas; console limpo; zero mudança de dado.
+- [x] capturas em 1280/1440 e 412 no relatório.
+
+**Entregue (24/11/2026):** escala desktop ≥ 1024 px, mobile com diferença zero de computed styles,
+capturas 1280/1440/412 e ADR-039; evidência em `docs/relatorios/2026-11-24-f5f.md`.
 
 **Estimativa:** 1 h · **Depende de:** F5-C (UI atual). Independente de F5-D/F5-E; pode entrar em
 paralelo.
 
 **Aceitação F5**
 - [x] instalado no celular pelo domínio `*.ts.net` (HTTPS) — Android confirmado pelo dono em 24/11/2026
-- [ ] `npm run build` roda **dentro do container** (`podman compose run --rm web`) e o FastAPI serve o `dist`
-- [ ] `npm run lint` e `tsc --noEmit` limpos; os tipos da API vêm de um único arquivo de contrato
+- [x] `npm run build` roda **dentro do container** (`podman compose run --rm web`) e o FastAPI serve o `dist`
+- [x] `npm run lint` e `tsc --noEmit` limpos; os tipos da API vêm de um único arquivo de contrato
 - [x] offline mostra a última sessão com o carimbo correto
 - [x] busca de papel e seletor de vencimento funcionando
 - [x] nada depende de hover; alvo de toque ≥ 44 px
 - [x] teste de cobertura: campo da API ↔ chave do glossário
 - [x] Hoje tem o bloco de liquidez (F5-E): papéis com série líquida + séries por volume, como ponto de partida
-- [ ] desktop legível em 100%: base ≥ 15 px e rótulos ≥ 12 px (F5-F)
+- [x] desktop legível em 100%: base ≥ 15 px e rótulos ≥ 12 px (F5-F)
 
 ---
 

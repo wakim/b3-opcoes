@@ -459,6 +459,18 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** a nota “ordenado por liquidez; não é recomendação” permanece visível. Nada de “melhores”, score, estrela, caro/barato ou acerto. Carteira/Diário continuam placeholders até F6.
 - **Revisar em:** se o dono quiser filtro por papel, contrato MCP ou ordenação por volume também no card de papéis.
 
+## ADR-039 — F5-F: escala tipográfica desktop sem tocar no mobile
+
+- **Data:** 2026-11-24 · **Status:** provisória · **Custo de reverter:** baixo (dois blocos CSS + documento de direção)
+- **Contexto:** a base de 13,5 px e os rótulos de 11 px funcionam no celular, mas ficam pequenos no monitor a 100%. O dono pediu legibilidade desktop sem zoom e sem alterar o mobile.
+- **Decisão:**
+  1. Um bloco `@media (min-width: 1024px)` em `styles.css`/`styles-view.css` eleva a base para **15 px**, título de tela para **32 px**, rótulos/notas para **12 px**, valores para **18/24 px**, tabela para **12,5/12 px**, cadeia para **13/12 px**, eixos/legendas para **11 px**, busca para **12,5/11,5 px**, builder para **12/13 px** e modal para **15/20 px**.
+  2. O corte < 1024 px não recebe nenhuma sobrescrita: tamanhos e alvos de toque continuam idênticos. Não usar `zoom`, `transform: scale` ou aumento de espaço vertical.
+  3. `docs/direcao.md` registra a escala desktop. Cor, matiz, raio, espaçamento e hierarquia não mudam.
+- **Por quê:** melhorar leitura sem redesenhar; media query mantém o comportamento mobile já validado e torna a exceção auditável.
+- **Consequência:** nenhum componente, número, dado ou `model_version` muda. A validação compara computed styles antes/depois em 412, 1280 e 1440 px.
+- **Revisar em:** após uma semana de uso no monitor ou se o dono preferir outra densidade.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

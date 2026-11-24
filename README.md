@@ -10,13 +10,13 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…038) |
-| Código | 🟢 **F0–F4 completos + F5-A/B/C/D/E entregues** — lake 2024–2026, `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` e PWA. F5-C: builder inline, offline e busca. F5-D: HTTPS tailnet + Android instalado. F5-E: bloco Liquidez no Hoje e `/api/liquid` por volume. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F5-F — tipografia do desktop** — F5-E fechado com parecer em `docs/relatorios/2026-11-24-f5e.md` |
+| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…039) |
+| Código | 🟢 **F0–F5 completos** — lake 2024–2026, `model_version=2`, painel descritivo, API/MCP, PWA offline instalado no Android, builder, busca, cobertura, liquidez e desktop legível. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F6 — Posições/Carteira** — F5 fechado com os pareceres F5-D/E/F em `docs/relatorios/` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
-O trabalho segue o [`PLAN.md`](PLAN.md), fase por fase. O caminho oficial de execução é `podman compose`; a única coisa que precisa existir no host é Podman e `git`.
+O trabalho segue o [`PLAN.md`](PLAN.md), fase por fase. O caminho oficial de execução é `podman compose`; no host ficam Podman, `git` e (para publicar o PWA) Tailscale.
 
 ---
 

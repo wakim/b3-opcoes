@@ -616,7 +616,7 @@ preservando o contrato visual, os gráficos SVG e a responsividade já validados
 **Progresso em 24/11/2026:**
 - [x] F8.1 configurada (`components.json`, alias `@`, primitives Button/Input/Select/Table/Dialog);
 - [x] revisão tipográfica desktop aprovada e aplicada por tokens `@theme` + utilitários `lg:` (ADR-043);
-- [ ] F8.2 migrar Carteira/detalhe, modais, formulários, tabelas e estados;
+- [x] F8.2 migrar Carteira/detalhe, modais, formulários, tabelas e estados — commit `1230b69`;
 - [ ] F8.3 migrar as demais telas e remover CSS artesanal redundante;
 - [ ] F8.4 regressão visual/funcional em 412, 1280 e 1440 px.
 

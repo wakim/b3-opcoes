@@ -1,5 +1,7 @@
 # Validação independente do F1b (o portão) — 23/11/2026
 
+> **Nota de correção (23/11/2026, ADR-034):** este relatório trata 2026-10-26 como "data-armadilha"/"artefato de dado"/"split sem ajuste". A reavaliação mostrou que é um **choque real de mercado** (IBOV −14,35%, real desvalorizado, sem evento corporativo, forward por paridade acompanhando o spot novo). Os números medidos aqui continuam valendo; a interpretação de "artefato" não. O texto abaixo fica como estava, por registro.
+
 **Revisor:** sessão nova, não escreveu o código do F1b. **Runner:** `podman compose`, da raiz.
 **Commit revisado:** `73eeca0` (`feat(f1b/backtest): … ambas as classes NAO PASSAM`), `HEAD == origin/main`.
 **Scripts do revisor:** `data/tmp/validacao-f1b/` (fora do git). As conferências manuais **não importam `b3o.derive.*`** como fonte da verdade — Yang-Zhang (forma do paper), z amostral, mediana/percentil e agregação foram reimplementados por fora. `b3o.metrics.backtest.load_observations` e `b3o.query` foram importados **só para comparar** com o valor do pipeline.

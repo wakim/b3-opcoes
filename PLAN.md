@@ -154,7 +154,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 **Entregável:** `b3o backtest` e `out/backtest.md`.
 
-> **Portão (23/11/2026):** o sinal de reversão do VRP está falsificado neste dado (momentum de vol, não reversão; acerto abaixo da base incondicional). **F2+ não começa** sem o dono repensar a tese (estudo de momentum fora da amostra, pré-registrado às cegas) ou redefinir o produto como descritivo. Ver ADR-023 e a seção "Portão F1b" do `AGENTS.md`.
+> **Portão (23/11/2026):** o sinal de reversão do VRP não passa neste dado (acerto abaixo da base incondicional no período completo; a margem negativa do `premium_rich` vem do choque real de mercado de 2026-10-26 — leitura corrigida no ADR-034). **F2+ não começa** sem o dono repensar a tese (estudo de momentum fora da amostra, pré-registrado às cegas) ou redefinir o produto como descritivo. Ver ADR-023 e a seção "Portão F1b" do `AGENTS.md`.
 
 ---
 

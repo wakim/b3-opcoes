@@ -78,10 +78,10 @@ class Observation:
     trap_in_rv_window: bool = False
     """Informativo: 2026-10-26 cai na janela de RV passada (rv30) ou futura.
 
-    A data-armadilha (AGENTS: ~45–97 papéis com overnight de ~−50% sem ajuste de
-    strike) infla a RV por 30–60 sessões e produz `premium_cheap` em massa. O
-    recorte com/sem estas observações é **só informativo**: o veredito do portão
-    usa o período completo, como está pré-registrado.
+    2026-10-26 é um choque **real** de mercado (ADR-034: IBOV −14,35%, sem evento
+    corporativo), não artefato de dado: a RV de 30–60 sessões depois é alta de
+    verdade. O recorte com/sem estas observações é **só informativo**: o veredito
+    do portão usa o período completo, como está pré-registrado.
     """
 
     @property

@@ -63,10 +63,14 @@ mais as exclusões de provento sem precisar reler o lake por observação.
 """
 
 PAST_RV_SESSIONS = 30
-"""Sessões da janela de RV passada (rv30) usada no recorte informativo da trap."""
+"""Sessões da janela de RV passada (rv30) usada no recorte informativo de 26/10."""
 
 TRAP_DATE = date(2026, 10, 26)
-"""Data-armadilha (AGENTS): overnight de ~−50% sem ajuste de strike → RV inflada."""
+"""Choque real de mercado (ADR-034): IBOV −14,35% no dia seguinte ao 2º turno.
+
+Não é defeito do dado (o forward por paridade acompanha o spot novo). O nome da
+constante ficou por compatibilidade; o recorte continua só informativo.
+"""
 
 LIQUID_PAPERS: tuple[str, ...] = (
     "PETR4", "VALE3", "ITUB4", "BBAS3", "BBDC4", "BOVA11", "B3SA3", "AXIA3",
@@ -418,13 +422,16 @@ def render_report(
             f"{without_e.n} | {_fmt(without_e.hit_rate_pct, 1)} | {_fmt(without_e.median)} |\n"
         )
 
-    parts.append("\n## Recorte informativo: data-armadilha 2026-10-26\n")
+    parts.append("\n## Recorte informativo: choque de mercado de 2026-10-26\n")
     parts.append(
         "**Só informativo — o veredito usa o período completo, como pré-registrado.** "
         "Observações cuja janela de RV (passada = rv30, ou futura = rv_fwd20) contém "
-        f"{TRAP_DATE}. Nessa data ~45–97 papéis tiveram overnight de ~−50% **sem** ajuste "
-        "de strike (0 eventos B2): a RV fica inflada por 30–60 sessões e o sinal vira "
-        "`premium_cheap` em massa. É artefato de dado, não sinal (AGENTS / ADR-021).\n\n"
+        f"{TRAP_DATE}. É um choque **real** de mercado, não artefato de dado (ADR-034): "
+        "IBOV −14,35%, real desvalorizado, sem evento corporativo (0 eventos B2, strikes "
+        "inalterados) e com o forward por paridade acompanhando o spot novo. A RV de "
+        "30–60 sessões depois é alta de verdade; o Yang-Zhang ainda a amplia porque "
+        "várias aberturas saíram a ~0,50 do fechamento anterior. Excluir estas "
+        "observações é escolha depois de ver o dado (P-L) — não limpeza.\n\n"
         "| `premium_cheap` | n | Acerto % | Mediana | P10 | P90 |\n"
         "|---|---:|---:|---:|---:|---:|\n"
     )

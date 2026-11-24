@@ -214,10 +214,10 @@ Critérios de desempate, nesta ordem:
   - **critério 6** (RR25 da PETR4 negativo em ≥ 80% dos dias): **72/143 = 50,3%**, mediana −0,007, em 2026. Em 19/11 o valor é −1,60 (bate com o relatório de 22/11) — o sinal existe no dia, mas não é persistente no fechamento.
   - **critério 7** (nenhuma série `inconsistent` entra no smile): o ADR-020 tornou a flag informativa — ela fica no ATM e sai só do skew/butterfly. O PLAN está desatualizado, não o código.
 - **Decisão ratificada:**
-  1. Os critérios 5 e 6 passam a ser **informativos**, não gates de aceitação: a oscilação do ATM e do RR25 no fechamento da B3 é ruído de preço (tick de 1 ¢, book velho, 2026-10-26), não erro de fórmula — as conferências à mão (IV, forward, gregas, RV, VRP, rank/percentil) batem todas. Publicar os números e o `n` em `out/`/relatório; **não** suavizar ATM nem trocar a banda de skew para "passar" (isso seria P-L + `model_version` 3 sem evidência de defeito).
+  1. Os critérios 5 e 6 passam a ser **informativos**, não gates de aceitação: a oscilação do ATM e do RR25 no fechamento da B3 é ruído de preço (tick de 1 ¢, book velho) mais o choque real de mercado de 2026-10-26 (ADR-034), não erro de fórmula — as conferências à mão (IV, forward, gregas, RV, VRP, rank/percentil) batem todas. Publicar os números e o `n` em `out/`/relatório; **não** suavizar ATM nem trocar a banda de skew para "passar" (isso seria P-L + `model_version` 3 sem evidência de defeito).
   2. O critério 7 do PLAN é reescrito para refletir o ADR-020: "`inconsistent` não entra no **skew/butterfly**; continua no ATM, que precisa dos dois vizinhos de F".
   3. O critério 4 do PLAN é mantido, mas a medição oficial passa a reportar **também** o `max|ΔIV|` na banda validada `|ln(K/F)| ≤ 0,10` (medido **0,199**, n=68; em `|K−F|/F ≤ 5%` é 0,053, n=34): o valor literal 7,196 vem de opções a 67–82% de moneyness, fora do domínio que o modelo usa. Nenhum limiar é alterado.
-- **Consequência:** F1 pode ser marcado `[x]` com **ressalva explícita**, e a Onda G segue com os limiares pré-registrados intactos. O relatório do portão deve mencionar que os 346 `premium_cheap` de 26/10 são artefato de dado.
+- **Consequência:** F1 pode ser marcado `[x]` com **ressalva explícita**, e a Onda G segue com os limiares pré-registrados intactos. O relatório do portão deve mencionar os 346 `premium_cheap` de 26/10. *Corrigido pelo ADR-034:* não são artefato de dado — 26/10 é choque real de mercado — e nenhum deles entrou no backtest (não havia 20 sessões futuras).
 - **Revisar em:** portão do F1b (se o sinal não se sustentar, voltar aqui antes de mexer em qualquer limiar) e F2 (quando RR/BFLY aparecerem na tela).
 
 ## ADR-022 — F1b: convenções do `rv_fwd20`, do recorte e da estatística (implementador)
@@ -246,7 +246,8 @@ Critérios de desempate, nesta ordem:
   | `premium_rich` | 617 | 42,3% | −1,41 | 43,7% (edge>0) | −1,4 p.p. | **NÃO PASSA** |
   | `premium_cheap` | 498 | 49,8% | +0,00 | 56,3% (edge<0) | −6,5 p.p. | **NÃO PASSA** |
   Nenhuma classe bate acerto ≥ 55%, mediana no sinal certo (≥ +1 / ≤ −1) nem margem ≥ +5 p.p. sobre `none`. `skew_anomaly` (n=29) e `event_pressure` (n=1117) só relatam distribuição.
-- **Leitura (até 10 linhas):** a tese de reversão do VRP não se sustenta neste dado EOD da B3. Quando a IV está cara vs a RV passada (`premium_rich`), a RV futura tende a ser **ainda mais alta** (acerto 42,3%, abaixo da base 43,7%; mediana de edge negativa) — vol clustering/momentum, não reversão. O `premium_cheap` é contaminado pela data-armadilha 2026-10-26 (33 obs com a trap na janela têm acerto 100% e mediana −32,8, RV inflada por split sem ajuste); **sem** a trap, o cheap cai para 46,2% de acerto e mediana +0,17 — também não passa. Ou seja, nem limpando o artefato o sinal aparece. O produto não deve seguir para F2+ sem o dono decidir.
+- **Leitura (até 10 linhas):** a tese de reversão do VRP não se sustenta neste dado EOD da B3. Quando a IV está cara vs a RV passada (`premium_rich`), a RV futura tende a ser **ainda mais alta** (acerto 42,3%, abaixo da base 43,7%; mediana de edge negativa) — ~~vol clustering/momentum, não reversão~~. O `premium_cheap` tem 33 obs com 2026-10-26 na janela (acerto 100%, mediana −32,8); **sem** elas, o cheap cai para 46,2% de acerto e mediana +0,17 — também não passa. O produto não deve seguir para F2+ sem o dono decidir.
+  **Leitura corrigida pelo ADR-034 (23/11/2026):** 26/10 não é "split sem ajuste" nem artefato — é choque **real** de mercado (IBOV −14,35%, sem evento corporativo, forward por paridade no spot novo). A margem negativa do `premium_rich` vem inteira de 142 observações anteriores ao choque (acerto 0%, mediana −68,29), com a IV alta porque o evento estava agendado; fora delas o `rich` tem 54,9% contra a base de 45,0% (mediana +0,84) — também não passa nos critérios, mas "momentum de vol" e "valor negativo" não são leituras sustentadas. O veredito e a Opção 1 não mudam.
 - **Proposta (o dono escolhe, não o implementador):**
   1. **Parar no portão (default P-L):** não construir F2+ sobre este sinal; repensar a tese antes de continuar.
   2. **Mudar limiar com justificativa *a priori*** (ex.: exigir `vrp` maior, ou tenor casado diferente) **e validar num período fora da amostra** — proibido otimizar no mesmo dado (P-L); qualquer mudança de fórmula sobe `model_version` e recalcula o histórico.
@@ -376,6 +377,35 @@ Critérios de desempate, nesta ordem:
 - **Por quê:** para consulta, comparar duas fichas vale mais que a garantia de `scrollY` inalterado do sheet; o accordion também remove toda a maquinaria de modal — menos código e nenhum estado de foco para manter.
 - **Consequência:** a explicação aparece logo abaixo do verbete tocado; se ele estiver no fim da viewport, é preciso um pequeno scroll para ler. Vários painéis abertos deixam a lista longa — custo aceito da comparação. `plain()` continua removendo `>`, `---` e links (B2 fechada).
 - **Revisar em:** F5-B, se o padrão de leitura pedir um sheet de métrica com o número do dia.
+
+## ADR-034 — 2026-10-26 é choque real de mercado, não artefato de dado (corrige ADR-021/023)
+
+- **Data:** 2026-11-23 · **Status:** provisória (reavaliação pedida pelo dono) · **Custo de reverter:** baixo (texto; nenhuma fórmula, `model_version` segue 2)
+- **Contexto:** desde 22/11 o projeto tratava 26/10/2026 como "data-armadilha" ("split sem ajuste", "RV inflada", "346 `premium_cheap` são artefato"). A reavaliação de 23/11 (só leitura do lake, DuckDB por fora do pipeline) mostrou que o diagnóstico estava errado.
+- **Evidência:**
+  1. **Índice:** `IBOV11` 204.890 → **175.492 pts (−14,35%)** em 26/10, e segue caindo (167.938 em 30/10).
+  2. **Câmbio:** BDRs e ETF de S&P sobem no mesmo dia — AAPL34 +6,3%, MSFT34 +9,1%, IVVB11 +9,0%; VALE3 (exportadora) +4,0%.
+  3. **Amplitude e unicidade:** 45 papéis abriram a ≤ 0,60 do fechamento anterior (2º pior dia em 2024–2026: 8) e 163 fecharam a ≤ 0,80, entre 1.328 papéis contíguos com fechamento anterior > R$ 1.
+  4. **Persistência:** B3SA3 23,65 → 15,07 (fech.) → 14,28 em 19/11; CYRE3, XPBR31, RENT3 seguem em 0,52–0,55 do preço de 23/10. Nada reverte.
+  5. **As opções concordam com o preço novo:** o forward por paridade de 26/10 acompanha o spot novo (B3SA3 15,21 × 15,07; MGLU3 5,36 × 5,30; BBAS3 17,37 × 17,47). Desdobramento sem ajuste deixaria as opções precificando o spot antigo. "0 strikes mudaram, 0 eventos B2" é prova de que **não houve evento corporativo**, não de artefato.
+  6. **Event crush da IV:** IV ATM 30d antes → depois: B3SA3 73 → 40, BBAS3 59 → 38–44, BOVA11 38 → 22, PETR4 42 → 31 — evento agendado precificado e realizado. A data é a segunda-feira seguinte ao 2º turno da eleição (25/10/2026); a causa não está no dado.
+- **O que continua suspeito (não verificável no COTAHIST):** 23 papéis abriram a exatamente 0,49–0,51 do fechamento anterior, 12 deles com abertura = mínima do dia — padrão de leilão de abertura no limite de preço. O Yang-Zhang usa a abertura e amplia a RV: rv20 de 19/11 YZ × fechamento-a-fechamento — B3SA3 261 × 169, BBAS3 159 × 131, PETR4 61 × 44, BOVA11 69 × 60, CYRE3 273 × 224 (MGLU3 é o inverso: 277 × 344). A RV é alta **de verdade** em qualquer estimador.
+- **Impacto no painel:** de 26/10 a 19/11, ~86 de ~170 papéis com métrica têm rv20 > 100%; mediana rv20 ≈ 100 (set/2026: 36) e mediana VRP ≈ −31 pts (set/2026: +5). O número é correto pela definição, mas dominado por um dia e sem aviso na tela. Pelos cálculos: a rv20 normaliza 1–2 pregões depois do próximo `prepare`; a rv30 (VRP) no início de dezembro; a rv60 no fim de janeiro; rank/z de 252 sessões carregam o evento por um ano.
+- **Impacto no portão (recálculo por fora com `load_observations`, mesmas 6.773 observações):** os 346 `premium_cheap` posteriores a 26/10 **nunca entraram no backtest** (sem 20 sessões futuras). O que entrou foram observações **anteriores** cuja RV futura contém o choque:
+
+  | Recorte | `premium_rich` | `premium_cheap` | `none` edge>0 |
+  |---|---|---|---|
+  | todas (oficial) | n 617 · 42,3% · med −1,41 | n 498 · 49,8% | 43,7% |
+  | janela contém 26/10 | n 142 · **0%** · med **−68,29** | n 33 · 100% | n 132 · 0% |
+  | janela não contém | n 475 · **54,9%** · med **+0,84** | n 465 · 46,2% | 45,0% |
+
+- **Decisão:**
+  1. 26/10/2026 passa a ser registrado como **choque real de mercado**. Os textos de "artefato"/"split sem ajuste" foram corrigidos (AGENTS, ADR-021/023, docstrings, título do recorte no `b3o backtest`) e os relatórios históricos ganharam nota de correção, sem reescrever o que diziam.
+  2. **O veredito do portão não muda:** pelos critérios pré-registrados, no período completo, as duas classes NÃO PASSAM, e a Opção 1 (ADR-023) segue ratificada. **A leitura muda:** a margem negativa do `premium_rich` vem inteira de 142 observações (23% da classe) em que a IV estava alta porque o evento estava agendado. Fora delas o `rich` fica +9,9 p.p. acima da base, mas também não passaria (54,9% < 55%; mediana 0,84 < 1). "Momentum de vol" e "valor negativo" não são leituras sustentadas. O `premium_cheap` falha de verdade (−8,8 p.p. fora do choque).
+  3. Excluir o choque depois de ver o resultado é escolher dado (P-L). "`premium_rich` sem evento binário agendado na janela" é **hipótese nova**: só vale pré-registrada e fora da amostra.
+  4. Os nomes `TRAP_DATE`/`trap_in_rv_window` ficam por compatibilidade (renomear não muda número).
+- **Consequência:** nenhuma fórmula, tabela ou `model_version` muda. Fica pendente, fora deste ADR: flag por linha no `screen` quando a janela de RV contém um dia extremo de mercado (e talvez a RV fechamento-a-fechamento ao lado), além de cobrir `rich`/`none` no recorte do relatório do backtest (hoje só `cheap`).
+- **Revisar em:** F5-B (como o painel mostra RV/VRP nas próximas sessões) e em qualquer estudo novo de sinal.
 
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 

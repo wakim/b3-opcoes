@@ -21,7 +21,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…023) |
+| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…035) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
 | Retomar em | **F5-C (builder de estrutura + PWA offline + cobertura de glossário).** F5-B mergeado na `main` (`a62c218`): Hoje/Ticker/Série com os 9 passes, réguas, gráficos SVG, `MetricModal`, labels expandidos, tabela **Com opções (163)/Sem opções (126)** com primeira coluna sticky e `screen` paginado por `offset` (o frontend busca os 289). F5-PreB mergeado: Aprender em accordion (ADR-033). **Prompt desta sessão em `docs/prompts/f5-c.md`.** Depois do F5-B entraram ADR-034 (26/10 é choque real de mercado), ADR-035 (aviso de pregão dominante na RV, `rv_shock_day`) e o negrito na ficha (`InlineMd`); o carimbo `D-1` literal passa a derivar de `age_sessions` no F5-C. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; B1 (busca de papel) e a cobertura campo↔glossário entram no F5-C. F5.5 e a parte Hoje/Ticker/Série do F5.3 estão marcados; F5-B inteiro não (Aprender é F5-PreB). |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
@@ -363,7 +363,7 @@ campo↔glossário (F5-C), F5.6–F5.9.
 
 # F6 — Posições
 
-**Objetivo:** o funil e o agente saberem o que você já tem.
+**Objetivo:** o painel e o agente saberem o que você já tem.
 **Estimativa:** 1,5 sessão · **Depende de:** F5
 
 | ID | Tarefa | Est. |
@@ -392,12 +392,12 @@ campo↔glossário (F5-C), F5.6–F5.9.
 |---|---|---|
 | F7.1 | decisões sem posição (ex.: "não entrei") no mesmo `journal.db` + avaliação automática da previsão no batch | 1.5 h |
 | F7.2 | formulário de registro no mobile | 1.5 h |
-| F7.3 | relatório de calibração: acerto das decisões por classe de sinal, comparado com a taxa do F1b | 1.5 h |
+| F7.3 | relatório de calibração: acerto das **previsões estruturadas** (§6.12) por métrica e horizonte, com `n`; sem classe de sinal nem taxa do F1b (ADR-023/024 — o sinal não passou e não é base de comparação) | 1.5 h |
 
 **Aceitação F7**
 - [ ] 30 dias de diário sem lacuna
 - [ ] ≥ 10 previsões avaliadas automaticamente
-- [ ] relatório compara acerto pessoal × taxa histórica do sinal
+- [ ] relatório mostra o acerto pessoal por métrica/horizonte com `n` e o que ficou `void`, sem comparar com classe de sinal (ADR-024)
 
 ---
 

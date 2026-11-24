@@ -1,6 +1,6 @@
 # Spec — Opções B3 (dados + MCP + API + PWA)
 
-**Status:** rascunho para revisão · **Versão:** 0.5 · **Fonte de dados:** B3 (COTAHIST + regulatórios), EOD, gratuita
+**Status:** rascunho para revisão · **Versão:** 0.6 · **Fonte de dados:** B3 (COTAHIST + regulatórios), EOD, gratuita
 **Consumo primário:** celular (PWA instalável) · **Secundário:** desktop responsivo e agente via MCP
 
 ## Changelog
@@ -11,6 +11,7 @@
 | 0.2 | Fecha lacunas apontadas no review de 22/11: origem do OI e da curva DI, convenções de tempo, ações corporativas que não são dividendo, classes de sinal, `risk_budget` restaurado, catálogo único de tools (journal fora do MCP), contexto seguro do PWA, previsão estruturada, busca e seletor de vencimento no mobile, formulário do diário, aceitação de legs. |
 | 0.3 | HTTPS via `tailscale serve` (D12). Posições antecipadas para o F4b (§14): modelo, marcação, gregas líquidas, alertas, uso pelo agente. IA do PWA reorganizada em 4 destinos + 2 drill-downs; `Aprender` ganha casa. Catálogo sobe para 18 tools de leitura. |
 | 0.4 | Review de 22/11 (2): ajuste de strike classificado pela assinatura entre strikes — Δ constante = provento, razão constante = escala (desdobramento ≠ dividendo); estilo da opção (americana/europeia) lido do nome resumido do COTAHIST, medido em 2026; sinal do RR25 corrigido na aceitação; `risk_budget` sem margem (só perda máxima); MCP montado no FastAPI (uma porta); catálogo cai para 10 funções; saem RND/PoP, BAW, `quote_spot`, `counter_evidence`, `historical_analog` (vira `signal_backtest` com classes fixas); backtest do sinal (§6.13) antes da UI; ano corrente reconstruído inteiro a cada `prepare`; calendário de resultados derivado da CVM (histórico real + estimativa marcada); validação de IV sem OpLab (paridade entre europeias + referência externa só para PETR4); frontend em Vite + TanStack Router/Query (sem TanStack Start); testes automatizados entram na v1; critérios de aceitação só no `PLAN.md`. |
+| 0.6 | **Alinhamento com as decisões de 22–23/11 (ADR-017…035)** — o produto é **descritivo** (ADR-023/024): classes de sinal continuam gravadas mas **fora do produto**; `signal_backtest`, `/api/backtest` e `/api/briefing` não são expostos (ADR-027); Hoje sem filtro por classe; `inconsistent` é informativa e sai só do skew/butterfly (ADR-020); preço de inversão é o fechamento (ADR-017); estilo medido corrigido (calls ~57/42); ticker com espaço à **direita**; `strike_adj_ind` sempre `0` em 2026; sem suíte de testes (ADR-019); descasamento de prazo do portão registrado (§6.13); aviso `rv_shock_day` (ADR-035). |
 | 0.5 | **Stack inteira em container** (§4.1): `compose.yaml` + imagem multi-stage (Python runtime / dev, Node para o build), `podman compose` como runner oficial no host (compose padrão, compatível com `docker compose`), `./data:/data` como único bind mount, `.venv`/`node_modules` em volumes nomeados, `prepare-watch` como serviço. Nenhum comando oficial usa Python ou Node do host. |
 
 ---
@@ -34,7 +35,7 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 | D2 | Funil e métricas 100% EOD; live nunca alimenta derivação | review adversarial |
 | D3 | MCP read-only; escrita só no diário, e só via HTTP | review adversarial |
 | D4 | IV por forward implícito (paridade) + Black-76, **só OTM** | review quant |
-| D5 | Gatilho do funil é z-score do VRP; IV rank só contexto | review quant |
+| D5 | ~~Gatilho do funil é z-score do VRP~~ — **suspenso**: o portão F1b não passou (ADR-023); o produto é descritivo e não tem gatilho (ADR-024). VRP, z e IV rank são leitura, não sinal | review quant · revisto 23/11 |
 | D6 | ATM 30d interpolado em variância total | review quant |
 | D7 | Série = `(ticker, vencimento)`; strike por data | medição no arquivo |
 | D8 | Sem preço vivo na v1 (o endpoint não tem timestamp nem contrato) | review 0.4 |
@@ -45,7 +46,7 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 | D13 | Frontend: **Vite + React + TypeScript + TanStack Router/Query**, SPA pura, servida estática pelo FastAPI | owner, revisado 0.4 |
 | D14 | Nenhuma lógica de servidor no frontend: FastAPI é o único backend (garantido pela stack, que não tem servidor) | arquitetura |
 | D15 | Um processo, uma porta: MCP montado em `/mcp` no mesmo FastAPI | review 0.4 |
-| D16 | O sinal é provado por backtest (§6.13) antes de existir UI | review 0.4 |
+| D16 | O sinal é provado por backtest (§6.13) antes de existir UI — **feito: não passou** (ADR-023); a UI que existe é descritiva | review 0.4 · revisto 23/11 |
 | D17 | Ajuste de strike classificado pela assinatura entre strikes (Δ constante × razão constante), nunca por limiar (§6.6) | medição no arquivo |
 | D18 | A stack inteira roda em container (`compose.yaml`): host só precisa de Podman e `git`; nenhum comando oficial usa Python/Node do host (§4.1) | owner, 22/11 |
 
@@ -56,13 +57,13 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 | # | Assunção | Default |
 |---|---|---|
 | A1 | Vencimentos cobertos | mensais + semanais |
-| A2 | Opções de índice e ETF | fora da v1 |
+| A2 | Opções de índice e ETF | fora da v1 como **precificação própria**; o painel descritivo mostra BOVA11 e a pseudo-linha `IBOV11` porque entram no corte de volume (excluir índice/BDR do universo é decisão pendente) |
 | A3 | Capital e limite de risco | parâmetros por chamada |
 | A4 | Diário | SQLite no volume de dados |
 | A5 | Backfill | 3 anos (2024–2026) |
 | A6 | Idioma | código/spec em inglês; UI e conteúdo em português |
 | A7 | Offline | shell + última sessão em cache, com carimbo de sessão |
-| A8 | Estilo das opções | **medido (2026):** todas as puts são europeias; calls são 66% americanas e 34% europeias (por série), com os dois estilos no mesmo papel (`PETR` e `PETRE`). O estilo é atributo da série, lido do COTAHIST (§5.2) |
+| A8 | Estilo das opções | **medido (2026, recontado em 22/11):** todas as puts são europeias; calls são ~57% americanas e ~42% europeias por série (62.958 A / 46.109 E; o "66/34" antigo estava errado), com os dois estilos no mesmo papel (`PETR` e `PETRE`). O estilo é atributo da série, lido do COTAHIST (§5.2) |
 | A9 | Universo útil | definido pelo relatório de liquidez do F0; a expectativa é de 10–20 papéis, concentrados nos 1–2 primeiros vencimentos |
 
 ---
@@ -132,7 +133,7 @@ Parquet + DuckDB, particionado por `year`. Preços em **centavos inteiros** (`in
 
 ### 5.1 `raw.cotahist`
 
-`refdate`, `tpmerc` (010 à vista, 020 fracionário, 070 call, 080 put, 012/013 exercício), `ticker` (**trim** — campo alinhado à direita), `corp_name`, `open/high/low/avg/close`, `best_bid`, `best_ask`, `trades`, `qty`, `volume`, `strike`, `strike_adj_ind`, `maturity`, `isin_underlying`, `distribution_id`.
+`refdate`, `tpmerc` (010 à vista, 020 fracionário, 070 call, 080 put, 012/013 exercício), `ticker` (**trim** — o campo vem alinhado à esquerda com espaço à direita; AGENTS, armadilha 5), `corp_name`, `open/high/low/avg/close`, `best_bid`, `best_ask`, `trades`, `qty`, `volume`, `strike`, `strike_adj_ind`, `maturity`, `isin_underlying`, `distribution_id`.
 
 > **Armadilha registrada:** o `isin` é do **ativo-objeto**, não da série. Nunca usar como chave. Medido em 2026: 220.282 tickers de opção, 51.830 (23,5%) com mais de um strike; dos que têm dois valores, 98% descendentes (provento) e 698 ascendentes (não-provento).
 
@@ -150,11 +151,11 @@ Uma linha por `(ticker, refdate)`, com o *leg* (trecho entre ajustes).
 | `underlying_market` | `010` ou `020` — qual mercado forneceu o spot do dia (§6.1) |
 | `leg_index` | incrementa a cada mudança de strike |
 | `strike` | o do dia, em centavos |
-| `mid`, `spread_abs`, `spread_pct` | `spread_pct = spread_abs / mid`; se bid ou ask = 0, `mid = close` e `spread_pct = null` + flag `one_sided` |
+| `mid`, `spread_abs`, `spread_pct` | `spread_pct = spread_abs / mid`; se bid ou ask = 0, `mid = close` e `spread_pct = null` + flag `one_sided`. **Em `metrics_series`, `mid` carrega o fechamento** (ADR-017): IV e forward invertem o `close`, nunca o meio do book |
 | `trades`, `volume`, `oi` | `oi` vem de `core.open_interest` |
 | `is_liquid` | regra §6.9 |
 
-**Fronteira de leg** = mudança de `strike` **ou** mudança de `strike_adj_ind` **ou** mudança de `distribution_id`. Se os três divergirem, flag `leg_ambiguity` e o leg é cortado no primeiro sinal.
+**Fronteira de leg** = mudança de `strike` **ou** mudança de `strike_adj_ind` **ou** mudança de `distribution_id`. Se os três divergirem, flag `leg_ambiguity` e o leg é cortado no primeiro sinal. *Medido em 2026:* `strike_adj_ind` é **sempre `0`** (3.570.794 linhas), então na prática a fronteira é `strike` e `distribution_id`.
 
 ### 5.3 `core.metrics_underlying`
 
@@ -232,7 +233,7 @@ A assinatura que separa os dois está **entre strikes do mesmo subjacente, na me
 Regras de amostra:
 - **Só mudanças contíguas** entram na classificação: a série precisa ter negociado no pregão anterior. O COTAHIST só lista série com negócio, e 70% das mudanças de strike em 2026 aparecem depois de uma lacuna — podem acumular mais de um evento, e **a data observada não é a data ex**.
 - `ex_date` = primeira data com mudança contígua no subjacente. Mudança não contígua é atribuída aos eventos já classificados; se não fechar com a soma deles → `leg_ambiguity`.
-- Validar contra `strike_adj_ind`; divergência → `leg_ambiguity`.
+- Validar contra `strike_adj_ind`; divergência → `leg_ambiguity`. *(Em 2026 o campo é sempre `0`: não há o que validar — AGENTS.)*
 - Em 2026, das 274 datas-evento contíguas com ≥ 2 strikes: 268 provento, 3 escala, 3 indeterminadas (BBDC, variação de 2–3 centavos entre strikes); mais 13 com um só strike.
   *Nota de 23/11/2026 (contagem fechada na auditoria do C1):* o retrato acima é do arquivo até **22/10/2026**. Com o ano até 19/11 são **313 eventos** = 296 provento + 2 escala + 15 indeterminados (299 com ≥ 2 strikes, 14 com um só). A reconciliação item a item está no `AGENTS.md`, armadilha 2.
 
@@ -249,7 +250,7 @@ Mínimo de 5 strikes entre 20Δ e 80Δ; abaixo disso `null` + `sparse_chain`.
 **Papel no funil:** volume financeiro médio 20d `≥ R$ 5 M`.
 `days_to_liquidate = oi / média de quantidade (ações) 20d` (10 primeiros dias úteis) — o OI vem em ações do ativo-objeto, não em reais (ADR-020).
 
-Classes de sinal (as que os filtros da tela usam):
+Classes de sinal — **gravadas em `metrics_underlying.signal_class`, mas fora do produto** (ADR-023/024: o portão F1b não passou). Nenhuma tela, rota, tool ou relatório as exibe ou filtra por elas; ficam como registro do portão. Reintroduzir exige novo ADR e novo portão pré-registrado fora da amostra:
 
 | Classe | Regra |
 |---|---|
@@ -259,7 +260,7 @@ Classes de sinal (as que os filtros da tela usam):
 | `event_pressure` | `iv_atm(front) > iv_atm(back) + 2` |
 | `none` | nenhuma das acima |
 
-Classe com ≠ `none` é **rara por construção** (z ≥ 1,5 é cauda). O funil não tem meta de quantidade: num universo de 10–20 papéis, zero a três candidatos por dia é o esperado. O ranking mostra todos os papéis líquidos, com a classe como coluna.
+~~Classe com ≠ `none` é rara por construção… o ranking mostra a classe como coluna.~~ **Suspenso (ADR-024):** o `screen` é uma tabela descritiva em ordem alfabética, sem classe, sem nota e sem ranking.
 
 **Resultado próximo:** se há data em `core.earnings` antes do vencimento de referência, a linha ganha `earnings_before_expiry: true`, a data e o `kind` (`actual` ou `estimated`, exibido como "previsto"). Não muda a classe — é o primeiro item de contexto do briefing.
 
@@ -270,7 +271,7 @@ Classe com ≠ `none` é **rara por construção** (z ≥ 1,5 é cauda). O funil
 Densidade neutra ao risco e PoP ficam **fora da v1**: a segunda derivada numa grade esparsa da B3 é ruído com cara de número (ver `BACKLOG.md`).
 
 ### 6.11 Validadores (filtram, não informam)
-Butterflies ≥ `−tolerância`; variância total não-decrescente no mesmo strike; call decrescente / put crescente em K. Falha → `inconsistent`, fora do smile e do mispricing.
+Butterflies ≥ `−tolerância`; variância total não-decrescente no mesmo strike; call decrescente / put crescente em K. Falha → `inconsistent`. **Revisto pelo ADR-020:** a flag é informativa — a série **continua no ATM** (que precisa dos dois vizinhos de F) e sai só do skew/butterfly; tolerâncias relativas à variância ATM (`butterfly_tol = 0,25`, monotonicidade 1 vol point, só em `|ln(K/F)| ≤ 0,10`).
 
 ### 6.12 Previsão estruturada (avaliável)
 O diário não aceita texto livre como previsão. Schema:
@@ -288,14 +289,18 @@ observed: null
 O batch avalia no dia seguinte a `evaluate_on` e grava `observed`/`status`. Sem isso, a calibração pessoal seria manual para sempre.
 
 ### 6.13 Backtest das classes de sinal
+> **Status (23/11/2026):** executado — **NÃO PASSA** nas duas classes (ADR-023, parecer independente APROVADO). A margem negativa do `premium_rich` vem do choque real de mercado de 2026-10-26 (ADR-034). O produto parou no portão e segue descritivo (ADR-024). O texto abaixo é o desenho pré-registrado, mantido como registro.
+>
+> **Descasamento de prazo (registrado depois):** `iv_atm_30d` é IV de **30 dias úteis** (`T = 30/252`, ≈ 6 semanas), e o desfecho é a RV dos **20** pregões seguintes. O próprio glossário diz que tenores diferentes "fabricam VRP". Como foi pré-registrado, o veredito não se refaz nesta amostra; **qualquer estudo futuro casa os prazos** (IV de N pregões contra RV dos N pregões seguintes).
+
 Pergunta: quando a classe disparou, a vol entregue depois confirmou o preço?
 
 - Para cada `(papel, data)` do histórico (2024–2026, após as 252 sessões de aquecimento do z): `rv_fwd20` = Yang-Zhang das **20 sessões seguintes**, ajustada por evento de escala.
 - Desfecho: `edge = iv_atm_30d(data) − rv_fwd20`. Para `premium_rich`, acerto = `edge > 0`; para `premium_cheap`, acerto = `edge < 0`.
 - Relatório por classe e por papel: `n`, taxa de acerto, mediana e P10 de `edge`, comparados com a classe `none` (base).
-- **Sem look-ahead:** o z na data usa só dados até a data; teste automatizado embaralha o futuro e exige que o resultado mude.
+- **Sem look-ahead:** o z na data usa só dados até a data; a validação embaralha o futuro e exige que o resultado mude (feito por script no parecer do F1b; não há suíte — ADR-019).
 - **Sem otimização:** os limiares da §6.9 são fixados *a priori*. Mudar limiar exige justificativa escrita no `AGENTS.md` e um período fora da amostra.
-- Exposto como `signal_backtest(signal_class, ticker=None)`; o briefing e o agente citam a taxa histórica da classe.
+- ~~Exposto como `signal_backtest(signal_class, ticker=None)`; o briefing e o agente citam a taxa histórica da classe.~~ **Não exposto** (ADR-027): existe só como `b3o backtest` (registro do portão).
 
 ### 6.14 Calendário de resultados (sem manutenção manual)
 Fonte única: **dados abertos da CVM** (`dados.cvm.gov.br`), gratuitos, sem token.
@@ -311,7 +316,7 @@ Fonte única: **dados abertos da CVM** (`dados.cvm.gov.br`), gratuitos, sem toke
 
 ## 7. `QueryService`
 
-Uma classe, um arquivo. Nenhuma query SQL fora dela. **10 funções de leitura**, todas devolvendo `as_of_session` e `model_version`. Menos tools, sem sobreposição: agentes escolhem pior quando duas tools respondem a mesma pergunta.
+Uma classe, um arquivo. Nenhuma query SQL fora dela. Todas as leituras devolvem `as_of_session` e `model_version`. **Estado em 23/11:** existem `health`, `screen`, `search_tickers`, `underlying`, `chain`, `series`, `events` e `structure_eval`; `signal_backtest` **não é exposto** (ADR-027); `positions`/`position` são do F6. Menos tools, sem sobreposição: agentes escolhem pior quando duas tools respondem a mesma pergunta.
 
 ```python
 health()                                                -> Health
@@ -326,7 +331,7 @@ series(ticker, maturity, days=60)                       -> SeriesDetail   # resu
 structure_eval(legs, date=None, capital=None,
                scenarios=True)                          -> StructureResult # payoff, gregas, cenários, perda máxima
 events(ticker)                                          -> Events          # vencimentos, ex-dividendo, eventos de escala, resultados
-signal_backtest(signal_class, ticker=None)              -> BacktestResult  # §6.13
+# signal_backtest(signal_class, ticker=None)            -> BacktestResult  # NÃO exposto (ADR-027)
 positions(date=None)                                    -> Portfolio       # posições + agregados
 position(id, date=None)                                 -> PositionDetail
 ```
@@ -339,9 +344,9 @@ position(id, date=None)                                 -> PositionDetail
 
 ## 8. MCP
 
-Streamable HTTP montado em `/mcp` no mesmo FastAPI (`127.0.0.1:8080/mcp`). Expõe **as 10 funções de leitura**, com os nomes canônicos acima (nomes antigos da doc de arquitetura — `option_chain`, `data_health`, `underlying_overview` — não existem).
+Streamable HTTP montado em `/mcp` no mesmo FastAPI (`127.0.0.1:8080/mcp`). Expõe as leituras **descritivas** da §7 (hoje: `health`, `screen`, `underlying`, `chain`, `series`, `events`, `structure_eval`; `positions` no F6), com os nomes canônicos (nomes antigos da doc de arquitetura — `option_chain`, `data_health`, `underlying_overview` — não existem).
 
-`positions` existe justamente para o agente **não sugerir o que você já tem**. A descrição de `screen` e de `structure_eval` instrui o agente a chamar `positions` antes de recomendar; sem isso, ele sugeriria dobrar exposição em PETR4 sem saber que você já está vendido em vol.
+`positions` (F6) existe para o agente **conhecer a exposição que você já tem**. O produto não recomenda (ADR-024); a descrição de `screen` e de `structure_eval` instruirá o agente a chamar `positions` antes de **comentar** um papel; sem isso, ele sugeriria dobrar exposição em PETR4 sem saber que você já está vendido em vol.
 
 Regras:
 
@@ -368,9 +373,9 @@ Regras:
 | `GET /api/t/{t}/chain?exp=&delta=` | cadeia | 60 s |
 | `GET /api/t/{t}/events` | `events` | 1 h |
 | `GET /api/s/{t}/{maturity}` | `series` (resumo + histórico) | 60 s |
-| `GET /api/backtest?class=&t=` | `signal_backtest` | 1 h |
-| `GET /api/glossary/{key}` | verbete + exemplo com o dado da sessão | 1 h |
-| `GET /api/briefing?date=` | briefing do `screen` do dia (Markdown gerado pelo Python) | 60 s |
+| ~~`GET /api/backtest?class=&t=`~~ | não exposto (ADR-027) | — |
+| `GET /api/glossary` · `GET /api/glossary/{key}` | lista e verbete; o número do dia vem da tela, não do texto (ADR-031) | 1 h |
+| ~~`GET /api/briefing?date=`~~ | não existe; o relatório do dia é `b3o screen` → `data/out/` | — |
 | `POST /api/structure` | `structure_eval` | — |
 | `GET /api/positions` | aba Carteira (posições + agregados) | 60 s |
 | `GET /api/positions/{id}` | posição com marcação, gregas e tese | 60 s |
@@ -391,7 +396,7 @@ Ticker e Série **não são destinos** — são navegação. Ficam fora da barra
 
 | Destino (bottom nav) | Conteúdo |
 |---|---|
-| **Hoje** | busca · filtros por classe de sinal · cartões de candidatos · excluídos com motivo · briefing do dia |
+| **Hoje** | busca · tabela descritiva do universo (com opções / sem opções), em ordem alfabética, com motivo de exclusão · medianas · aviso de pregão dominante na RV (ADR-035). **Sem** filtro por classe, candidatos ou ranking (ADR-024) |
 | **Carteira** | posições abertas · agregados (capital, P&L, Δ/Θ/ν líquidos) · tese vs realidade |
 | **Diário** | lista de decisões · **formulário de registro** · previsão estruturada · desfecho |
 | **Aprender** | glossário em **três níveis** (o 1 visível de saída), com ficha por métrica; a mesma ficha abre numa *sheet* ao tocar em qualquer métrica das outras telas |
@@ -426,7 +431,7 @@ Regras:
 - Carimbo `sessão AAAA-MM-DD · D-1` no topo de todas as telas.
 - Contraste AA; gráficos em SVG inline (≈4 KB), sem biblioteca.
 - **Camada educacional**: toque no nome de qualquer métrica abre ficha (o que é · erro comum · o número de hoje). Aba "Aprender" com os três níveis do glossário. Conteúdo em `docs/glossario.md`, servido por `/api/glossary`.
-- Regra de cobertura: **nenhuma métrica aparece na tela sem verbete** — teste automático comparando os campos da API com as chaves do glossário.
+- Regra de cobertura: **nenhuma métrica aparece na tela sem verbete** — script de conferência (`npm run coverage`, F5-C) comparando os campos tocáveis com as chaves do glossário; não é suíte de testes (ADR-019).
 
 Offline: precache do shell; *network-first* para `/api` com fallback ao cache da última sessão; banner permanente com a data; sem cache → erro explícito.
 
@@ -438,7 +443,7 @@ Offline: precache do shell; *network-first* para `/api` com fallback ao cache da
 - Parse **sem assumir ordem** (o arquivo é ordenado por instrumento); ao final, reconciliar `count(distinct refdate)` e linhas por data contra o trailer.
 - Ano corrente: reparsear o arquivo anual inteiro e **substituir a partição** do ano. Anos fechados são imutáveis. Escrita atômica: `tmp/` → `os.replace`; nunca substituir antes de validar.
 - Se uma data já carregada mudar de conteúdo (sha por data em `ingest_state`), registrar em `health` — a substituição já cuidou do dado.
-- `model_version` sobe a cada mudança de fórmula; recálculo grava em `model=vN/` e troca o ponteiro.
+- `model_version` sobe a cada mudança de fórmula e o histórico é **recalculado inteiro**, sobrescrevendo as tabelas derivadas (não há `model=vN/` nem ponteiro — o rank nunca mistura modelos).
 - **Validação (sem suíte de testes — ADR-019):** cada fórmula e o parser são conferidos **no dado real** e por um caminho independente (contagem por fora, valor recalculado à mão); a medição fica registrada no `AGENTS.md`. Antes de qualquer troca de `model_version`, rodar o pipeline no histórico e comparar com a medição registrada.
 - **Agendamento:** o serviço `prepare` roda no `compose up` (one-shot) e o serviço `prepare-watch` (profile `watch`) repete diariamente às 21:30 BRT. Sem `watch`, o dado envelhece com o container ligado; `health` acusa a idade.
 - **Sem Python no host:** nenhum passo do pipeline depende de `uv`/Python/Node instalados fora do container. O host precisa de Podman e `git`.
@@ -460,10 +465,11 @@ Os critérios vivem **só no `PLAN.md`**, por fase. Duplicá-los aqui fez as dua
 | Fonte de OI é frágil (10 dias, layout próprio) | tabela separada e nullable; `days_to_liquidate` cai para `null` |
 | Curva DI pode faltar | fallback em cascata + `rate_source` visível |
 | Grade esparsa em papel pequeno | `sparse_chain` → `null`, nunca extrapolar |
-| Divergência tela × agente | `QueryService` única + teste de contrato comparando os dois retornos |
-| Desdobramento tratado como dividendo | assinatura entre strikes (§6.6) + testes com eventos reais de 2026 (SBSP ×0,2, SIMH ×2) + ajuste antes de RV (§6.5) |
+| Divergência tela × agente | `QueryService` única + `mcp_smoke.py` comparando MCP × HTTP no dado real |
+| Desdobramento tratado como dividendo | assinatura entre strikes (§6.6) + conferência com eventos reais de 2026 (SBSP ×0,2, SIMH ×2) + ajuste antes de RV (§6.5) |
+| Choque de mercado lido como defeito do dado | ADR-034 (26/10/2026); aviso `rv_shock_day` na tela (ADR-035) |
 | Paridade com estilos misturados | estilo por série (A8); puts todas europeias; calls americanas com ex-dividendo fora do forward e do smile |
-| Sinal sem valor | backtest (§6.13) é portão antes da UI |
+| Sinal sem valor | **materializado**: o portão não passou (ADR-023); produto descritivo (ADR-024) |
 | Universo pequeno demais para um "funil" | relatório de liquidez no F0; o produto aceita ser um painel de poucos papéis |
 | Posição registrada fora da app → P&L diverge | abrir/fechar só pela app; reconciliação semanal contra o extrato da corretora |
 

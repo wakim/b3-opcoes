@@ -10,7 +10,7 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.5, direção visual, log de decisões (ADR-001…032) |
+| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…035) |
 | Código | 🟢 **F0–F4 completos + F5-A entregue** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events, structure_eval) e `b3o struct` (payoff, breakevens, capital, gregas e cenários da estrutura dada). F5-A acrescenta a SPA servida pelo FastAPI (dispatcher `/mcp` × estático), `/api/tickers`, `/api/glossary`, cliente tipado e wireframe funcional. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
 | Fase atual | **F5-B (visual + unslop)** — F5-A fechado com parecer em `docs/relatorios/2026-11-23-revisao-f5a.md` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |

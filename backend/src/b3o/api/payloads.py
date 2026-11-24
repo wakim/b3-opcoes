@@ -21,6 +21,7 @@ from b3o.api.serialize import (
     MAX_ROWS,
     SECTIONS,
     clamp_max_rows,
+    clamp_page_size,
     envelope,
     jsonable,
     parse_date,
@@ -54,7 +55,7 @@ def screen_payload(
     transporte: cada chamada devolve no máximo `limit` linhas e declara
     `meta.offset`/`meta.next_offset` (`null` na última página).
     """
-    limit = clamp_max_rows(max_rows)
+    limit = clamp_page_size(max_rows)
     start = max(0, int(offset))
     bundle = service.screen_bundle(_as_date(date))
     summary = aggregate(
@@ -212,6 +213,91 @@ def liquid_payload(
         list_key="rows",
         total=detail.total,
     )
+
+
+def positions_payload(
+    service: QueryService,
+    date: Any = None,
+    max_rows: int | None = DEFAULT_MAX_ROWS,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """`GET /api/positions` / tool `positions`: abertas + agregados paginados."""
+    start = max(0, int(offset))
+    portfolio = service.positions(
+        _as_date(date),
+        max_rows=clamp_page_size(max_rows),
+        offset=start,
+    )
+    data = {
+        "session": portfolio.session.isoformat(),
+        "positions": [jsonable(row) for row in portfolio.positions],
+        "totals": jsonable(portfolio.totals),
+    }
+    payload = envelope(
+        data,
+        as_of_session=portfolio.session,
+        model_version=portfolio.model_version,
+        list_key="positions",
+        total=portfolio.total,
+    )
+    meta = payload.get("meta")
+    if meta is not None:
+        meta["offset"] = start
+        next_offset = start + int(meta.get("returned", 0))
+        meta["next_offset"] = next_offset if next_offset < portfolio.total else None
+    return payload
+
+
+def _position_detail_payload(detail: Any) -> dict[str, Any]:
+    """Serializa `PositionDetail`; payoff parcial nunca é apresentado como completo."""
+    data = jsonable(detail)
+    payload = envelope(
+        data,
+        as_of_session=detail.session,
+        model_version=detail.model_version,
+        list_key="payoff",
+        total=len(detail.payoff),
+        counts={"legs": len(detail.legs), "marks": len(detail.marks)},
+    )
+    meta = payload.get("meta")
+    if meta is not None and (meta.get("truncated") or meta.get("note")):
+        original_total = int(meta.get("total", len(detail.payoff)))
+        payload["data"]["payoff"] = []
+        payload["data"]["breakeven_brl"] = []
+        flags = sorted(set(payload["data"].get("flags") or []) | {"payoff_truncated"})
+        payload["data"]["flags"] = flags
+        meta["returned"] = 0
+        meta["truncated"] = True
+        meta["note"] = (
+            f"payoff com {original_total} pontos não coube no transporte; "
+            "o gráfico foi omitido para não mostrar uma curva parcial"
+        )
+    return payload
+
+
+def position_payload(
+    service: QueryService,
+    position_id: str,
+    date: Any = None,
+) -> dict[str, Any]:
+    """`GET /api/positions/{id}`: marcação, gregas, tese e payoff."""
+    return _position_detail_payload(
+        service.position(position_id, date=_as_date(date))
+    )
+
+
+def position_open_payload(service: QueryService, body: Any) -> dict[str, Any]:
+    """`POST /api/positions`: grava abertura e devolve o detalhe."""
+    return _position_detail_payload(service.open_position(body))
+
+
+def position_close_payload(
+    service: QueryService,
+    position_id: str,
+    body: Any,
+) -> dict[str, Any]:
+    """`POST /api/positions/{id}/close`: grava fechamento e devolve o detalhe."""
+    return _position_detail_payload(service.close_position(position_id, body))
 
 
 def series_payload(

@@ -12,11 +12,13 @@ As rotas `/api` ficam registradas **antes** do mount, como sempre.
 
 Cache: `index.html` `no-store`, `/assets/*` `immutable`, JSON de `/api` `no-cache`.
 `frontend/dist` ausente é `503 frontend_missing`, nunca página em branco.
-Escritas/`X-App-Token` ficam para o F6 (ADR F5).
+Escritas de posição (`POST /api/positions*`) exigem `X-App-Token` (F6); cálculo de
+estrutura continua sem gravação.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -24,7 +26,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.routing import APIRoute
@@ -33,6 +35,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
 
 from b3o.api import payloads
+from b3o.api.auth import require_write_token
 from b3o.api.mcp_server import mcp
 from b3o.api.serialize import (
     DEFAULT_MAX_ROWS,
@@ -82,7 +85,7 @@ def _api_error(status_code: int, content: dict[str, Any]) -> JSONResponse:
 _API_HINT = (
     "rotas: /api/health, /api/screen, /api/tickers, /api/glossary, "
     "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, /api/liquid, "
-    "/api/s/{ticker}/{maturity} e POST /api/structure"
+    "/api/positions, /api/positions/{id}, /api/s/{ticker}/{maturity} e POST /api/structure"
 )
 
 
@@ -352,6 +355,48 @@ def create_app() -> FastAPI:
             _service(), date=_date(date), limit=limit
         )
 
+    @app.get("/api/positions")
+    def api_positions(
+        date: str | None = None,
+        max_rows: int = DEFAULT_MAX_ROWS,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Posições abertas + agregados (leitura liberada na tailnet)."""
+        return payloads.positions_payload(
+            _service(),
+            date=_date(date),
+            max_rows=max_rows,
+            offset=offset,
+        )
+
+    @app.get("/api/positions/{position_id}")
+    def api_position(
+        position_id: str,
+        date: str | None = None,
+    ) -> dict[str, Any]:
+        """Detalhe de uma posição com marcação, gregas, tese e payoff."""
+        return payloads.position_payload(
+            _service(), position_id, date=_date(date)
+        )
+
+    @app.post("/api/positions", dependencies=[Depends(require_write_token)])
+    async def api_position_open(request: Request) -> dict[str, Any]:
+        """Abre posição; o token é validado antes de ler/validar o corpo JSON."""
+        body = await _json_object_body(request)
+        return payloads.position_open_payload(_service(), body)
+
+    @app.post(
+        "/api/positions/{position_id}/close",
+        dependencies=[Depends(require_write_token)],
+    )
+    async def api_position_close(
+        position_id: str,
+        request: Request,
+    ) -> dict[str, Any]:
+        """Fecha posição pelo mark EOD; o token vem antes da validação do corpo."""
+        body = await _json_object_body(request, allow_empty=True)
+        return payloads.position_close_payload(_service(), position_id, body)
+
     @app.get("/api/s/{ticker}/{maturity}")
     def api_series(ticker: str, maturity: str, days: int = 60) -> dict[str, Any]:
         """Identidade e histórico de uma série (ticker + vencimento)."""
@@ -378,7 +423,7 @@ def create_app() -> FastAPI:
         raise SourceFailure(
             SourceError(
                 code="not_found",
-                message=f"rota /api/{rest} não existe no F3/F4/F5",
+                message=f"rota /api/{rest} não existe no F3/F4/F5/F6",
                 hint=_API_HINT,
             )
         )
@@ -386,6 +431,44 @@ def create_app() -> FastAPI:
     # Dispatcher por último: as rotas /api e o MCP continuam intactos.
     app.mount("/", spa)
     return app
+
+
+_MAX_WRITE_BODY_BYTES = 65_536
+
+
+async def _json_object_body(request: Request, *, allow_empty: bool = False) -> dict[str, Any]:
+    """Corpo JSON limitado; sem modelo Pydantic para a auth rodar antes do parse."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            length = int(declared)
+        except ValueError as exc:
+            raise request_error("Content-Length inválido", "envie um corpo JSON válido") from exc
+        if length < 0 or length > _MAX_WRITE_BODY_BYTES:
+            raise request_error(
+                "corpo da escrita excede 64 KiB",
+                "reduza notas/pernas; o contrato limita 60 pernas e 2000 caracteres de notas",
+            )
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > _MAX_WRITE_BODY_BYTES:
+            raise request_error(
+                "corpo da escrita excede 64 KiB",
+                "reduza notas/pernas; o contrato limita 60 pernas e 2000 caracteres de notas",
+            )
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    if not raw and allow_empty:
+        return {}
+    try:
+        body = json.loads(raw)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise request_error("corpo da escrita não é JSON válido", "envie um objeto JSON") from exc
+    if not isinstance(body, dict):
+        raise request_error("corpo da escrita precisa ser um objeto JSON", "envie { ... }")
+    return body
 
 
 def _service():

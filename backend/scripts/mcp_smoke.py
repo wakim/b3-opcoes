@@ -3,8 +3,8 @@
 Roda **no container** (`podman compose run --rm test python scripts/mcp_smoke.py`),
 contra o servidor `app` no ar. O que ele prova, com saída colada:
 
-1. `tools/list` traz `health`, `screen`, `underlying`, `chain`, `series`, `events`
-   (F3) e `structure_eval` (F4), cada uma com "Use quando" e "Não use para" e sem
+1. `tools/list` traz `health`, `screen`, `underlying`, `chain`, `series`, `events`,
+   `positions` e `structure_eval`, cada uma com "Use quando" e "Não use para" e sem
    vocabulário preditivo;
 2. `screen` de 19/11 devolve 289/163/126, IV mediana 31,43 (n=35) e VRP −30,66
    (n=35), com no máximo 60 linhas e `truncated` coerente;
@@ -42,7 +42,16 @@ SESSION = "2026-11-19"
 TICKER = "PETR4"
 SERIES_TICKER = "PETRL44"
 SERIES_MATURITY = "2026-12-18"
-TOOLS = ("health", "screen", "underlying", "chain", "series", "events", "structure_eval")
+TOOLS = (
+    "health",
+    "screen",
+    "underlying",
+    "chain",
+    "series",
+    "events",
+    "positions",
+    "structure_eval",
+)
 STRUCTURE = {
     "underlying": TICKER,
     "date": SESSION,
@@ -89,6 +98,15 @@ def lists_in(value: Any, path: str = "") -> list[tuple[str, list[Any]]]:
     elif isinstance(value, list):
         found.append((path, value))
     return found
+
+
+def without_notes(value: Any) -> Any:
+    """`notes` é texto livre do dono; não entra no grep de vocabulário do produto."""
+    if isinstance(value, dict):
+        return {key: without_notes(item) for key, item in value.items() if key != "notes"}
+    if isinstance(value, list):
+        return [without_notes(item) for item in value]
+    return value
 
 
 def max_response_size() -> tuple[int, str]:
@@ -245,7 +263,7 @@ def verify_limits_and_banned() -> None:
         if len(items) > 60
     ]
     check(not over, "nenhuma lista > 60 linhas", json.dumps(over))
-    text = json.dumps(PAYLOADS, ensure_ascii=False)
+    text = json.dumps(without_notes(PAYLOADS), ensure_ascii=False)
     for field in (
         "net_premium_low_brl",
         "net_premium_high_brl",
@@ -304,7 +322,11 @@ async def main_async() -> int:
     ) as http:
         tools = await client.list_tools()
         names = [tool.name for tool in tools.tools]
-        check(names == list(TOOLS), "tools/list = as 7 tools (6 do F3 + structure_eval)", json.dumps(names))
+        check(
+            names == list(TOOLS),
+            "tools/list = as 8 tools (F3/F4 + positions)",
+            json.dumps(names),
+        )
         for tool in tools.tools:
             text = tool.description or ""
             ok = "Use quando" in text and "Não use para" in text
@@ -339,6 +361,19 @@ async def main_async() -> int:
             {"ticker": SERIES_TICKER, "maturity": SERIES_MATURITY, "days": 0},
         )
         events = await call(client, "events", {"ticker": TICKER})
+        position_pages: list[dict[str, Any]] = []
+        position_offset = 0
+        for _ in range(1000):
+            page = await call(
+                client,
+                "positions",
+                {"date": SESSION, "max_rows": 1, "offset": position_offset},
+            )
+            position_pages.append(page)
+            next_offset = page.get("meta", {}).get("next_offset")
+            if next_offset is None or next_offset <= position_offset:
+                break
+            position_offset = next_offset
         structure = await call(
             client,
             "structure_eval",
@@ -357,17 +392,49 @@ async def main_async() -> int:
             http, f"/api/screen?date={SESSION}&max_rows=20"
         )
         http_underlying = await http_get(http, f"/api/t/{TICKER}?date={SESSION}")
+        http_position_pages: list[dict[str, Any]] = []
+        position_offset = 0
+        for _ in range(1000):
+            page = await http_get(
+                http,
+                f"/api/positions?date={SESSION}&max_rows=1&offset={position_offset}",
+            )
+            http_position_pages.append(page)
+            next_offset = page.get("meta", {}).get("next_offset")
+            if next_offset is None or next_offset <= position_offset:
+                break
+            position_offset = next_offset
         http_structure = (await http.post("/api/structure", json=STRUCTURE)).json()
 
         check(health == http_health, "MCP = HTTP em health")
         check(screen == http_screen, "MCP = HTTP em screen")
         check(underlying == http_underlying, "MCP = HTTP em underlying")
+        check(
+            position_pages == http_position_pages,
+            "MCP = HTTP em todas as páginas de positions",
+        )
         check(structure == http_structure, "MCP = HTTP em structure_eval")
 
         verify_screen(screen)
         verify_underlying(underlying)
         verify_chain(chain)
         verify_events(events)
+        positions = position_pages[0]
+        position_total = positions.get("meta", {}).get("total", 0)
+        check(
+            positions["data"]["totals"]["open_positions"] == position_total,
+            "positions: totals.open_positions compara com meta.total",
+            json.dumps(positions["data"]["totals"]),
+        )
+        check(
+            len(position_pages) == max(1, position_total)
+            and all(
+                page.get("meta", {}).get("next_offset") is None
+                for page in position_pages[-1:]
+            ),
+            "positions percorre offset/next_offset quando há mais de uma página",
+            f"total={position_total} · páginas={len(position_pages)}",
+        )
         check(
             chain_all["meta"]["total"] >= 60
             and chain_all["meta"]["returned"] == 60
@@ -460,6 +527,16 @@ async def main_async() -> int:
 
 
 def main() -> None:
+    for _ in range(40):
+        try:
+            if httpx.get(f"{HTTP_URL}/api/health", timeout=15).status_code == 200:
+                break
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.1)
+    else:
+        print(f"servidor não ficou pronto em {HTTP_URL}")
+        raise SystemExit(1)
     raise SystemExit(asyncio.run(main_async()))
 
 

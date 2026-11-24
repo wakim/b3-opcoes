@@ -38,7 +38,7 @@ Ideias fora da v1. Nada aqui é compromisso; a ordem não é prioridade.
 ## Infra
 
 - **Deploy público** atrás de Caddy/HTTPS, com Basic auth (padrão do projeto Imoveis).
-- **Backup** do `journal.db` e do `ingest_state`.
+- **Backup** do volume PostgreSQL `b3o-postgres` e do `ingest_state`.
 - **Métricas de uso**: quantas telas abertas, quantas previsões avaliadas.
 
 ## Ideias que eu **não** faria (registradas para não voltarem)

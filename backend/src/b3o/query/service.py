@@ -33,24 +33,32 @@ Regras que o `health` respeita:
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import logging
 import math
 import uuid
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, timedelta
 from pathlib import Path
 
 import duckdb
 
-from b3o.derive.calendar import trading_sessions
+from b3o.derive.calendar import business_days, trading_sessions
 from b3o.derive.conventions import SESSIONS_PER_YEAR, log_df_interp_or_none
 from b3o.derive.corporate_events import dividend_dates, event_factor_series, scale_factors
 from b3o.derive.dist import expected_move_1s
 from b3o.derive.forward import ParityQuote, forward_by_parity
 from b3o.derive.liquidity import DAYS_WINDOW, VOLUME_MIN_CENTS
+from b3o.derive.position import (
+    aggregate_greeks,
+    derive_kind,
+    marked_pnl,
+    payoff_snapshot,
+    position_flags,
+)
 from b3o.derive.realized import (
     DEFAULT_GAP_THRESHOLD,
     SHOCK_SHARE_MIN,
@@ -58,10 +66,17 @@ from b3o.derive.realized import (
     dominant_day,
     flag_unexplained,
 )
-from b3o.derive.structure import StructureLeg, StructureResult, evaluate
+from b3o.derive.structure import PayoffPoint, StructureLeg, StructureResult, evaluate
 from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
 from b3o.ingest.parse import KEPT_MARKETS
+from b3o.journal import (
+    JournalStore,
+    PositionLegRecord,
+    PositionOpen,
+    PositionRecord,
+    PredictionRecord,
+)
 from b3o.store.lake import cotahist_partition_path
 from b3o.store.state import MODEL_VERSION, IngestState, load_ingest_state
 
@@ -74,6 +89,223 @@ PREPARE_STATE_VERSION = 1
 
 _HINT_DATA_DIR = "confira B3_DATA_DIR (no container é /data) e se o lake já rodou b3o prepare"
 _HINT_PREPARE = "rode `b3o prepare` para popular o lake antes de consultar"
+_POSITION_KEYS = frozenset(
+    {"client_position_id", "underlying", "date", "notes", "capital_limit_brl", "legs", "prediction"}
+)
+_PREDICTION_KEYS = frozenset({"metric", "operator", "value", "horizon_sessions", "evaluate_on"})
+_PREDICTION_OPERATORS = frozenset({"<", "<=", ">", ">="})
+
+
+def _bad_request(message: str) -> SourceFailure:
+    return SourceFailure(
+        SourceError(
+            code="bad_request",
+            message=message,
+            hint="confira o contrato docs/contratos/f6.md",
+        )
+    )
+
+
+def _body_date(value: object, name: str) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, dt.datetime):
+        raise _bad_request(f"{name} precisa ser uma data, não um datetime")
+    if isinstance(value, dt.date):
+        return value
+    if isinstance(value, str):
+        try:
+            return dt.date.fromisoformat(value.strip())
+        except ValueError as exc:
+            raise _bad_request(f"{name} inválido ({value!r}): esperado AAAA-MM-DD") from exc
+    raise _bad_request(f"{name} precisa ser texto ISO AAAA-MM-DD ou null")
+
+
+def _optional_nonnegative(value: object, name: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise _bad_request(f"{name} precisa ser número ou null")
+    try:
+        number = float(value)
+    except OverflowError as exc:
+        raise _bad_request(f"{name} inválido ({value!r})") from exc
+    if not math.isfinite(number) or number < 0:
+        raise _bad_request(f"{name} inválido ({value!r})")
+    return number
+
+
+def _position_prediction(
+    value: object,
+    opened_session: date,
+    known_sessions: Sequence[date],
+) -> PredictionRecord | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise _bad_request("prediction precisa ser um objeto ou null")
+    unknown = sorted(str(key) for key in value if str(key) not in _PREDICTION_KEYS)
+    if unknown:
+        raise _bad_request(f"campos desconhecidos na previsão: {unknown}")
+    metric = value.get("metric")
+    operator = value.get("operator")
+    threshold = value.get("value")
+    horizon = value.get("horizon_sessions")
+    evaluate_on = _body_date(value.get("evaluate_on"), "evaluate_on")
+    if not isinstance(metric, str) or not metric.strip() or "\x00" in metric:
+        raise _bad_request("prediction.metric precisa ser texto não vazio, sem NUL")
+    if len(metric.strip()) > 64:
+        raise _bad_request("prediction.metric excede 64 caracteres")
+    if not isinstance(operator, str) or operator not in _PREDICTION_OPERATORS:
+        raise _bad_request("prediction.operator inválido")
+    if isinstance(threshold, bool) or not isinstance(threshold, int | float):
+        raise _bad_request("prediction.value precisa ser número")
+    try:
+        threshold_value = float(threshold)
+    except OverflowError as exc:
+        raise _bad_request("prediction.value precisa ser finito") from exc
+    if not math.isfinite(threshold_value):
+        raise _bad_request("prediction.value precisa ser finito")
+    if (
+        isinstance(horizon, bool)
+        or not isinstance(horizon, int)
+        or not 0 < horizon <= 2**63 - 1
+    ):
+        raise _bad_request(
+            "prediction.horizon_sessions precisa ser inteiro positivo dentro do int64"
+        )
+    if evaluate_on is None:
+        raise _bad_request("prediction.evaluate_on é obrigatório")
+    if evaluate_on <= opened_session:
+        raise _bad_request("prediction.evaluate_on precisa ser posterior à abertura")
+    sessions = trading_sessions(opened_session, evaluate_on, known_sessions)
+    elapsed = business_days(sessions, opened_session, evaluate_on)
+    if evaluate_on not in sessions or elapsed != horizon:
+        raise _bad_request(
+            "prediction.evaluate_on não corresponde ao horizonte_sessions no calendário B3"
+        )
+    return PredictionRecord(
+        position_id="",
+        metric=metric.strip(),
+        operator=operator,
+        value=threshold_value,
+        horizon_sessions=horizon,
+        evaluate_on=evaluate_on,
+        status="pending",
+        observed=None,
+    )
+
+
+def _fmt_optional(value: float | None) -> str:
+    return "—" if value is None else f"{value:.2f}"
+
+
+def _client_position_id(value: object) -> str | None:
+    """UUID4 opcional do navegador; estável enquanto o rascunho está aberto."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or len(value.strip()) > 36:
+        raise _bad_request("client_position_id precisa ser UUID4 ou null")
+    try:
+        identifier = uuid.UUID(value.strip())
+    except (ValueError, AttributeError) as exc:
+        raise _bad_request("client_position_id precisa ser UUID4") from exc
+    if identifier.version != 4:
+        raise _bad_request("client_position_id precisa ser UUID4")
+    return str(identifier)
+
+
+def _request_fingerprint(body: Mapping[str, object]) -> str:
+    """Hash do corpo canônico; não guarda notas em claro no evento de abertura."""
+    try:
+        raw = json.dumps(
+            body,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise _bad_request("corpo da posição contém valor não serializável") from exc
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _snapshot_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _position_close_snapshot(
+    record: PositionOpen,
+) -> tuple[list[PositionMark], float | None, float | None, float | None] | None:
+    """Lê marcas/P&L/spot do evento `close`; nunca reaproveita outra sessão."""
+    if record.close_event is None:
+        return None
+    try:
+        payload = json.loads(record.close_event.payload_json)
+        raw_marks = payload["marks"]
+        if not isinstance(raw_marks, list):
+            return None
+        by_id = {str(item["leg_id"]): item for item in raw_marks if isinstance(item, dict)}
+        marks: list[PositionMark] = []
+        for leg in record.legs:
+            item = by_id.get(leg.id)
+            if not isinstance(item, dict) or item.get("ticker") != leg.ticker:
+                return None
+            raw_flags = item.get("flags", [])
+            flags = [str(flag) for flag in raw_flags] if isinstance(raw_flags, list) else []
+            marks.append(
+                PositionMark(
+                    leg_id=leg.id,
+                    ticker=leg.ticker,
+                    mark_brl=_snapshot_float(item.get("mark_brl")),
+                    strike_brl=_snapshot_float(item.get("strike_brl")),
+                    iv_pct=_snapshot_float(item.get("iv_pct")),
+                    delta=_snapshot_float(item.get("delta")),
+                    gamma=_snapshot_float(item.get("gamma")),
+                    theta_brl=_snapshot_float(item.get("theta_brl")),
+                    vega_brl=_snapshot_float(item.get("vega_brl")),
+                    spread_brl=_snapshot_float(item.get("spread_brl")),
+                    spread_pct=_snapshot_float(item.get("spread_pct")),
+                    one_sided=bool(item.get("one_sided", False)),
+                    flags=flags,
+                )
+            )
+        spot = _snapshot_float(payload.get("spot_brl"))
+        if spot is not None and spot <= 0.0:
+            spot = None
+        return (
+            marks,
+            spot,
+            _snapshot_float(payload.get("pnl_brl")),
+            _snapshot_float(payload.get("iv_atm_30d")),
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def _missing_position_marks(record: PositionOpen) -> list[PositionMark]:
+    return [
+        PositionMark(
+            leg_id=leg.id,
+            ticker=leg.ticker,
+            mark_brl=None,
+            strike_brl=None,
+            iv_pct=None,
+            delta=None,
+            gamma=None,
+            theta_brl=None,
+            vega_brl=None,
+            spread_brl=None,
+            spread_pct=None,
+            one_sided=True,
+            flags=["mark_missing"],
+        )
+        for leg in record.legs
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -176,9 +408,7 @@ class PrepareState:
                 markets[str(year)] = parsed
         universe_raw = raw.get("universe")
         universe = (
-            tuple(str(item) for item in universe_raw)
-            if isinstance(universe_raw, list)
-            else ()
+            tuple(str(item) for item in universe_raw) if isinstance(universe_raw, list) else ()
         )
         return cls(
             counts_by_market=markets,
@@ -187,9 +417,7 @@ class PrepareState:
             last_error=_error_mapping(raw.get("last_error")),
             failures=tuple(
                 item
-                for item in (
-                    _error_mapping(entry) for entry in _as_list(raw.get("failures"))
-                )
+                for item in (_error_mapping(entry) for entry in _as_list(raw.get("failures")))
                 if item is not None
             ),
             rss_peak_mib=_float_or_none(raw.get("rss_peak_mib")),
@@ -789,6 +1017,94 @@ class LiquidSeriesResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PositionMark:
+    """Marcação EOD de uma perna de posição (F6); ausência vira `None` + flag."""
+
+    leg_id: str
+    ticker: str
+    mark_brl: float | None
+    strike_brl: float | None
+    iv_pct: float | None
+    delta: float | None
+    gamma: float | None
+    theta_brl: float | None
+    vega_brl: float | None
+    spread_brl: float | None
+    spread_pct: float | None
+    one_sided: bool
+    flags: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class PositionSummary:
+    """Linha da Carteira: posição aberta/fechada com marcação e alertas."""
+
+    id: str
+    underlying: str
+    kind: str
+    status: str
+    opened_session: date
+    closed_session: date | None
+    capital_committed_brl: float | None
+    capital_limit_brl: float | None
+    pnl_brl: float | None
+    pnl_pct: float | None
+    delta: float | None
+    delta_exposure_brl: float | None
+    gamma: float | None
+    theta_brl: float | None
+    vega_brl: float | None
+    days_to_expiry: int | None
+    maturity: date | None
+    breakeven_brl: list[float]
+    flags: list[str]
+    notes: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PositionDetail(PositionSummary):
+    """Posição + pernas, marcas, tese e payoff no vencimento."""
+
+    session: date
+    model_version: int
+    legs: list[dict[str, object]]
+    marks: list[PositionMark]
+    breakeven_brl: list[float]
+    entry_iv_atm_30d: float | None
+    current_iv_atm_30d: float | None
+    prediction: PredictionRecord | None
+    thesis_line: str
+    payoff: list[PayoffPoint]
+
+
+@dataclass(frozen=True, slots=True)
+class PortfolioTotals:
+    """Agregados das posições abertas; `None` quando alguma marca falta."""
+
+    open_positions: int
+    capital_committed_brl: float | None
+    pnl_brl: float | None
+    pnl_pct: float | None
+    delta: float | None
+    delta_exposure_brl: float | None
+    gamma: float | None
+    theta_brl: float | None
+    vega_brl: float | None
+    flags: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class Portfolio:
+    """Carteira read-only: resumos + totais e total antes do corte."""
+
+    session: date
+    model_version: int
+    positions: list[PositionSummary]
+    total: int
+    totals: PortfolioTotals
+
+
+@dataclass(frozen=True, slots=True)
 class SeriesPoint:
     """Um dia de uma série (F3.2): preço em R$/ação, IV em % a.a."""
 
@@ -925,8 +1241,9 @@ class _ScreenMetrics:
 class QueryService:
     """Leitura do lake: uma classe, um arquivo, nenhuma query fora daqui."""
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, database_url: str | None = None) -> None:
         self.data_dir = Path(data_dir)
+        self.journal = JournalStore(database_url)
 
     # ---------------------------- calendário ---------------------------- #
 
@@ -1033,8 +1350,7 @@ class QueryService:
                 SourceError(
                     code="lake_missing",
                     message=(
-                        f"partição de legs de {refdate.year} não existe em "
-                        f"{self.data_dir / 'legs'}"
+                        f"partição de legs de {refdate.year} não existe em {self.data_dir / 'legs'}"
                     ),
                     hint="rode `b3o prepare` para derivar os legs do ano",
                 )
@@ -1207,8 +1523,7 @@ class QueryService:
             refdate,
         )
         return [
-            RateNode(du=int(row[0]), rate_annual=float(row[1]), source=str(row[2]))
-            for row in rows
+            RateNode(du=int(row[0]), rate_annual=float(row[1]), source=str(row[2])) for row in rows
         ]
 
     def strike_events(self, years: Sequence[int] | None = None) -> list[EventRow]:
@@ -1303,7 +1618,8 @@ class QueryService:
             return result
 
         calendar_paths = [
-            path for year in range(self._first_year(end), end.year + 1)
+            path
+            for year in range(self._first_year(end), end.year + 1)
             for path in self._partitions(year)
         ]
         if not calendar_paths:
@@ -1321,8 +1637,7 @@ class QueryService:
             return result
         start, stop = window[0], window[-1]
         paths = [
-            path for year in range(start.year, stop.year + 1)
-            for path in self._partitions(year)
+            path for year in range(start.year, stop.year + 1) for path in self._partitions(year)
         ]
         if not paths:
             return result
@@ -1423,9 +1738,7 @@ class QueryService:
         versions = [int(row[0]) for row in rows if row[0] is not None]
         return max(versions) if versions else None
 
-    def screen(
-        self, date: date | None = None, max_rows: int | None = None
-    ) -> list[ScreenRow]:
+    def screen(self, date: date | None = None, max_rows: int | None = None) -> list[ScreenRow]:
         """Uma linha por papel do universo líquido da sessão (contrato onda-h §2).
 
         **Descritivo** (ADR-024): repete o que o lake já calculou; `signal_class`
@@ -1485,9 +1798,7 @@ class QueryService:
 
         volumes = self._screen_volumes(window)
         universe = sorted(
-            ticker
-            for ticker, total in volumes.items()
-            if total // len(window) >= VOLUME_MIN_CENTS
+            ticker for ticker, total in volumes.items() if total // len(window) >= VOLUME_MIN_CENTS
         )
         spot_close, isin_to_ticker = self._screen_spots(session)
         option_map = self._screen_option_map(session, isin_to_ticker)
@@ -1531,9 +1842,7 @@ class QueryService:
                     base,
                     status="ok",
                     exclusion=None,
-                    spot_brl=(
-                        None if metric.spot_cents is None else metric.spot_cents / 100.0
-                    ),
+                    spot_brl=(None if metric.spot_cents is None else metric.spot_cents / 100.0),
                     iv_atm_30d=metric.iv_atm_30d,
                     iv_rank_252=metric.iv_rank_252,
                     iv_pct_252=metric.iv_pct_252,
@@ -1684,9 +1993,7 @@ class QueryService:
                         "linha em metrics_underlying"
                     )
 
-        rows = (
-            self._chain_rows(paper, session) if {"term", "smile"} & wanted else []
-        )
+        rows = self._chain_rows(paper, session) if {"term", "smile"} & wanted else []
         spot = self._spot_brl(paper, session)
         if {"term", "smile"} & wanted and not rows:
             notes.append(
@@ -1784,9 +2091,7 @@ class QueryService:
         notes: list[str] = []
         filtered = rows
         if not rows:
-            notes.append(
-                "no_options: nenhuma série do papel com métrica nesta sessão"
-            )
+            notes.append("no_options: nenhuma série do papel com métrica nesta sessão")
         if expiry is not None:
             available = {row.maturity for row in rows}
             if expiry not in available:
@@ -1806,9 +2111,7 @@ class QueryService:
         if delta_range is not None:
             low, high = delta_range
             filtered = [
-                row
-                for row in filtered
-                if row.delta is not None and low <= abs(row.delta) <= high
+                row for row in filtered if row.delta is not None and low <= abs(row.delta) <= high
             ]
         if rows and not filtered:
             notes.append(
@@ -1908,16 +2211,8 @@ class QueryService:
         result: list[LiquidSeriesRow] = []
         for row in fetched:
             factor = int(row[10]) if row[10] else 1
-            bid = (
-                None
-                if row[8] is None or int(row[8]) <= 0
-                else float(row[8]) / factor / 100.0
-            )
-            ask = (
-                None
-                if row[9] is None or int(row[9]) <= 0
-                else float(row[9]) / factor / 100.0
-            )
+            bid = None if row[8] is None or int(row[8]) <= 0 else float(row[8]) / factor / 100.0
+            ask = None if row[9] is None or int(row[9]) <= 0 else float(row[9]) / factor / 100.0
             spread_brl = None
             spread_pct = None
             if bid is not None and ask is not None and bid > 0 and ask > 0:
@@ -1953,9 +2248,7 @@ class QueryService:
             notes=notes,
         )
 
-    def series(
-        self, ticker: str, maturity: date, days: int = 60
-    ) -> SeriesDetail:
+    def series(self, ticker: str, maturity: date, days: int = 60) -> SeriesDetail:
         """Identidade, última linha e histórico de uma série (contrato §4.3).
 
         A sessão é a última do lake (a série é `(ticker, maturity)`). Ticker que
@@ -2038,9 +2331,7 @@ class QueryService:
             if row.ticker == paper
         ]
         earnings_all.sort(key=lambda row: (row.date, 0 if row.kind == "actual" else 1))
-        next_earnings = next(
-            (row for row in earnings_all if row.date >= session), None
-        )
+        next_earnings = next((row for row in earnings_all if row.date >= session), None)
         notes: list[str] = []
         if not maturities:
             notes.append(
@@ -2049,9 +2340,7 @@ class QueryService:
             )
         coverage_start = min((row.date for row in self.earnings_rows()), default=None)
         if not earnings_all:
-            notes.append(
-                f"earnings: nenhuma data de resultado para {paper} no calendário da CVM"
-            )
+            notes.append(f"earnings: nenhuma data de resultado para {paper} no calendário da CVM")
         if coverage_start is not None and session < coverage_start:
             notes.append(
                 f"calendário da CVM começa em {coverage_start.isoformat()}; a sessão "
@@ -2294,6 +2583,517 @@ class QueryService:
             notes=_structure_notes(result),
         )
 
+    # --------------------------- posições (F6) ---------------------------- #
+
+    def positions(
+        self,
+        date: date | None = None,
+        max_rows: int = 20,
+        offset: int = 0,
+    ) -> Portfolio:
+        """Posições abertas **na sessão** + agregados, com paginação."""
+        session = self._session(date)
+        records = [
+            row for row in self.journal.list_positions() if self._position_open_at(row, session)
+        ]
+        known = self.lake_calendar()
+        events = self.strike_events()
+        details = [self._position_detail(row, session, known, events) for row in records]
+        start = max(0, int(offset))
+        visible = details[start : start + max(0, int(max_rows))]
+        summaries = [self._position_summary(row) for row in visible]
+        return Portfolio(
+            session=session,
+            model_version=self._model_version_for(),
+            positions=summaries,
+            total=len(details),
+            totals=self._portfolio_totals(details),
+        )
+
+    def position(self, position_id: str, date: date | None = None) -> PositionDetail:
+        """Detalhe as-of; fechada usa o snapshot do close, não mistura sessões."""
+        record = self.journal.get_position(position_id)
+        if record is None:
+            raise SourceFailure(
+                SourceError(
+                    code="position_not_found",
+                    message=f"posição {position_id} não existe no journal",
+                    hint="confira o id retornado por POST /api/positions",
+                )
+            )
+        requested = self._session(date)
+        if requested < record.opened_session:
+            raise SourceFailure(
+                SourceError(
+                    code="position_not_found",
+                    message=f"posição {position_id} ainda não existia em {requested.isoformat()}",
+                    hint="consulte uma sessão igual ou posterior à abertura",
+                )
+            )
+        session = (
+            record.close_event.session
+            if record.close_event is not None and requested >= record.close_event.session
+            else requested
+        )
+        return self._position_detail(record, session)
+
+    @staticmethod
+    def _position_open_at(record: PositionOpen, session: date) -> bool:
+        return record.opened_session <= session and (
+            record.close_event is None or record.close_event.session > session
+        )
+
+    def open_position(self, body: Mapping[str, object]) -> PositionDetail:
+        """Valida as pernas pelo lake e grava abertura append-only."""
+        if not isinstance(body, Mapping):
+            raise _bad_request("corpo da posição precisa ser um objeto")
+        unknown = sorted(str(key) for key in body if str(key) not in _POSITION_KEYS)
+        if unknown:
+            raise _bad_request(f"campos desconhecidos na posição: {unknown}")
+        session = self._session(_body_date(body.get("date"), "date"))
+        underlying = body.get("underlying")
+        if underlying is not None and (
+            not isinstance(underlying, str) or len(underlying.strip()) > 32
+        ):
+            raise _bad_request("underlying precisa ser texto de até 32 caracteres")
+        evaluation = self.structure_eval(
+            body.get("legs"),
+            underlying=underlying,
+            date=session,
+            scenarios=False,
+        )
+        result = evaluation.result
+        notes = body.get("notes")
+        if notes is None:
+            notes = ""
+        if not isinstance(notes, str) or len(notes) > 2000 or "\x00" in notes:
+            raise _bad_request("notes precisa ser texto de até 2000 caracteres ou null, sem NUL")
+        capital_limit = _optional_nonnegative(body.get("capital_limit_brl"), "capital_limit_brl")
+        client_position_id = _client_position_id(body.get("client_position_id"))
+        fingerprint = _request_fingerprint(body)
+        record = PositionRecord(
+            id=client_position_id or str(uuid.uuid4()),
+            underlying=evaluation.underlying,
+            kind=derive_kind(result.legs),
+            opened_session=session,
+            opened_at=dt.datetime.now(dt.UTC),
+            capital_committed_brl=result.capital_committed_brl,
+            capital_limit_brl=capital_limit,
+            notes=notes,
+            entry_iv_atm_30d=self._position_iv(evaluation.underlying, session),
+            breakeven_json=json.dumps(result.breakeven_brl, separators=(",", ":")),
+        )
+        legs = [
+            PositionLegRecord(
+                position_id="",
+                ticker=leg.ticker,
+                side=leg.side,
+                type=(
+                    "stock" if leg.kind == "stock" else "call" if leg.option_side == "C" else "put"
+                ),
+                maturity=leg.maturity,
+                qty=leg.quantity,
+                entry_price_brl=leg.price_brl,
+                entry_strike_brl=leg.strike_brl,
+                entry_iv_pct=leg.iv_pct,
+                entry_delta=leg.delta,
+            )
+            for leg in result.legs
+        ]
+        prediction = _position_prediction(
+            body.get("prediction"),
+            session,
+            self.lake_calendar(),
+        )
+        opened = self.journal.open_position(
+            record,
+            legs,
+            prediction,
+            request_fingerprint=fingerprint,
+        )
+        return self.position(opened.id, date=session)
+
+    def close_position(
+        self,
+        position_id: str,
+        body: Mapping[str, object],
+    ) -> PositionDetail:
+        """Fecha pelo mark EOD e acrescenta evento `close` (sem UPDATE)."""
+        if not isinstance(body, Mapping):
+            raise _bad_request("corpo do fechamento precisa ser um objeto")
+        unknown = sorted(str(key) for key in body if str(key) != "date")
+        if unknown:
+            raise _bad_request(f"campos desconhecidos no fechamento: {unknown}")
+        record = self.journal.get_position(position_id)
+        if record is None:
+            raise SourceFailure(
+                SourceError(
+                    code="position_not_found",
+                    message=f"posição {position_id} não existe no journal",
+                    hint="confira o id retornado por POST /api/positions",
+                )
+            )
+        if record.close_event is not None:
+            raise SourceFailure(
+                SourceError(
+                    code="position_closed",
+                    message=f"posição {position_id} já está fechada",
+                    hint="não há segunda saída: o journal é append-only",
+                )
+            )
+        session = self._session(_body_date(body.get("date"), "date"))
+        if session < record.opened_session:
+            raise _bad_request("a sessão de fechamento não pode anteceder a abertura")
+        marks, spot = self._position_marks(record, session)
+        missing = [
+            mark.ticker
+            for mark in marks
+            if mark.mark_brl is None
+            or not math.isfinite(mark.mark_brl)
+            or mark.mark_brl <= 0.0
+        ]
+        if missing:
+            raise _bad_request(
+                "não é possível fechar sem marca positiva de todas as pernas: "
+                + ", ".join(missing)
+            )
+        pnl = marked_pnl(record.legs, {mark.leg_id: mark for mark in marks})
+        self.journal.close_position(
+            position_id,
+            session,
+            {
+                "pnl_brl": pnl,
+                "spot_brl": spot,
+                "iv_atm_30d": self._position_iv(record.underlying, session),
+                "marks": [asdict(mark) for mark in marks],
+            },
+        )
+        return self.position(position_id, date=session)
+
+    def _position_marks(
+        self,
+        record: PositionOpen,
+        session: date,
+    ) -> tuple[list[PositionMark], float | None]:
+        """Marcação EOD por `(ticker, maturity)`; zero bruto não vira preço."""
+        rows = self._chain_rows(record.underlying, session)
+        by_series = {(row.ticker, row.maturity): row for row in rows}
+        raw_spot = self._spot_brl(record.underlying, session)
+        spot = (
+            raw_spot
+            if raw_spot is not None and math.isfinite(raw_spot) and raw_spot > 0.0
+            else None
+        )
+        marks: list[PositionMark] = []
+        for leg in record.legs:
+            if leg.type == "stock":
+                marks.append(
+                    PositionMark(
+                        leg_id=leg.id,
+                        ticker=leg.ticker,
+                        mark_brl=spot,
+                        strike_brl=None,
+                        iv_pct=None,
+                        delta=1.0 if spot is not None else None,
+                        gamma=0.0 if spot is not None else None,
+                        theta_brl=0.0 if spot is not None else None,
+                        vega_brl=0.0 if spot is not None else None,
+                        spread_brl=None,
+                        spread_pct=None,
+                        one_sided=False,
+                        flags=[] if spot is not None else ["mark_missing"],
+                    )
+                )
+                continue
+            row = by_series.get((leg.ticker, leg.maturity))
+            expected_side = "C" if leg.type == "call" else "P"
+            if row is None or row.side != expected_side:
+                marks.append(
+                    PositionMark(
+                        leg_id=leg.id,
+                        ticker=leg.ticker,
+                        mark_brl=None,
+                        strike_brl=None,
+                        iv_pct=None,
+                        delta=None,
+                        gamma=None,
+                        theta_brl=None,
+                        vega_brl=None,
+                        spread_brl=None,
+                        spread_pct=None,
+                        one_sided=True,
+                        flags=["mark_missing"],
+                    )
+                )
+                continue
+            candidates = (row.mid_brl, row.close_brl)
+            mark = next(
+                (
+                    value
+                    for value in candidates
+                    if value is not None and math.isfinite(value) and value > 0.0
+                ),
+                None,
+            )
+            one_sided = row.bid_brl is None or row.ask_brl is None
+            flags = list(row.flags)
+            if one_sided:
+                flags.append("one_sided")
+            if mark is None:
+                flags.append("mark_missing")
+            marks.append(
+                PositionMark(
+                    leg_id=leg.id,
+                    ticker=leg.ticker,
+                    mark_brl=mark,
+                    strike_brl=(
+                        _snapshot_float(row.strike_brl)
+                        if _snapshot_float(row.strike_brl) is not None
+                        and _snapshot_float(row.strike_brl) > 0.0
+                        else None
+                    ),
+                    iv_pct=_snapshot_float(row.iv_pct),
+                    delta=_snapshot_float(row.delta),
+                    gamma=_snapshot_float(row.gamma),
+                    theta_brl=_snapshot_float(row.theta_brl),
+                    vega_brl=_snapshot_float(row.vega_brl),
+                    spread_brl=_snapshot_float(row.spread_brl),
+                    spread_pct=_snapshot_float(row.spread_pct),
+                    one_sided=one_sided,
+                    flags=flags,
+                )
+            )
+        return marks, spot
+
+    def _position_detail(
+        self,
+        record: PositionOpen,
+        session: date,
+        known_sessions: Sequence[date] | None = None,
+        strike_events: Sequence[EventRow] | None = None,
+    ) -> PositionDetail:
+        """Monta marcação, gregas, alertas, tese e payoff de uma posição."""
+        closed_here = record.close_event is not None and record.close_event.session <= session
+        snapshot = _position_close_snapshot(record) if closed_here else None
+        if closed_here and snapshot is None:
+            marks = _missing_position_marks(record)
+            spot = None
+            pnl = None
+            snapshot_iv = None
+        elif snapshot is not None:
+            marks, spot, pnl, snapshot_iv = snapshot
+        else:
+            marks, spot = self._position_marks(record, session)
+            snapshot_iv = None
+            try:
+                pnl = marked_pnl(record.legs, {mark.leg_id: mark for mark in marks})
+            except ValueError:
+                pnl = None
+        mark_map = {mark.leg_id: mark for mark in marks}
+        greeks = aggregate_greeks(record.legs, mark_map, spot) if spot is not None else None
+        if closed_here and snapshot is None:
+            pnl = None
+        capital = record.capital_committed_brl
+        pnl_pct = pnl / capital if pnl is not None and capital is not None and capital > 0 else None
+        maturities = [leg.maturity for leg in record.legs if leg.maturity is not None]
+        maturity = min(maturities) if maturities else None
+        days = None
+        if maturity is not None:
+            days = 0 if maturity <= session else business_days(
+                trading_sessions(session, maturity, known_sessions or self.lake_calendar()),
+                session,
+                maturity,
+            )
+        deltas_now = [
+            None if leg.type == "stock" else mark_map[leg.id].delta for leg in record.legs
+        ]
+        deltas_entry = [None if leg.type == "stock" else leg.entry_delta for leg in record.legs]
+        current_iv = snapshot_iv if closed_here else self._position_iv(record.underlying, session)
+        flags: set[str] = set()
+        for mark in marks:
+            flags.update(mark.flags)
+        if greeks is not None:
+            flags.update(greeks.flags)
+        else:
+            flags.add("mark_missing")
+        if closed_here and snapshot is None:
+            flags.add("close_snapshot_missing")
+        if capital is None:
+            flags.add("unbounded_loss")
+        flags.update(
+            position_flags(
+                days,
+                deltas_now,
+                deltas_entry,
+                event_in_window=self._position_event_in_window(
+                    record,
+                    session,
+                    days,
+                    known_sessions or self.lake_calendar(),
+                    strike_events if strike_events is not None else self.strike_events(),
+                ),
+                thesis_failed=record.prediction is not None and record.prediction.status == "miss",
+                capital_over=record.capital_limit_brl is not None
+                and capital is not None
+                and capital > record.capital_limit_brl,
+            )
+        )
+        if pnl is None:
+            flags.add("mark_missing")
+        breakevens: list[float] = []
+        payoff: list[PayoffPoint] = []
+        if spot is not None:
+            try:
+                breakevens, payoff = payoff_snapshot(record.legs, mark_map, spot)
+            except ValueError:
+                flags.add("payoff_unavailable")
+        entry_iv = record.entry_iv_atm_30d
+        thesis = (
+            f"IV ATM 30d {_fmt_optional(entry_iv)} → {_fmt_optional(current_iv)}"
+            " · sem previsão vinculada"
+        )
+        if record.prediction is not None:
+            prediction = record.prediction
+            thesis = (
+                f"IV ATM 30d {_fmt_optional(entry_iv)} → {_fmt_optional(current_iv)}"
+                f" · {prediction.metric} {prediction.operator} "
+                f"{_fmt_optional(prediction.value)} ({prediction.status}; "
+                f"observado {_fmt_optional(prediction.observed)})"
+            )
+        return PositionDetail(
+            id=record.id,
+            underlying=record.underlying,
+            kind=record.kind,
+            status="closed" if closed_here else "open",
+            opened_session=record.opened_session,
+            closed_session=record.close_event.session if closed_here else None,
+            capital_committed_brl=capital,
+            capital_limit_brl=record.capital_limit_brl,
+            pnl_brl=pnl,
+            pnl_pct=pnl_pct,
+            delta=None if greeks is None or not greeks.complete else greeks.delta,
+            delta_exposure_brl=(
+                None if greeks is None or not greeks.complete else greeks.delta_exposure_brl
+            ),
+            gamma=None if greeks is None or not greeks.complete else greeks.gamma,
+            theta_brl=(None if greeks is None or not greeks.complete else greeks.theta_brl),
+            vega_brl=None if greeks is None or not greeks.complete else greeks.vega_brl,
+            days_to_expiry=days,
+            maturity=maturity,
+            breakeven_brl=breakevens,
+            flags=sorted(flags),
+            notes=record.notes or None,
+            session=session,
+            model_version=self._model_version_for(),
+            legs=[
+                {
+                    "id": leg.id,
+                    "ticker": leg.ticker,
+                    "side": leg.side,
+                    "type": "option" if leg.type in {"call", "put"} else "stock",
+                    "option_side": (
+                        None if leg.type == "stock" else "C" if leg.type == "call" else "P"
+                    ),
+                    "maturity": leg.maturity,
+                    "qty": leg.qty,
+                    "entry_price_brl": leg.entry_price_brl,
+                    "entry_strike_brl": leg.entry_strike_brl,
+                    "current_strike_brl": mark_map[leg.id].strike_brl,
+                    "entry_iv_pct": leg.entry_iv_pct,
+                    "entry_delta": leg.entry_delta,
+                }
+                for leg in record.legs
+            ],
+            marks=marks,
+            entry_iv_atm_30d=entry_iv,
+            current_iv_atm_30d=current_iv,
+            prediction=record.prediction,
+            thesis_line=thesis,
+            payoff=payoff,
+        )
+
+    def _position_iv(self, underlying: str, session: date) -> float | None:
+        """IV ATM 30d direto da tabela derivada, mesmo fora do universo do screen."""
+        metric = self._screen_metrics(session).get(underlying)
+        return None if metric is None else metric.iv_atm_30d
+
+    @staticmethod
+    def _position_event_in_window(
+        record: PositionOpen,
+        session: date,
+        days_to_expiry: int | None,
+        known_sessions: Sequence[date],
+        events: Sequence[EventRow],
+    ) -> bool:
+        if days_to_expiry is not None and 0 <= days_to_expiry <= 5:
+            return True
+        window = set(trading_sessions(session, session + timedelta(days=15), known_sessions)[:6])
+        return any(
+            event.underlying == record.underlying
+            and event.date in window
+            and event.date <= session
+            for event in events
+        )
+
+    @staticmethod
+    def _position_summary(detail: PositionDetail) -> PositionSummary:
+        return PositionSummary(
+            id=detail.id,
+            underlying=detail.underlying,
+            kind=detail.kind,
+            status=detail.status,
+            opened_session=detail.opened_session,
+            closed_session=detail.closed_session,
+            capital_committed_brl=detail.capital_committed_brl,
+            capital_limit_brl=detail.capital_limit_brl,
+            pnl_brl=detail.pnl_brl,
+            pnl_pct=detail.pnl_pct,
+            delta=detail.delta,
+            delta_exposure_brl=detail.delta_exposure_brl,
+            gamma=detail.gamma,
+            theta_brl=detail.theta_brl,
+            vega_brl=detail.vega_brl,
+            days_to_expiry=detail.days_to_expiry,
+            maturity=detail.maturity,
+            breakeven_brl=detail.breakeven_brl,
+            flags=detail.flags,
+            notes=detail.notes,
+        )
+
+    @staticmethod
+    def _portfolio_totals(details: Sequence[PositionDetail]) -> PortfolioTotals:
+        capitals = [row.capital_committed_brl for row in details]
+        capital = (
+            None
+            if any(value is None for value in capitals)
+            else float(sum(float(value) for value in capitals))
+        )
+
+        def total(field: str) -> float | None:
+            values = [getattr(row, field) for row in details]
+            if any(value is None for value in values):
+                return None
+            return float(sum(float(value) for value in values))
+
+        pnl = total("pnl_brl")
+        flags = sorted({flag for row in details for flag in row.flags})
+        return PortfolioTotals(
+            open_positions=len(details),
+            capital_committed_brl=capital,
+            pnl_brl=pnl,
+            pnl_pct=(
+                pnl / capital
+                if pnl is not None and capital is not None and capital > 0
+                else None
+            ),
+            delta=total("delta"),
+            delta_exposure_brl=total("delta_exposure_brl"),
+            gamma=total("gamma"),
+            theta_brl=total("theta_brl"),
+            vega_brl=total("vega_brl"),
+            flags=flags,
+        )
+
     def _structure_paper(
         self,
         legs: Sequence[StructureLegInput],
@@ -2316,8 +3116,7 @@ class QueryService:
                         SourceError(
                             code="ticker_not_found",
                             message=(
-                                f"{ticker} não é série de opção (070/080) em "
-                                f"{session.isoformat()}"
+                                f"{ticker} não é série de opção (070/080) em {session.isoformat()}"
                             ),
                             hint=(
                                 "confira o ticker da série e a sessão; a série "
@@ -2383,9 +3182,7 @@ class QueryService:
             raise SourceFailure(
                 SourceError(
                     code="underlying_mismatch",
-                    message=(
-                        "estrutura só de ação com mais de um papel: " + ", ".join(papers)
-                    ),
+                    message=("estrutura só de ação com mais de um papel: " + ", ".join(papers)),
                     hint="a estrutura é de um papel só; separe em duas avaliações",
                 )
             )
@@ -2447,9 +3244,7 @@ class QueryService:
                 papers[str(ticker)] = str(paper)
         return found, papers
 
-    def _structure_option_failure(
-        self, ticker: str, paper: str, session: date
-    ) -> SourceFailure:
+    def _structure_option_failure(self, ticker: str, paper: str, session: date) -> SourceFailure:
         """Ausência da série na cadeia do papel: métrica faltando ou ticker errado."""
         metric_paths = self._partitions_for("metrics_series", session.year)
         has_series = bool(
@@ -2479,8 +3274,7 @@ class QueryService:
             SourceError(
                 code="ticker_not_found",
                 message=(
-                    f"{ticker} não é série de opção de {paper} com métrica em "
-                    f"{session.isoformat()}"
+                    f"{ticker} não é série de opção de {paper} com métrica em {session.isoformat()}"
                 ),
                 hint=(
                     "confira o ticker/série na `chain` do papel e se a sessão tem "
@@ -2519,8 +3313,7 @@ class QueryService:
         if not paths:
             raise _missing_lake_failure(self.data_dir)
         rows = self._fetch(
-            "SELECT 1 FROM read_parquet(?) WHERE ticker = ? AND tpmerc IN ('010', '020')"
-            " LIMIT 1",
+            "SELECT 1 FROM read_parquet(?) WHERE ticker = ? AND tpmerc IN ('010', '020') LIMIT 1",
             paths,
             ticker,
         )
@@ -2602,16 +3395,8 @@ class QueryService:
             factor = int(row[18]) if row[18] else 1
             # `best_bid/ask == 0` no lake significa "sem oferta" (é o que a regra
             # §6.9 usa). Expor 0,0 sugere "oferta a zero": ausência vira `None`.
-            bid = (
-                None
-                if row[15] is None or int(row[15]) <= 0
-                else float(row[15]) / factor / 100.0
-            )
-            ask = (
-                None
-                if row[16] is None or int(row[16]) <= 0
-                else float(row[16]) / factor / 100.0
-            )
+            bid = None if row[15] is None or int(row[15]) <= 0 else float(row[15]) / factor / 100.0
+            ask = None if row[16] is None or int(row[16]) <= 0 else float(row[16]) / factor / 100.0
             close = None if row[17] is None else float(row[17]) / factor / 100.0
             spread_brl = None
             spread_pct = None
@@ -2660,9 +3445,7 @@ class QueryService:
         )
         return float(rows[0][0]) / 100.0 if rows else None
 
-    def _history_rows(
-        self, ticker: str, session: date, days: int
-    ) -> list[HistoryRow]:
+    def _history_rows(self, ticker: str, session: date, days: int) -> list[HistoryRow]:
         """Últimas `days` linhas de `metrics_underlying` até a sessão (crescente)."""
         paths = self._partitions_for("metrics_underlying", None)
         if not paths or days <= 0:
@@ -2695,8 +3478,7 @@ class QueryService:
         """Classifica a ausência da série: ticker, vencimento ou métrica faltando."""
         any_rows = (
             self._fetch(
-                "SELECT DISTINCT maturity FROM read_parquet(?) WHERE ticker = ?"
-                " ORDER BY maturity",
+                "SELECT DISTINCT maturity FROM read_parquet(?) WHERE ticker = ? ORDER BY maturity",
                 list(paths),
                 ticker,
             )
@@ -2788,7 +3570,7 @@ class QueryService:
         if not ok_papers:
             return rows
         lake = [day for day in self.lake_calendar() if day <= session]
-        span = lake[-(SHOCK_WINDOW_BARS + SHOCK_LOOKBACK_EXTRA):]
+        span = lake[-(SHOCK_WINDOW_BARS + SHOCK_LOOKBACK_EXTRA) :]
         paths = [
             path
             for year in range(span[0].year, span[-1].year + 1)
@@ -2918,8 +3700,7 @@ class QueryService:
                 bucket[1] += 1
             expiries[paper].add(maturity)
         return {
-            paper: (bucket[0], bucket[1], len(expiries[paper]))
-            for paper, bucket in counts.items()
+            paper: (bucket[0], bucket[1], len(expiries[paper])) for paper, bucket in counts.items()
         }
 
     def _screen_metrics(self, session: date) -> dict[str, _ScreenMetrics]:
@@ -3021,9 +3802,7 @@ class QueryService:
             lake_years: object = lake_error
             last_session_value: str | None = None
         else:
-            counts_by_date = {
-                day.isoformat(): count for day, count in list(counts.items())[-5:]
-            }
+            counts_by_date = {day.isoformat(): count for day, count in list(counts.items())[-5:]}
             lake_sessions = len(sessions)
             lake_years = self._years()
             last_session_value = last_session.isoformat() if last_session else None
@@ -3070,9 +3849,7 @@ class QueryService:
             ),
         )
 
-    def _model_versions(
-        self, state: IngestState | None
-    ) -> tuple[int, int, bool, str, str | None]:
+    def _model_versions(self, state: IngestState | None) -> tuple[int, int, bool, str, str | None]:
         """`(model_version, ingest_model_version, mismatch, source, note)` (F3.0).
 
         A verdade do cálculo é a **tabela derivada**: o `ingest_state` é o
@@ -3113,7 +3890,6 @@ class QueryService:
                 ),
             )
         return derived, ingest, False, "metrics", None
-
 
     # ----------------------------- internos ----------------------------- #
 
@@ -3165,7 +3941,7 @@ class QueryService:
         for directory in sorted(root.glob("year=*")) if root.is_dir() else []:
             try:
                 years.append(int(directory.name.split("=", 1)[1]))
-            except (IndexError, ValueError):
+            except IndexError, ValueError:
                 log.warning("health: partição com nome inesperado ignorada: %s", directory)
         return sorted(years)
 
@@ -3478,9 +4254,7 @@ class QueryService:
         unavailable = last_session is None or last_session not in set(dates)
         return available, unavailable
 
-    def _earnings_coverage(
-        self, prepare: PrepareState, last_session: date | None
-    ) -> object:
+    def _earnings_coverage(self, prepare: PrepareState, last_session: date | None) -> object:
         """Calendário × universo: quantos papéis do universo têm data mapeada (§6.14)."""
         paths = sorted((self.data_dir / "earnings").glob("*.parquet"))
         if not paths:
@@ -3541,9 +4315,7 @@ class QueryService:
                 )
             )
         return {
-            "session": prepare.universe_session.isoformat()
-            if prepare.universe_session
-            else None,
+            "session": prepare.universe_session.isoformat() if prepare.universe_session else None,
             "count": len(prepare.universe),
             "tradable_count": len(self._tradable(prepare)),
         }
@@ -3717,7 +4489,7 @@ def _partition_year(path: Path) -> int | None:
     """Ano do diretório `year=YYYY` de uma partição (`None` se o nome não casar)."""
     try:
         return int(Path(path).parent.name.split("=", 1)[1])
-    except (IndexError, ValueError):
+    except IndexError, ValueError:
         return None
 
 
@@ -3753,9 +4525,7 @@ def _sample_sorted(values: Iterable[date | str]) -> str:
     """Amostra legível de datas/tickers para a dica de erro (não despeja tudo)."""
     ordered = sorted(values)
     sample = ordered[:8]
-    text = ", ".join(
-        item.isoformat() if isinstance(item, date) else str(item) for item in sample
-    )
+    text = ", ".join(item.isoformat() if isinstance(item, date) else str(item) for item in sample)
     remaining = len(ordered) - len(sample)
     return text + (f" (+{remaining})" if remaining else "") if ordered else "nenhum"
 
@@ -3792,9 +4562,7 @@ def _atm_row(rows: Sequence[ChainRow], reference: float | None) -> ChainRow | No
     É uma **seleção** sobre a IV/Δ gravados, não uma nova interpolação: o ATM
     oficial do papel (30d, variância total) vive em `metrics_underlying`.
     """
-    candidates = [
-        row for row in rows if row.iv_pct is not None and row.delta is not None
-    ]
+    candidates = [row for row in rows if row.iv_pct is not None and row.delta is not None]
     if not candidates:
         return None
     anchor = reference if reference is not None and reference > 0 else None
@@ -3849,16 +4617,10 @@ def _term_rows(rows: Sequence[ChainRow], spot: float | None) -> list[TermRow]:
             put = pair.get("P")
             if call is not None and put is not None and call.mid_brl and put.mid_brl:
                 straddle = call.mid_brl + put.mid_brl
-        exp_move = (
-            None
-            if straddle is None or spot is None
-            else expected_move_1s(straddle, spot)
-        )
+        exp_move = None if straddle is None or spot is None else expected_move_1s(straddle, spot)
         strikes = {cents for cents in by_strike if cents > 0}
         liquid_strikes = {
-            cents
-            for cents in strikes
-            if any(row.is_liquid for row in by_strike[cents].values())
+            cents for cents in strikes if any(row.is_liquid for row in by_strike[cents].values())
         }
         result.append(
             TermRow(
@@ -3896,8 +4658,7 @@ def _smile_rows(rows: Sequence[ChainRow], maturity: date) -> list[SmileRow]:
 # --------------------------------------------------------------------------- #
 
 _STRUCTURE_HINT = (
-    "cada perna é {kind: option|stock, ticker, side: long|short, "
-    "quantity: inteiro > 0 em ações}"
+    "cada perna é {kind: option|stock, ticker, side: long|short, quantity: inteiro > 0 em ações}"
 )
 
 MAX_STRUCTURE_LEGS = 60
@@ -3906,9 +4667,7 @@ MAX_STRUCTURE_LEGS = 60
 
 def _bad_legs(message: str) -> SourceFailure:
     """`bad_legs` com a dica única do formato da perna (contrato §2)."""
-    return SourceFailure(
-        SourceError(code="bad_legs", message=message, hint=_STRUCTURE_HINT)
-    )
+    return SourceFailure(SourceError(code="bad_legs", message=message, hint=_STRUCTURE_HINT))
 
 
 def _parse_structure_legs(
@@ -3929,9 +4688,7 @@ def _parse_structure_legs(
     parsed: list[StructureLegInput] = []
     for index, item in enumerate(items, start=1):
         if isinstance(item, StructureLegInput):
-            parsed.append(
-                _leg_input(index, item.kind, item.ticker, item.side, item.quantity)
-            )
+            parsed.append(_leg_input(index, item.kind, item.ticker, item.side, item.quantity))
             continue
         if not isinstance(item, Mapping):
             raise _bad_legs(f"perna {index} não é um objeto {{kind, ticker, side, quantity}}")
@@ -3955,12 +4712,18 @@ def _leg_input(
         raise _bad_legs(f"perna {index}: kind inválido ({kind!r}) — use option ou stock")
     if not isinstance(side, str) or side not in ("long", "short"):
         raise _bad_legs(f"perna {index}: side inválido ({side!r}) — use long ou short")
-    if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity <= 0:
+    if (
+        isinstance(quantity, bool)
+        or not isinstance(quantity, int)
+        or not 0 < quantity <= 2**63 - 1
+    ):
         raise _bad_legs(
-            f"perna {index}: quantity inválido ({quantity!r}) — inteiro de ações > 0"
+            f"perna {index}: quantity inválido ({quantity!r}) — inteiro de ações > 0 no int64"
         )
-    if not isinstance(ticker, str) or not ticker.strip():
-        raise _bad_legs(f"perna {index}: ticker vazio")
+    if not isinstance(ticker, str) or not ticker.strip() or "\x00" in ticker:
+        raise _bad_legs(f"perna {index}: ticker vazio ou contém NUL")
+    if len(ticker.strip()) > 32:
+        raise _bad_legs(f"perna {index}: ticker excede 32 caracteres")
     return StructureLegInput(
         kind=kind,
         ticker=ticker.strip().upper(),
@@ -3981,7 +4744,16 @@ def _parse_structure_capital(capital: object) -> float | None:
                 hint="capital é um valor em R$ ≥ 0 (opcional)",
             )
         )
-    value = float(capital)
+    try:
+        value = float(capital)
+    except OverflowError as exc:
+        raise SourceFailure(
+            SourceError(
+                code="bad_request",
+                message=f"capital inválido ({capital!r})",
+                hint="capital é um valor em R$ ≥ 0 (opcional)",
+            )
+        ) from exc
     if not math.isfinite(value) or value < 0:
         raise SourceFailure(
             SourceError(
@@ -4028,9 +4800,7 @@ def _structure_notes(result: StructureResult) -> list[str]:
             reasons.append("curva DI da sessão ausente ou sem o prazo restante")
         if "no_iv" in result.flags:
             missing = [
-                leg.ticker
-                for leg in result.legs
-                if leg.kind == "option" and leg.iv_pct is None
+                leg.ticker for leg in result.legs if leg.kind == "option" and leg.iv_pct is None
             ]
             reasons.append("IV não gravada em " + ", ".join(missing))
         notes.append(

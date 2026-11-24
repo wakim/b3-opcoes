@@ -1,6 +1,13 @@
 # Compose padrão (ADR-001): roda igual em `docker compose` e em `podman compose`.
 # Neste host o runner é `podman compose` (o host não tem Docker).
 
+x-db-environment: &db-environment
+  POSTGRES_DB: ${POSTGRES_DB:-b3o}
+  POSTGRES_USER: ${POSTGRES_USER:-b3o}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-b3o-local}
+
+x-database-url: &database-url "postgresql+psycopg://${POSTGRES_USER:-b3o}:${POSTGRES_PASSWORD:-b3o-local}@db:5432/${POSTGRES_DB:-b3o}"
+
 x-runtime: &runtime-base
   build:
     context: .
@@ -17,14 +24,36 @@ x-runtime: &runtime-base
     - ./data:/data
 
 services:
+  # Journal transacional F6: PostgreSQL em volume nomeado, sem porta publicada.
+  db:
+    image: postgres:latest
+    environment: *db-environment
+    volumes:
+      # PostgreSQL 18+: o mount pai permite que o entrypoint crie data/PGMAJOR.
+      - b3o-postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   # FastAPI + /mcp (F3). Monta a API HTTP e o MCP Streamable HTTP no mesmo processo.
   app:
     <<: *runtime-base
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: *database-url
     ports:
       # host 8080 por padrão; B3_APP_PORT permite provar noutro host quando 8080
       # está ocupado por outro projeto (a app dentro do container é sempre :8080)
       - "127.0.0.1:${B3_APP_PORT:-8080}:8080"
-    command: ["uvicorn", "b3o.api:app", "--host", "0.0.0.0", "--port", "8080"]
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && exec uvicorn b3o.api:app --host 0.0.0.0 --port 8080
 
   # Container de ferramentas (image dev): é aqui que se roda `b3o ...`, python, ruff.
   # NÃO há suíte de testes (diretiva do dono, 22/11/2026 — ADR-019).
@@ -32,12 +61,19 @@ services:
     build:
       context: .
       target: dev
-    environment: *runtime-env
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: *database-url
     volumes:
       - ./data:/data
       # código bind para iteração rápida; .venv vive na imagem, nunca no bind (ADR-003)
       - ./backend/src:/app/src
       - ./backend/scripts:/app/scripts
+      - ./backend/migrations:/app/migrations
+      - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/config.yaml:/app/config.yaml
     command: ["b3o", "--help"]
 
@@ -48,13 +84,24 @@ services:
       context: .
       target: dev
     profiles: [dev]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      <<: *runtime-env
+      DATABASE_URL: *database-url
     ports:
       - "127.0.0.1:${B3_APP_PORT:-8080}:8080"
     volumes:
       - ./data:/data
       - ./backend/src:/app/src
+      - ./backend/migrations:/app/migrations
+      - ./backend/alembic.ini:/app/alembic.ini
       - ./backend/config.yaml:/app/config.yaml
-    command: ["uvicorn", "b3o.api:app", "--reload", "--host", "0.0.0.0", "--port", "8080"]
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && exec uvicorn b3o.api:app --reload --host 0.0.0.0 --port 8080
 
   # one-shot: baixa e deriva (b3o prepare)
   prepare:
@@ -98,4 +145,5 @@ services:
 
 volumes:
   b3o-node-modules:
+  b3o-postgres:
 

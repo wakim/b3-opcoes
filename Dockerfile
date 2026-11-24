@@ -47,6 +47,8 @@ FROM deps AS runtime
 
 COPY backend/config.yaml /app/config.yaml
 COPY backend/src /app/src
+COPY backend/alembic.ini /app/alembic.ini
+COPY backend/migrations /app/migrations
 # Instala o projeto b3o (editável) sobre as deps já resolvidas.
 RUN uv sync --frozen --no-dev
 
@@ -71,6 +73,8 @@ RUN uv sync --frozen --no-install-project
 COPY backend/config.yaml /app/config.yaml
 COPY backend/src /app/src
 COPY backend/scripts /app/scripts
+COPY backend/alembic.ini /app/alembic.ini
+COPY backend/migrations /app/migrations
 COPY docs/glossario.md /app/docs/glossario.md
 RUN uv sync --frozen
 

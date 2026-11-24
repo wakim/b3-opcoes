@@ -28,8 +28,14 @@ def build_service() -> QueryService:
     """Lê o config validado (falha explícita) e monta a única `QueryService`."""
     config_path = Path(os.environ.get(CONFIG_ENV, "config.yaml"))
     config = load_config(config_path)
-    log.info("b3o api: data_dir=%s model_version=%s", config.data_dir, config.model_version)
-    return QueryService(config.data_dir)
+    database_url = os.environ.get("DATABASE_URL")
+    log.info(
+        "b3o api: data_dir=%s model_version=%s journal=postgresql%s",
+        config.data_dir,
+        config.model_version,
+        " (DATABASE_URL)" if database_url else " (default local)",
+    )
+    return QueryService(config.data_dir, database_url=database_url)
 
 
 def set_service(service: QueryService | None) -> None:

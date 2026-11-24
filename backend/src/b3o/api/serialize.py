@@ -31,6 +31,7 @@ MAX_RESPONSE_BYTES = 200_000
 
 _STATUS_BY_CODE = {
     "bad_request": 400,
+    "unauthorized": 401,
     "bad_legs": 400,
     "underlying_mismatch": 400,
     "maturity_mismatch": 400,
@@ -40,8 +41,12 @@ _STATUS_BY_CODE = {
     "expiry_not_found": 404,
     "metrics_missing": 404,
     "not_found": 404,
+    "position_not_found": 404,
+    "position_closed": 409,
+    "position_id_conflict": 409,
     "method_not_allowed": 405,
     "frontend_missing": 503,
+    "app_token_missing": 503,
     "glossary_missing": 503,
     "lake_missing": 503,
     "storage_error": 503,
@@ -54,6 +59,14 @@ def clamp_max_rows(value: int | None) -> int:
     if value is None:
         return DEFAULT_MAX_ROWS
     return max(0, min(MAX_ROWS, int(value)))
+
+
+def clamp_page_size(value: int | None) -> int:
+    """Tamanho de página: 1…60. Zero não pode produzir `next_offset` imóvel."""
+    limit = clamp_max_rows(value)
+    if limit < 1:
+        raise request_error("max_rows precisa ser pelo menos 1", "use um inteiro entre 1 e 60")
+    return limit
 
 
 def jsonable(value: Any) -> Any:

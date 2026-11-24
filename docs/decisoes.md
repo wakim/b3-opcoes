@@ -471,6 +471,36 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** nenhum componente, número, dado ou `model_version` muda. A validação compara computed styles antes/depois em 412, 1280 e 1440 px.
 - **Revisar em:** após uma semana de uso no monitor ou se o dono preferir outra densidade.
 
+## ADR-040 — F6: journal append-only por eventos e escritas com token
+
+- **Data:** 2026-11-24 · **Status:** **superada pela ADR-041** · **Custo de reverter:** médio (schema novo e API de escrita)
+- **Contexto:** a spec §14 pede `position`/`position_leg`, abertura/fechamento só pela app e marcação EOD. O projeto já declarava `journal.db` append-only; atualizar `status`/`closed_at` na linha da posição contradiria essa regra.
+- **Decisão:**
+  1. `journal.py` é o único repositório SQLite. Abertura insere `position`, `position_leg`, evento `open` e `prediction` opcional; fechamento insere somente evento `close`. Status e sessão de fechamento são derivados do evento. Triggers bloqueiam `UPDATE`/`DELETE` nas quatro tabelas.
+  2. GET não cria `journal.db`; a primeira escrita cria schema/triggers. Caminho default `<B3_DATA_DIR>/journal.db`, override `B3_JOURNAL_PATH`.
+  3. `POST /api/positions*` exige `X-App-Token` igual a `APP_TOKEN`; sem token no servidor → `503 app_token_missing`, token inválido → `401 unauthorized`. Leitura fica liberada na tailnet. O token do PWA fica no `localStorage`.
+  4. `kind` é derivado das pernas; `quantity` é em ações. Preço/strike/IV/delta de entrada vêm do lake. O journal consolida opção como `call`/`put`; a API devolve `type: option` + `option_side`.
+  5. Marcação, P&L, gregas, breakevens e flags são calculados na `QueryService`/funções puras. Marca ou grega ausente → agregado `null` + flag, nunca parcial silencioso. `model_version` continua 2.
+  6. A tool MCP `positions` é read-only e compartilha o payload HTTP. Não existe tool de escrita.
+- **Limite declarado:** ex-dividendo futuro não existe no COTAHIST; `event_in_window` cobre vencimento/evento conhecido na janela, sem inventar data futura.
+- **Consequência:** F6 persiste exposição sem quebrar a regra de uma camada de consulta do lake. A reconciliação com duas posições reais da corretora continua sendo prova do dono.
+- **Revisar em:** F7 (avaliação da previsão sem UPDATE, provavelmente evento de avaliação) ou se o dono quiser múltiplos usuários.
+
+## ADR-041 — F6: journal PostgreSQL, Alembic e volume nomeado
+
+- **Data:** 2026-11-24 · **Status:** provisória · **Custo de reverter:** médio (dump/restore e API de escrita)
+- **Contexto:** o SQLite do journal recebeu `disk I/O error` no bind virtiofs do Windows. O arquivo oficial `data/journal.db` nunca existiu; portanto não há dado para migrar. O lago analítico continua Parquet/DuckDB e não muda.
+- **Decisão:**
+  1. O journal operacional usa **PostgreSQL + SQLAlchemy Core + Alembic**. `backend/migrations/versions/0001_f6_initial.py` é a única migration inicial; nenhuma rota cria schema. `app` e `dev` executam `alembic upgrade head` antes do uvicorn.
+  2. `DATABASE_URL` aponta para o serviço `db` em `app`, `dev` e `test`. O banco não publica porta no host. O volume nomeado `b3o-postgres` é montado em `/var/lib/postgresql` (layout PostgreSQL 18+); `data/` continua só com lake/raw.
+  3. Abertura e fechamento continuam transacionais e append-only, com `SELECT ... FOR UPDATE` e índices únicos parciais para no máximo um evento `open` e um `close` por posição. Triggers bloqueiam UPDATE/DELETE/TRUNCATE nas quatro tabelas.
+  4. GET não cria schema nem posição. Sem schema migrado, a falha é `storage_error` explícito; com schema vazio, devolve lista vazia e totais zero. Escritas seguem exigindo `X-App-Token`.
+  5. UI e smokes usam schema PostgreSQL temporário com `search_path` próprio (ou banco descartável), nunca o schema oficial. O script de smoke não aceita caminho de arquivo e não apaga banco/volume.
+  6. Volume não é backup. A cópia operacional é `pg_dump` do banco (formato custom, sem senha no comando versionado) com retenção fora do volume e restauração periódica em banco descartável. A automação/retenção do dump fica pendente até o dono escolher o destino; não se afirma backup executado.
+- **Por quê:** PostgreSQL no volume nomeado evita o bind virtiofs, oferece lock transacional real para o fechamento concorrente e mantém a separação entre dado operacional e lago analítico.
+- **Consequência:** `APP_TOKEN` continua só no `.env`; logs e documentação nunca o revelam. A migration inicial não precisa migrar SQLite. `model_version` continua inalterado.
+- **Revisar em:** F7 (avaliação de previsão por evento) ou quando houver destino de backup/múltiplos usuários.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

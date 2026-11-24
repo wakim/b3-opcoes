@@ -36,7 +36,7 @@ mcp = MCPServer(
     instructions=(
         "Leitura descritiva do mercado de opções da B3 em dado EOD (fechamento), "
         "calculado em Python. Nenhuma tool devolve preço vivo, classe de sinal, "
-        "nota ou previsão: o sinal de VRP foi testado e não passou (ADR-023). "
+        "nota ou previsão de mercado: o sinal de VRP foi testado e não passou (ADR-023). "
         "Responda citando os campos devolvidos, com a sessão e a unidade."
     ),
 )
@@ -51,7 +51,8 @@ TOOL_SCREEN = (
     "30d, RV, VRP/z, skew, liquidez, próximo resultado e flags; papel sem dado tem motivo "
     "explícito. Use quando quiser ler o que o dado diz no dia para o universo inteiro. "
     "Não use para prever retorno: não há classe de sinal nem nota; a ordem é alfabética e "
-    "o recorte de linhas não indica preferência."
+    "o recorte de linhas não indica preferência. Antes de comentar exposição de um papel, "
+    "consulte `positions`."
 )
 TOOL_UNDERLYING = (
     "Leitura de um papel: resumo da sessão, estrutura a termo por vencimento, smile de um "
@@ -83,7 +84,14 @@ TOOL_STRUCTURE = (
     "(spot × IV × dias). Use quando já tiver as pernas (opções e ação, quantidade em ações) "
     "e quiser os números daquela estrutura na sessão. Não use para escolher, comparar ou "
     "ordenar estruturas: a tool só avalia a que você deu, sem sugestão e sem probabilidade. "
-    "Para ver strikes e vencimentos antes de montar as pernas, use `chain`."
+    "Para ver strikes e vencimentos antes de montar as pernas, use `chain`. Antes de "
+    "comentar exposição já existente, consulte `positions`."
+)
+TOOL_POSITIONS = (
+    "Posições abertas do diário, com marcação EOD, P&L, capital, gregas líquidas, "
+    "breakevens, dias para vencimento e flags. Use quando precisar saber o que o dono "
+    "já tem antes de comentar um papel ou estrutura. Não use para preço vivo nem para "
+    "sugerir abertura/fechamento: a tool é read-only e o produto é descritivo."
 )
 
 
@@ -183,6 +191,23 @@ def events(ticker: str) -> dict[str, Any]:
     return _safe(lambda: payloads.events_payload(get_service(), ticker))
 
 
+@mcp.tool(description=TOOL_POSITIONS)
+def positions(
+    date: str | None = None,
+    max_rows: int = DEFAULT_MAX_ROWS,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Posições abertas + agregados na sessão, com `offset`/`meta.next_offset`."""
+    return _safe(
+        lambda: payloads.positions_payload(
+            get_service(),
+            date=date,
+            max_rows=max_rows,
+            offset=offset,
+        )
+    )
+
+
 @mcp.tool(description=TOOL_STRUCTURE)
 def structure_eval(
     legs: list[dict[str, Any]],
@@ -206,6 +231,7 @@ __all__ = [
     "TOOL_CHAIN",
     "TOOL_EVENTS",
     "TOOL_HEALTH",
+    "TOOL_POSITIONS",
     "TOOL_SCREEN",
     "TOOL_SERIES",
     "TOOL_STRUCTURE",

@@ -177,7 +177,7 @@ Uma linha por `(ticker, refdate)`, com o *leg* (trecho entre ajustes).
 | `core.corporate_events(underlying, date, kind, factor)` | evento de escala (desdobramento, grupamento, bonificação), detectado pela razão constante entre strikes (§6.6) | derivada |
 | `core.earnings(underlying, ref_period, date, kind)` | CVM: ITR/DFP (`kind = actual`) ou projeção (`kind = estimated`), §6.14 | semanal |
 | `core.ingest_state` | etag, last_modified, sha256, trailer, last_session, counts por data, model_version | diária |
-| `journal.db` | SQLite, append-only: `decision`, `prediction` (§6.12), `position`, `position_leg` (§14) | por decisão |
+| journal PostgreSQL | append-only: `decision`, `prediction` (§6.12), `position`, `position_leg` (§14); schema por Alembic (ADR-041) | por decisão |
 
 ---
 
@@ -488,7 +488,7 @@ A perna é identificada pelo `ticker` + `maturity` (a série); o strike vigente 
 
 `kind` (coberta, trava de alta, trava de baixa, straddle, put caixa…) é **derivado** das pernas, não digitado.
 
-Regra de ouro: **posição só nasce e morre pela app** (`POST /api/positions` e `/close`). Cada evento grava uma linha no `journal.db`; na abertura, a previsão estruturada (§6.12) é opcional mas pedida pelo formulário — sem ela, a posição fica fora da calibração. Registro manual fora da app é o que faz o P&L divergir da corretora.
+Regra de ouro: **posição só nasce e morre pela app** (`POST /api/positions` e `/close`). Cada evento grava uma linha no journal PostgreSQL; na abertura, a previsão estruturada (§6.12) é opcional mas pedida pelo formulário — sem ela, a posição fica fora da calibração. Registro manual fora da app é o que faz o P&L divergir da corretora.
 
 ### 14.2 Marcação e derivados (EOD, nunca live)
 

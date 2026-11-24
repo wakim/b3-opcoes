@@ -157,14 +157,14 @@ function Diario() {
     <>
       <div className="portfolio-head">
         <div>
-          <h1 className="screen-title">Diário</h1>
-          <p className="quiet-line">Decisões, previsões estruturadas e desfecho EOD</p>
+          <h1 className="screen-title lg:text-screen-title lg:leading-title">Diário</h1>
+          <p className="quiet-line lg:text-label">Decisões, previsões estruturadas e desfecho EOD</p>
         </div>
         {auth.hasToken && (
           <div className="portfolio-actions">
             <button
               type="button"
-              className="builder__button builder__button--primary"
+              className="builder__button builder__button--primary lg:text-control"
               onClick={() => {
                 setWriteNotice(null)
                 setFormBusy(false)
@@ -173,7 +173,7 @@ function Diario() {
             >
               Nova decisão
             </button>
-            <button type="button" className="inline-link" onClick={changeToken}>
+            <button type="button" className="inline-link lg:text-label" onClick={changeToken}>
               Trocar token
             </button>
           </div>
@@ -189,19 +189,19 @@ function Diario() {
       )}
 
       {writeNotice && (
-        <p className="notice" role="status">
+        <p className="notice lg:text-label" role="status">
           {writeNotice}
         </p>
       )}
 
       <section className="journal-section" aria-labelledby="journal-calibration-title">
         <div className="block-head">
-          <h2 className="block-title" id="journal-calibration-title">
+          <h2 className="block-title lg:text-block-title lg:leading-title" id="journal-calibration-title">
             Calibração pessoal
           </h2>
-          <span className="block-count">{calibration.data?.meta?.total ?? 0}</span>
+          <span className="block-count lg:text-label">{calibration.data?.meta?.total ?? 0}</span>
         </div>
-        <p className="chain-note">
+        <p className="chain-note lg:text-label lg:leading-body">
           Por métrica e horizonte. A taxa usa apenas acertos e erros; “sem dados” fica separado.
           Não há comparação com sinal nem recomendação.
         </p>
@@ -216,22 +216,22 @@ function Diario() {
 
       <section className="journal-section" aria-labelledby="journal-list-title">
         <div className="block-head">
-          <h2 className="block-title" id="journal-list-title">
+          <h2 className="block-title lg:text-block-title lg:leading-title" id="journal-list-title">
             Decisões
           </h2>
-          <span className="block-count">{journal.data?.meta?.total ?? 0}</span>
+          <span className="block-count lg:text-label">{journal.data?.meta?.total ?? 0}</span>
         </div>
         {journal.isLoading && <Loading label="carregando diário…" />}
         {journal.isError && <ErrorState error={journal.error} title="Diário indisponível" />}
         {journal.data?.meta?.note && (
-          <p className="notice" role="status">
+          <p className="notice lg:text-label" role="status">
             {journal.data.meta.note}
           </p>
         )}
         {journal.data && journal.data.data.decisions.length === 0 ? (
           <div className="position-empty">
             <p>Nenhuma decisão registrada.</p>
-            <p className="note">
+            <p className="note lg:text-label">
               {auth.hasToken
                 ? 'Use “Nova decisão” para registrar, inclusive, uma escolha de não entrar.'
                 : 'Salve o token acima para registrar uma decisão.'}
@@ -313,7 +313,7 @@ function CalibrationReport({
         />
       </MetricGrid>
       {data.groups.length === 0 ? (
-        <p className="note">Ainda não há previsão avaliada. O relatório não inventa taxa sem n.</p>
+        <p className="note lg:text-label">Ainda não há previsão avaliada. O relatório não inventa taxa sem n.</p>
       ) : (
         <div
           className="table-wrap table-wrap--scroll journal-table-wrap"
@@ -321,26 +321,26 @@ function CalibrationReport({
           aria-label="Calibração por métrica e horizonte"
           tabIndex={0}
         >
-          <table className="screen-table journal-table">
+          <table className="screen-table journal-table lg:text-table lg:leading-table">
             <thead>
               <tr>
-                <th scope="col">Métrica</th>
-                <th scope="col">Horizonte</th>
-                <th scope="col">n</th>
-                <th scope="col">Acertos</th>
-                <th scope="col">Erros</th>
-                <th scope="col">Sem dados</th>
-                <th scope="col">Taxa</th>
-                <th scope="col">Motivo de void</th>
+                <th scope="col" className="lg:text-table-head">Métrica</th>
+                <th scope="col" className="lg:text-table-head">Horizonte</th>
+                <th scope="col" className="lg:text-table-head">n</th>
+                <th scope="col" className="lg:text-table-head">Acertos</th>
+                <th scope="col" className="lg:text-table-head">Erros</th>
+                <th scope="col" className="lg:text-table-head">Sem dados</th>
+                <th scope="col" className="lg:text-table-head">Taxa</th>
+                <th scope="col" className="lg:text-table-head">Motivo de void</th>
               </tr>
             </thead>
             <tbody>
               {data.groups.map((group) => (
                 <tr key={`${group.metric}:${group.horizon_sessions}`}>
-                  <th scope="row">
+                  <th scope="row" className="lg:text-table-head">
                     <button
                       type="button"
-                      className="inline-link"
+                      className="inline-link lg:text-label"
                       onClick={() =>
                         onMetric(
                           group.metric,
@@ -359,7 +359,7 @@ function CalibrationReport({
                   <td className="num">{group.void}</td>
                   <td className="num">
                     {group.hit_rate_pct == null ? '—' : `${fmt(group.hit_rate_pct, 1)}%`}
-                    <span className="journal-table__n">n {group.n}</span>
+                    <span className="journal-table__n lg:text-detail">n {group.n}</span>
                   </td>
                   <td>
                     {group.void_reasons.length === 0
@@ -394,25 +394,25 @@ function DecisionCard({
       <header className="position-card__head">
         <div>
           <Link
-            className="position-card__title"
+            className="position-card__title lg:text-metric"
             to="/t/$ticker"
             params={{ ticker: decision.underlying }}
           >
             {decision.underlying}
           </Link>
-          <span className="position-card__kind">
+          <span className="position-card__kind lg:text-label">
             {decisionTypeLabel(decision.decision_type)}
           </span>
         </div>
-        <span className="quiet">{dateBr(decision.session)}</span>
+        <span className="quiet lg:text-label">{dateBr(decision.session)}</span>
       </header>
-      {decision.context && <p className="journal-card__context">{decision.context}</p>}
-      {decision.notes && <p className="position-card__notes">{decision.notes}</p>}
+      {decision.context && <p className="journal-card__context lg:text-body lg:leading-body">{decision.context}</p>}
+      {decision.notes && <p className="position-card__notes lg:text-body lg:leading-body">{decision.notes}</p>}
       {decision.position_id && (
-        <p className="quiet-line">
+        <p className="quiet-line lg:text-label">
           posição vinculada:{' '}
           <Link
-            className="inline-link"
+            className="inline-link lg:text-label"
             to="/carteira/$positionId"
             params={{ positionId: decision.position_id }}
           >
@@ -423,7 +423,7 @@ function DecisionCard({
       {prediction ? (
         <PredictionOutcome prediction={prediction} onMetric={onMetric} />
       ) : (
-        <p className="note">Sem previsão estruturada; esta decisão não entra na calibração.</p>
+        <p className="note lg:text-label">Sem previsão estruturada; esta decisão não entra na calibração.</p>
       )}
     </article>
   )
@@ -440,12 +440,12 @@ function PredictionOutcome({
   const observed = metricValue(prediction.observed, prediction.unit)
   return (
     <div className="journal-outcome">
-      <div className="journal-outcome__row">
-        <span className="quiet">Previsão</span>
+      <div className="journal-outcome__row lg:text-label">
+        <span className="quiet lg:text-label">Previsão</span>
         <span className="num">
           <button
             type="button"
-            className="inline-link"
+            className="inline-link lg:text-label"
             onClick={() => onMetric(prediction.metric, metricLabel(prediction.metric), threshold)}
           >
             {metricLabel(prediction.metric)}
@@ -454,19 +454,19 @@ function PredictionOutcome({
           {dateBr(prediction.evaluate_on)}
         </span>
       </div>
-      <div className="journal-outcome__row">
-        <span className="quiet">Observado</span>
+      <div className="journal-outcome__row lg:text-label">
+        <span className="quiet lg:text-label">Observado</span>
         <span className="num">
           {observed}
           {prediction.evaluated_on ? ` · ${dateBr(prediction.evaluated_on)}` : ''}
         </span>
       </div>
-      <div className="journal-outcome__row">
-        <span className="quiet">Desfecho</span>
+      <div className="journal-outcome__row lg:text-label">
+        <span className="quiet lg:text-label">Desfecho</span>
         <span className="num">
           <button
             type="button"
-            className="inline-link"
+            className="inline-link lg:text-label"
             onClick={() =>
               onMetric(
                 'prediction_status',

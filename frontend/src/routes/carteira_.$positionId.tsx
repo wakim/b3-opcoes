@@ -107,14 +107,14 @@ function PositionDetailPage() {
 
   return (
     <>
-      <Link className="back" to="/carteira">
+      <Link className="back lg:text-label" to="/carteira">
         <span aria-hidden="true">‹</span> Carteira
       </Link>
 
       <div className="position-detail__head">
         <div>
-          <h1 className="screen-title">{data.underlying}</h1>
-          <p className="quiet-line">
+          <h1 className="screen-title lg:text-screen-title lg:leading-title">{data.underlying}</h1>
+          <p className="quiet-line lg:text-label">
             {positionKindLabel(data.kind)} · {positionStatusLabel(data.status)} · sessão{' '}
             {position.data.as_of_session ?? '—'}
           </p>
@@ -122,19 +122,19 @@ function PositionDetailPage() {
       </div>
 
       {writeNotice && (
-        <p className="notice" role="status">
+        <p className="notice lg:text-label" role="status">
           {writeNotice}
         </p>
       )}
       {(position.data.meta?.truncated || position.data.meta?.note) && (
-        <p className="notice" role="status">
+        <p className="notice lg:text-label" role="status">
           {position.data.meta.note ??
             'O payoff foi truncado no transporte e não é exibido como completo. Reabra a posição para tentar novamente.'}
         </p>
       )}
 
-      <p className="position-flags-line">
-        <span className="quiet">Flags da posição</span>{' '}
+      <p className="position-flags-line lg:text-label">
+        <span className="quiet lg:text-label">Flags da posição</span>{' '}
         <PositionFlags flags={data.flags} />
       </p>
 
@@ -203,38 +203,38 @@ function PositionDetailPage() {
       </MetricGrid>
 
       <section className="position-section" aria-labelledby="position-identity-title">
-        <h2 className="block-title" id="position-identity-title">Registro</h2>
+        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-identity-title">Registro</h2>
         <dl className="identity">
           <div>
-            <dt>Capital comprometido</dt>
-            <dd className="num">{brl(data.capital_committed_brl)}</dd>
+            <dt className="lg:text-label">Capital comprometido</dt>
+            <dd className="num lg:text-detail">{brl(data.capital_committed_brl)}</dd>
           </div>
           <div>
-            <dt>Limite de capital</dt>
-            <dd className="num">{brl(data.capital_limit_brl)}</dd>
+            <dt className="lg:text-label">Limite de capital</dt>
+            <dd className="num lg:text-detail">{brl(data.capital_limit_brl)}</dd>
           </div>
           <div>
-            <dt>Aberta em</dt>
-            <dd className="num">{dateBr(data.opened_session)}</dd>
+            <dt className="lg:text-label">Aberta em</dt>
+            <dd className="num lg:text-detail">{dateBr(data.opened_session)}</dd>
           </div>
           <div>
-            <dt>Fechada em</dt>
-            <dd className="num">{dateBr(data.closed_session)}</dd>
+            <dt className="lg:text-label">Fechada em</dt>
+            <dd className="num lg:text-detail">{dateBr(data.closed_session)}</dd>
           </div>
           <div>
-            <dt>Vencimento</dt>
-            <dd className="num">{dateBr(data.maturity)}</dd>
+            <dt className="lg:text-label">Vencimento</dt>
+            <dd className="num lg:text-detail">{dateBr(data.maturity)}</dd>
           </div>
           <div>
-            <dt>Status</dt>
-            <dd>{positionStatusLabel(data.status)}</dd>
+            <dt className="lg:text-label">Status</dt>
+            <dd className="lg:text-detail">{positionStatusLabel(data.status)}</dd>
           </div>
         </dl>
-        {data.notes && <p className="position-detail__notes">{data.notes}</p>}
+        {data.notes && <p className="position-detail__notes lg:text-body lg:leading-body">{data.notes}</p>}
       </section>
 
       <section className="position-section" aria-labelledby="position-legs-title">
-        <h2 className="block-title" id="position-legs-title">
+        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-legs-title">
           Pernas registradas
           <HelpTip
             label="O que é uma perna?"
@@ -247,18 +247,18 @@ function PositionDetailPage() {
           tabIndex={0}
           aria-label="Tabela horizontal das pernas registradas"
         >
-          <table className="screen-table position-table">
+          <table className="screen-table position-table lg:text-table lg:leading-table">
             <thead>
               <tr>
-                <th>Ticker</th>
-                <th>Tipo</th>
-                <th>Lado</th>
-                <th>Ações</th>
-                <th>Vencimento</th>
-                <th>Entrada</th>
-                <th>Strike</th>
-                <th>Volatilidade implícita na entrada</th>
-                <th>Delta entrada</th>
+                <th className="lg:text-table-head">Ticker</th>
+                <th className="lg:text-table-head">Tipo</th>
+                <th className="lg:text-table-head">Lado</th>
+                <th className="lg:text-table-head">Ações</th>
+                <th className="lg:text-table-head">Vencimento</th>
+                <th className="lg:text-table-head">Entrada</th>
+                <th className="lg:text-table-head">Strike</th>
+                <th className="lg:text-table-head">Volatilidade implícita na entrada</th>
+                <th className="lg:text-table-head">Delta entrada</th>
               </tr>
             </thead>
             <tbody>
@@ -281,28 +281,28 @@ function PositionDetailPage() {
       </section>
 
       <section className="position-section" aria-labelledby="position-marks-title">
-        <h2 className="block-title" id="position-marks-title">Marcação da sessão</h2>
+        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-marks-title">Marcação da sessão</h2>
         <div
           className="table-wrap table-wrap--position"
           role="region"
           tabIndex={0}
           aria-label="Tabela horizontal da marcação da sessão"
         >
-          <table className="screen-table position-table position-table--marks">
+          <table className="screen-table position-table position-table--marks lg:text-table lg:leading-table">
             <thead>
               <tr>
-                <th>Ticker</th>
-                <th>Marca</th>
-                <th>Strike vigente</th>
-                <th>Volatilidade implícita</th>
-                <th>Delta</th>
-                <th>Gamma</th>
-                <th>Theta</th>
-                <th>Vega</th>
-                <th>Spread</th>
-                <th>Spread %</th>
-                <th>Um lado</th>
-                <th>Flags</th>
+                <th className="lg:text-table-head">Ticker</th>
+                <th className="lg:text-table-head">Marca</th>
+                <th className="lg:text-table-head">Strike vigente</th>
+                <th className="lg:text-table-head">Volatilidade implícita</th>
+                <th className="lg:text-table-head">Delta</th>
+                <th className="lg:text-table-head">Gamma</th>
+                <th className="lg:text-table-head">Theta</th>
+                <th className="lg:text-table-head">Vega</th>
+                <th className="lg:text-table-head">Spread</th>
+                <th className="lg:text-table-head">Spread %</th>
+                <th className="lg:text-table-head">Um lado</th>
+                <th className="lg:text-table-head">Flags</th>
               </tr>
             </thead>
             <tbody>
@@ -330,49 +330,49 @@ function PositionDetailPage() {
       </section>
 
       <section className="position-section" aria-labelledby="position-thesis-title">
-        <h2 className="block-title" id="position-thesis-title">Tese vs realidade</h2>
+        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-thesis-title">Tese vs realidade</h2>
         <div className="position-thesis">
-          <p className="position-thesis__line">
+          <p className="position-thesis__line lg:text-body lg:leading-body">
             {data.thesis_line ?? 'Nenhuma linha de tese retornada para esta posição.'}
           </p>
           {data.prediction ? (
             <dl className="identity">
               <div>
-                <dt>Métrica</dt>
-                <dd className="num">{data.prediction.metric}</dd>
+                <dt className="lg:text-label">Métrica</dt>
+                <dd className="num lg:text-detail">{data.prediction.metric}</dd>
               </div>
               <div>
-                <dt>Condição</dt>
-                <dd className="num">
+                <dt className="lg:text-label">Condição</dt>
+                <dd className="num lg:text-detail">
                   {data.prediction.operator} {fmt(data.prediction.value)}
                 </dd>
               </div>
               <div>
-                <dt>Horizonte</dt>
-                <dd className="num">{fmt(data.prediction.horizon_sessions, 0)} sessões</dd>
+                <dt className="lg:text-label">Horizonte</dt>
+                <dd className="num lg:text-detail">{fmt(data.prediction.horizon_sessions, 0)} sessões</dd>
               </div>
               <div>
-                <dt>Avaliar em</dt>
-                <dd className="num">{dateBr(data.prediction.evaluate_on)}</dd>
+                <dt className="lg:text-label">Avaliar em</dt>
+                <dd className="num lg:text-detail">{dateBr(data.prediction.evaluate_on)}</dd>
               </div>
               <div>
-                <dt>Status</dt>
-                <dd>{predictionStatusLabel(data.prediction.status)}</dd>
+                <dt className="lg:text-label">Status</dt>
+                <dd className="lg:text-detail">{predictionStatusLabel(data.prediction.status)}</dd>
               </div>
               <div>
-                <dt>Observado</dt>
-                <dd className="num">{fmt(data.prediction.observed)}</dd>
+                <dt className="lg:text-label">Observado</dt>
+                <dd className="num lg:text-detail">{fmt(data.prediction.observed)}</dd>
               </div>
             </dl>
           ) : (
-            <p className="note">Sem previsão estruturada; esta posição não entra na calibração.</p>
+            <p className="note lg:text-label">Sem previsão estruturada; esta posição não entra na calibração.</p>
           )}
         </div>
       </section>
 
       <section className="position-section" aria-labelledby="position-payoff-title">
-        <h2 className="block-title" id="position-payoff-title">Payoff no vencimento</h2>
-        <p className="chain-note">Preços de entrada do journal; o backend calcula todos os pontos.</p>
+        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-payoff-title">Payoff no vencimento</h2>
+        <p className="chain-note lg:text-label lg:leading-body">Preços de entrada do journal; o backend calcula todos os pontos.</p>
         {!payoffTruncated && (
           <PayoffChart
             points={data.payoff}
@@ -384,21 +384,21 @@ function PositionDetailPage() {
 
       {isOpen && (
         <section className="position-write" aria-labelledby="position-close-title">
-          <h2 className="block-title" id="position-close-title">Fechamento</h2>
+          <h2 className="block-title lg:text-block-title lg:leading-title" id="position-close-title">Fechamento</h2>
           {!auth.hasToken && !confirmOpen && (
             <TokenGate compact notice={tokenNotice} onUnlock={() => setTokenNotice(null)} />
           )}
           <div className="position-detail__actions">
             <button
               type="button"
-              className="builder__button builder__button--primary"
+              className="builder__button builder__button--primary lg:text-control"
               onClick={openConfirmation}
               disabled={!auth.hasToken}
             >
               Fechar posição
             </button>
             {auth.hasToken && (
-              <button type="button" className="inline-link" onClick={changeToken}>
+              <button type="button" className="inline-link lg:text-label" onClick={changeToken}>
                 Trocar token
               </button>
             )}
@@ -426,14 +426,14 @@ function PositionDetailPage() {
           )}
           <header className="modal__head">
             <div>
-              <div className="modal__eyebrow">evento append-only</div>
-              <h2 className="modal__title" id="close-position-title">
+              <div className="modal__eyebrow lg:text-label">evento append-only</div>
+              <h2 className="modal__title lg:text-modal-title lg:leading-title" id="close-position-title">
                 Fechar posição
               </h2>
             </div>
             <button
               type="button"
-              className="modal__close"
+              className="modal__close lg:text-modal-title"
               onClick={closeConfirm}
               aria-label="Cancelar fechamento"
               disabled={close.isPending}
@@ -441,12 +441,13 @@ function PositionDetailPage() {
               ×
             </button>
           </header>
-          <p className="position-confirm__text" id="close-position-description">
+          <p className="position-confirm__text lg:text-body lg:leading-body" id="close-position-description">
             O fechamento usa a marcação EOD e acrescenta um evento que não pode ser desfeito.
           </p>
           <label className="builder__field">
-            <span className="builder__field-label">Data da sessão (opcional)</span>
+            <span className="builder__field-label lg:text-label">Data da sessão (opcional)</span>
             <input
+              className="lg:text-control"
               type="date"
               value={closeDate}
               onChange={(event) => setCloseDate(event.target.value)}
@@ -454,12 +455,12 @@ function PositionDetailPage() {
               disabled={close.isPending}
             />
           </label>
-          <p className="note">Em branco, o backend usa a última sessão disponível.</p>
+          <p className="note lg:text-label">Em branco, o backend usa a última sessão disponível.</p>
           {close.isError && <ErrorState error={close.error} title="Fechamento não registrado" />}
           <div className="position-form__actions">
             <button
               type="button"
-              className="builder__button"
+              className="builder__button lg:text-control"
               onClick={closeConfirm}
               disabled={close.isPending}
             >
@@ -467,7 +468,7 @@ function PositionDetailPage() {
             </button>
             <button
               type="button"
-              className="builder__button builder__button--primary"
+              className="builder__button builder__button--primary lg:text-control"
               onClick={() => close.mutate(closeDate ? { date: closeDate } : {})}
               disabled={close.isPending}
             >

@@ -306,6 +306,13 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - **Top por volume não é top por liquidez do papel.** A primeira série é **BBDCA148 (BBDC4)**, call europeia K 14,09/15-01-2027, **R$ 5.356.418,00**, **2.308 negócios**, spread 8,695652%, IV 31,199198%, Δ 0,479017. Conferida no Parquet e no `chain`/`series` pelo `liquid_smoke.py` (24/24).
 - **Linha de tabela interativa precisa vencer o padding global.** `.screen-table td` vem depois de `.liquidity-table td` na folha e deixava a linha em 41 px; o seletor correto é `.screen-table.liquidity-table td` (12 px + linha 20 + hairline = 45 px). Alvo ≥ 44 px é critério, não detalhe visual.
 
+### Tipografia desktop (F8)
+
+- O `html` continua em **13,5 px** no mobile. Tokens de tipografia desktop em `rem` não produzem os px pedidos; a escala F8 usa **px** em `@theme` e utilitários `lg:`.
+- Não nomear o token de input como `--text-input` quando existe `--color-input`: o Tailwind resolve `text-input` como **cor**, não como tamanho. O nome usado é `--text-control` / `lg:text-control`.
+
+---
+
 ## Armazenamento
 
 - Parquet + DuckDB, particionado por `year`, escrita atômica (`tmp/` → `os.replace`).

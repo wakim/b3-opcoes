@@ -29,7 +29,7 @@ export function HelpTip({ label, text }: { label: string; text: string }) {
       >
         <span aria-hidden="true">?</span>
       </button>
-      <span className="help-tip__text" id={id} role="tooltip" data-open={open}>
+      <span className="help-tip__text lg:text-detail" id={id} role="tooltip" data-open={open}>
         {text}
       </span>
     </span>

@@ -85,20 +85,20 @@ export function StructureBuilder({
   return (
     <section className="builder" aria-labelledby="builder-title">
       <div className="block-head">
-        <h2 className="block-title" id="builder-title">
+        <h2 className="block-title lg:text-block-title lg:leading-title" id="builder-title">
           Montar estrutura
         </h2>
-        <span className="block-count">
+        <span className="block-count lg:text-label">
           {legs.length}/{MAX_LEGS} pernas
         </span>
       </div>
-      <p className="chain-note">
+      <p className="chain-note lg:text-label lg:leading-body">
         Calculadora de payoff. 100 ações = 1 contrato; a quantidade é em ações e não é multiplicada
         por 100. Nada é gravado.
       </p>
 
       {legs.length === 0 ? (
-        <p className="chart-empty">
+        <p className="chart-empty lg:text-detail">
           Expanda uma linha da cadeia e use <strong>Comprar</strong> ou <strong>Vender</strong>, ou
           adicione a ação abaixo.
         </p>
@@ -108,25 +108,26 @@ export function StructureBuilder({
             <li className="builder__leg" key={leg.id}>
               <span className="builder__leg-id">
                 <span className="builder__leg-ticker num">{leg.ticker}</span>
-                <span className="quiet">
+                <span className="quiet lg:text-label">
                   {leg.kind === 'stock' ? 'ação' : 'opção'} · {SIDE_LABEL[leg.side]}
                 </span>
               </span>
-              <label className="builder__qty">
-                <span className="quiet">ações</span>
+              <label className="builder__qty lg:text-label">
+                <span className="quiet lg:text-label">ações</span>
                 <input
                   type="number"
                   inputMode="numeric"
                   min={1}
                   step={1}
                   value={leg.quantity}
+                  className="lg:text-control"
                   aria-label={`Quantidade de ações de ${leg.ticker}`}
                   onChange={(event) => setQuantity(leg.id, event.target.value)}
                 />
               </label>
               <button
                 type="button"
-                className="builder__remove"
+                className="builder__remove lg:text-label"
                 aria-label={`Remover ${leg.ticker}`}
                 onClick={() => removeLeg(leg.id)}
               >
@@ -140,8 +141,9 @@ export function StructureBuilder({
       <div className="builder__actions">
         <div className="builder__stock" role="group" aria-label="Perna de ação">
           <label className="builder__field">
-            <span className="builder__field-label">Perna de ação</span>
+            <span className="builder__field-label lg:text-label">Perna de ação</span>
             <select
+              className="lg:text-control"
               value={stockSide}
               aria-label="Lado da ação"
               onChange={(event) => setStockSide(event.target.value as LegSide)}
@@ -151,12 +153,13 @@ export function StructureBuilder({
             </select>
           </label>
           <label className="builder__field">
-            <span className="builder__field-label">Ações</span>
+            <span className="builder__field-label lg:text-label">Ações</span>
             <input
               type="number"
               inputMode="numeric"
               min={1}
               step={1}
+              className="lg:text-control"
               value={stockQuantity}
               aria-label="Quantidade de ações da ação"
               onChange={(event) => setStockQuantity(event.target.value)}
@@ -164,7 +167,7 @@ export function StructureBuilder({
           </label>
           <button
             type="button"
-            className="builder__button builder__stock-add"
+            className="builder__button builder__stock-add lg:text-control"
             onClick={addStock}
             disabled={legs.length >= MAX_LEGS}
           >
@@ -174,7 +177,7 @@ export function StructureBuilder({
         <div className="builder__run">
           <button
             type="button"
-            className="builder__button builder__button--primary"
+            className="builder__button builder__button--primary lg:text-control"
             onClick={() => calc.mutate()}
             disabled={legs.length === 0 || calc.isPending}
           >
@@ -182,7 +185,7 @@ export function StructureBuilder({
           </button>
           <button
             type="button"
-            className="builder__button"
+            className="builder__button lg:text-control"
             onClick={() => setLegs([])}
             disabled={legs.length === 0}
           >
@@ -192,7 +195,7 @@ export function StructureBuilder({
       </div>
 
       {legs.length >= MAX_LEGS && (
-        <p className="note">Limite de {MAX_LEGS} pernas atingido (o backend recusa mais).</p>
+        <p className="note lg:text-label">Limite de {MAX_LEGS} pernas atingido (o backend recusa mais).</p>
       )}
 
       {calc.isError && <ErrorState error={calc.error} title="Estrutura não avaliada" />}
@@ -225,19 +228,19 @@ export function StructureBuilder({
             <Metric label="Vega agregado" value={brl(result.vega_brl)} />
           </MetricGrid>
 
-          <p className="note">
+          <p className="note lg:text-label">
             {result.maturity ? `Vencimento ${result.maturity} · ` : ''}
             estrutura {result.structure_version} · sessão {calc.data?.as_of_session ?? '—'}
             {result.forward_brl != null && ` · forward ${brl(result.forward_brl)}`}
           </p>
 
           {result.capital_over && (
-            <p className="notice" role="status">
+            <p className="notice lg:text-label" role="status">
               O capital comprometido passa do capital informado.
             </p>
           )}
           {result.flags.length > 0 && (
-            <p className="note">flags: {result.flags.join(' · ')}</p>
+            <p className="note lg:text-label">flags: {result.flags.join(' · ')}</p>
           )}
 
           <PayoffChart
@@ -247,7 +250,7 @@ export function StructureBuilder({
           />
 
           {scenariosUnavailable ? (
-            <p className="notice" role="status">
+            <p className="notice lg:text-label" role="status">
               Cenários indisponíveis
               {result.flags.includes('no_iv') && ' (série sem volatilidade implícita)'}
               {result.flags.includes('no_rates') && ' (curva de juros ausente)'}
@@ -271,21 +274,21 @@ function ScenariosTable({
 }) {
   const zeroDay = scenarios.filter((row) => row.days_forward === 0)
   if (zeroDay.length === 0) {
-    return <p className="note">sem cenários no dia 0</p>
+    return <p className="note lg:text-label">sem cenários no dia 0</p>
   }
   const spots = [...new Set(zeroDay.map((row) => row.spot_brl))].sort((a, b) => a - b)
   const shifts = [...new Set(zeroDay.map((row) => row.iv_shift_pts))].sort((a, b) => a - b)
 
   return (
     <div className="builder__scenarios">
-      <p className="builder__scenarios-title">Cenários no dia 0 (spot e choque de IV do backend)</p>
+      <p className="builder__scenarios-title lg:text-label">Cenários no dia 0 (spot e choque de IV do backend)</p>
       <div className="table-wrap">
-        <table className="screen-table">
+        <table className="screen-table lg:text-table lg:leading-table">
           <thead>
             <tr>
-              <th>Preço</th>
+              <th className="lg:text-table-head">Preço</th>
               {shifts.map((shift) => (
-                <th key={shift}>
+                <th key={shift} className="lg:text-table-head">
                   IV {shift > 0 ? '+' : ''}
                   {fmt(shift, 0)}
                 </th>

@@ -63,22 +63,22 @@ function EntryRow({
   return (
     <>
       <button
-        className="glossary-item"
+        className="glossary-item lg:text-body lg:leading-body"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => onToggle(entry.key)}
       >
         <span className="g-label">
           <span>{entry.title}</span>
-          <span className="level">nível {entry.level}</span>
+          <span className="level lg:text-label">nível {entry.level}</span>
         </span>
-        <span className="acc-sign" aria-hidden="true">
+        <span className="acc-sign lg:text-metric" aria-hidden="true">
           {open ? '−' : '+'}
         </span>
       </button>
       <div
         id={panelId}
-        className="glossary-panel"
+        className="glossary-panel lg:text-body lg:leading-body"
         role="region"
         aria-label={entry.title}
         hidden={!open}
@@ -111,8 +111,8 @@ function Aprender() {
 
   return (
     <>
-      <h1 className="screen-title">Aprender</h1>
-      <p className="note">
+      <h1 className="screen-title lg:text-screen-title lg:leading-title">Aprender</h1>
+      <p className="note lg:text-label">
         Toque num verbete para abrir a ficha. Vários podem ficar abertos.
       </p>
 

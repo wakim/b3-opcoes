@@ -86,10 +86,10 @@ export function TokenGate({
 
   return (
     <section className={`token-gate${compact ? ' token-gate--compact' : ''}`} aria-labelledby={`${id}-title`}>
-      <h2 className="block-title" id={`${id}-title`}>
+      <h2 className="block-title lg:text-block-title lg:leading-title" id={`${id}-title`}>
         {title ?? (compact ? 'Token para fechar' : 'Liberar escritas')}
       </h2>
-      <p className="chain-note">
+      <p className="chain-note lg:text-label lg:leading-body">
         {description ??
           (compact
             ? 'O fechamento grava um evento no journal e exige o token de escrita.'
@@ -97,9 +97,10 @@ export function TokenGate({
       </p>
       <form className="token-gate__form" onSubmit={submit}>
         <label className="builder__field token-gate__field" htmlFor={`${id}-token`}>
-          <span className="builder__field-label">Token do aplicativo</span>
+          <span className="builder__field-label lg:text-label">Token do aplicativo</span>
           <input
             id={`${id}-token`}
+            className="lg:text-control"
             type="password"
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -111,16 +112,16 @@ export function TokenGate({
             autoFocus={autoFocus}
           />
         </label>
-        <button type="submit" className="builder__button builder__button--primary">
+        <button type="submit" className="builder__button builder__button--primary lg:text-control">
           Salvar token
         </button>
       </form>
       {(notice || error) && (
-        <p className="notice" role="alert">
+        <p className="notice lg:text-label" role="alert">
           {error ?? notice}
         </p>
       )}
-      <p className="note" id={`${id}-note`}>
+      <p className="note lg:text-label" id={`${id}-note`}>
         Fica somente neste navegador e é enviado no cabeçalho das escritas. Não aparece na tela nem no
         log.
       </p>

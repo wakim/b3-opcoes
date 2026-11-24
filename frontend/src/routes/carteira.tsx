@@ -84,14 +84,14 @@ function Carteira() {
     <>
       <div className="portfolio-head">
         <div>
-          <h1 className="screen-title">Carteira</h1>
-          <p className="quiet-line">Posições e marcação EOD do journal</p>
+          <h1 className="screen-title lg:text-screen-title lg:leading-title">Carteira</h1>
+          <p className="quiet-line lg:text-label">Posições e marcação EOD do journal</p>
         </div>
         {auth.hasToken && (
           <div className="portfolio-actions">
             <button
               type="button"
-              className="builder__button builder__button--primary"
+              className="builder__button builder__button--primary lg:text-control"
               onClick={() => {
                 setWriteNotice(null)
                 setFormBusy(false)
@@ -100,7 +100,7 @@ function Carteira() {
             >
               Nova posição
             </button>
-            <button type="button" className="inline-link" onClick={changeToken}>
+            <button type="button" className="inline-link lg:text-label" onClick={changeToken}>
               Trocar token
             </button>
           </div>
@@ -115,20 +115,20 @@ function Carteira() {
       {portfolio.isError && <ErrorState error={portfolio.error} title="Carteira indisponível" />}
 
       {writeNotice && (
-        <p className="notice" role="status">
+        <p className="notice lg:text-label" role="status">
           {writeNotice}
         </p>
       )}
 
       {portfolio.data && (
         <>
-          <p className="quiet-line">
+          <p className="quiet-line lg:text-label">
             sessão {portfolio.data.data.session} · {portfolio.data.data.totals.open_positions}{' '}
             {portfolio.data.data.totals.open_positions === 1 ? 'posição aberta' : 'posições abertas'}
           </p>
 
           {(portfolio.data.meta?.truncated || portfolio.data.meta?.note) && (
-            <p className="notice" role="status">
+            <p className="notice lg:text-label" role="status">
               {portfolio.data.meta.note ??
                 `Mostrando ${portfolio.data.meta.returned} de ${portfolio.data.meta.total} posições abertas.`}
             </p>
@@ -137,15 +137,15 @@ function Carteira() {
           <PositionTotalsGrid totals={portfolio.data.data.totals} onMetric={openMetric} />
 
           <div className="block-head">
-            <h2 className="block-title">Posições</h2>
-            <span className="block-count">{portfolio.data.data.positions.length}</span>
+            <h2 className="block-title lg:text-block-title lg:leading-title">Posições</h2>
+            <span className="block-count lg:text-label">{portfolio.data.data.positions.length}</span>
           </div>
 
           {portfolio.data.data.positions.length === 0 &&
           (portfolio.data.meta?.total ?? 0) === 0 ? (
             <div className="position-empty">
               <p>Nenhuma posição aberta.</p>
-              <p className="note">
+              <p className="note lg:text-label">
                 {auth.hasToken
                   ? 'Use “Nova posição” para registrar pernas e a marcação de entrada.'
                   : 'Salve o token acima e use “Nova posição” para registrar pernas e a marcação de entrada.'}
@@ -154,7 +154,7 @@ function Carteira() {
           ) : portfolio.data.data.positions.length === 0 ? (
             <div className="position-empty">
               <p>Existem posições abertas, mas nenhuma pôde ser transportada nesta resposta.</p>
-              <p className="note">Recarregue a carteira; o backend não inventou uma lista vazia.</p>
+              <p className="note lg:text-label">Recarregue a carteira; o backend não inventou uma lista vazia.</p>
             </div>
           ) : (
             <div className="position-list">
@@ -259,8 +259,8 @@ function PositionTotalsGrid({
           onOpen={onMetric}
         />
       </MetricGrid>
-      <p className="position-flags-line">
-        <span className="quiet">Flags da carteira</span>{' '}
+      <p className="position-flags-line lg:text-label">
+        <span className="quiet lg:text-label">Flags da carteira</span>{' '}
         <PositionFlags flags={totals.flags} />
       </p>
     </>
@@ -281,18 +281,18 @@ function PositionCard({
       <header className="position-card__head">
         <div>
           <Link
-            className="position-card__title"
+            className="position-card__title lg:text-metric"
             to="/carteira/$positionId"
             params={{ positionId: position.id }}
           >
             {position.underlying}
           </Link>
-          <span className="position-card__kind">{positionKindLabel(position.kind)}</span>
+          <span className="position-card__kind lg:text-label">{positionKindLabel(position.kind)}</span>
         </div>
-        <span className="quiet">{positionStatusLabel(position.status)}</span>
+        <span className="quiet lg:text-label">{positionStatusLabel(position.status)}</span>
       </header>
 
-      <div className="position-card__meta">
+      <div className="position-card__meta lg:text-label">
         <span>aberta em {dateBr(position.opened_session)}</span>
         {position.closed_session && <span>fechada em {dateBr(position.closed_session)}</span>}
         {position.maturity && <span>vencimento {dateBr(position.maturity)}</span>}
@@ -337,22 +337,22 @@ function PositionCard({
         />
       </MetricGrid>
 
-      <div className="position-card__row">
-        <span className="quiet">Breakevens</span>
+      <div className="position-card__row lg:text-label">
+        <span className="quiet lg:text-label">Breakevens</span>
         <span className="num">
           {breakevens.length > 0 ? breakevens.map((value) => brl(value)).join(' · ') : '—'}
         </span>
       </div>
 
-      {position.notes && <p className="position-card__notes">{position.notes}</p>}
+      {position.notes && <p className="position-card__notes lg:text-body lg:leading-body">{position.notes}</p>}
 
-      <div className="position-card__row">
-        <span className="quiet">Flags</span>
+      <div className="position-card__row lg:text-label">
+        <span className="quiet lg:text-label">Flags</span>
         <PositionFlags flags={position.flags} />
       </div>
 
       <Link
-        className="position-card__link"
+        className="position-card__link lg:text-label"
         to="/carteira/$positionId"
         params={{ positionId: position.id }}
       >

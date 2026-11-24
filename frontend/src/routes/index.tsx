@@ -16,7 +16,7 @@ export const Route = createFileRoute('/')({
 
 function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: boolean }) {
   if (rows.length === 0) {
-    return <p className="chart-empty">nenhum papel nesta seção do recorte</p>
+    return <p className="chart-empty lg:text-detail">nenhum papel nesta seção do recorte</p>
   }
   return (
     <div
@@ -25,20 +25,20 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
       aria-label={withOptions ? 'Papéis com opções' : 'Papéis sem opções'}
       tabIndex={0}
     >
-      <table className="screen-table">
+      <table className="screen-table lg:text-table lg:leading-table">
         <thead>
           <tr>
-            <th>Papel</th>
-            <th>Fechamento</th>
+            <th className="lg:text-table-head">Papel</th>
+            <th className="lg:text-table-head">Fechamento</th>
             {withOptions && (
               <>
-                <th>Volatilidade implícita 30d</th>
-                <th title="VRP = volatilidade implícita − realizada">Prêmio de volatilidade</th>
-                <th>Séries líquidas</th>
-                <th>Vencimentos</th>
+                <th className="lg:text-table-head">Volatilidade implícita 30d</th>
+                <th className="lg:text-table-head" title="VRP = volatilidade implícita − realizada">Prêmio de volatilidade</th>
+                <th className="lg:text-table-head">Séries líquidas</th>
+                <th className="lg:text-table-head">Vencimentos</th>
               </>
             )}
-            <th>Situação</th>
+            <th className="lg:text-table-head">Situação</th>
           </tr>
         </thead>
         <tbody>
@@ -46,7 +46,7 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
             <tr key={row.underlying}>
               <td>
                 {row.status === 'ok' ? (
-                  <Link className="ticker-link" to="/t/$ticker" params={{ ticker: row.underlying }}>
+                  <Link className="ticker-link lg:text-table" to="/t/$ticker" params={{ ticker: row.underlying }}>
                     {row.underlying}
                   </Link>
                 ) : (
@@ -99,8 +99,8 @@ function Hoje() {
 
   return (
     <>
-      <h1 className="screen-title">Hoje</h1>
-      <p className="lede">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
+      <h1 className="screen-title lg:text-screen-title lg:leading-title">Hoje</h1>
+      <p className="lede lg:text-lede lg:leading-body">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
 
       <TickerSearch />
 
@@ -125,7 +125,7 @@ function Hoje() {
       </MetricGrid>
 
       {summary.rv_shock_count > 0 && (
-        <p className="notice" role="status">
+        <p className="notice lg:text-label" role="status">
           Em {summary.rv_shock_count} de {summary.ok} papéis com métrica, um único pregão responde
           por metade ou mais da oscilação dos últimos 30 pregões
           {summary.rv_shock_dates.length > 0 && (
@@ -135,7 +135,7 @@ function Hoje() {
           refletem esse dia: o número é real, mas não descreve o regime típico.{' '}
           <button
             type="button"
-            className="inline-link"
+            className="inline-link lg:text-label"
             onClick={() => openMetric('rv_shock_share_pct', 'Pregão dominante na RV', `${summary.rv_shock_count} papéis`)}
           >
             O que é isso
@@ -146,15 +146,15 @@ function Hoje() {
       <LiquidityPanel rows={rows} />
 
       <section className="papers-section">
-        <h2 className="block-title">
-          Com opções <span className="block-count">{withOptions.length} papéis</span>
+        <h2 className="block-title lg:text-block-title lg:leading-title">
+          Com opções <span className="block-count lg:text-label">{withOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withOptions} withOptions />
       </section>
 
       <section className="papers-section">
-        <h2 className="block-title">
-          Sem opções <span className="block-count">{withoutOptions.length} papéis</span>
+        <h2 className="block-title lg:text-block-title lg:leading-title">
+          Sem opções <span className="block-count lg:text-label">{withoutOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withoutOptions} withOptions={false} />
       </section>

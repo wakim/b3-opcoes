@@ -23,7 +23,7 @@ export function PayoffChart({
 }) {
   const [active, setActive] = useState<number | null>(null)
   if (points.length < 2) {
-    return <p className="chart-empty">payoff indisponível</p>
+    return <p className="chart-empty lg:text-detail">payoff indisponível</p>
   }
 
   const W = 320
@@ -95,7 +95,7 @@ export function PayoffChart({
 
   return (
     <div className="chart chart--payoff">
-      <div className="chart__bounds" aria-hidden="true">
+      <div className="chart__bounds lg:text-chart" aria-hidden="true">
         <span>P&amp;L máx {brl(yHi)}</span>
         <span>P&amp;L mín {brl(yLo)}</span>
       </div>
@@ -148,14 +148,14 @@ export function PayoffChart({
           <circle className="chart__dot" cx={x(activePoint.spot_brl)} cy={y(activePoint.pnl_brl)} r={3.2} />
         )}
       </svg>
-      <div className="chart__axis" aria-hidden="true">
+      <div className="chart__axis lg:text-chart" aria-hidden="true">
         {axis.map((value, index) => (
           <span key={index}>{fmt(value)}</span>
         ))}
       </div>
       {activePoint != null && (
         <div
-          className="chart__tip"
+          className="chart__tip lg:text-chart lg:leading-table"
           style={{
             left: `clamp(112px, ${(x(activePoint.spot_brl) / W) * 100}%, calc(100% - 112px))`,
           }}
@@ -171,7 +171,7 @@ export function PayoffChart({
       <p className="visually-hidden" aria-live="polite">
         {activePoint != null ? `Preço ${brl(activePoint.spot_brl)}: P&L ${brl(activePoint.pnl_brl)}` : ''}
       </p>
-      <div className="chart__legend">
+      <div className="chart__legend lg:text-chart">
         <span>
           <i className="chart__key" aria-hidden="true" />
           P&amp;L no vencimento

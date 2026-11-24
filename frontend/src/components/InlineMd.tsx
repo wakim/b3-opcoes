@@ -16,7 +16,7 @@ export function InlineMd({ text }: { text: string }): ReactNode {
     if (start > last) nodes.push(text.slice(last, start))
     const [, bold, code, link] = match
     if (bold !== undefined) nodes.push(<strong key={start}>{bold}</strong>)
-    else if (code !== undefined) nodes.push(<code key={start}>{code}</code>)
+    else if (code !== undefined) nodes.push(<code key={start} className="lg:text-detail">{code}</code>)
     else nodes.push(link)
     last = start + match[0].length
   }

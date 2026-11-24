@@ -23,7 +23,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 |---|---|
 | Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…042) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F7 — Diário e calibração pessoal.** F6 segue com aceitação pendente da reconciliação manual; F7 tem implementação validada e aguarda uso real. F8 não foi iniciada. |
+| Retomar em | **F7 — Diário e calibração pessoal.** F6 segue com aceitação pendente da reconciliação manual; F7 tem implementação validada e aguarda uso real. F8 está iniciada (shadcn configurado e revisão tipográfica desktop entregue); a migração completa das telas segue pendente. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -610,6 +610,17 @@ preservando o contrato visual, os gráficos SVG e a responsividade já validados
 | F8.2 | Migrar Carteira/detalhe, modais, formulários, tabelas e estados para shadcn + Tailwind | 1 h |
 | F8.3 | Migrar as demais telas e remover o CSS artesanal redundante | 45 min |
 | F8.4 | Regressão visual/funcional em 412, 1280 e 1440 px; lint, typecheck, cobertura e builds | 30 min |
+
+**Progresso em 24/11/2026:** F8.1 configurada (`components.json`, alias `@`, primitives
+Button/Input/Select/Table/Dialog). A revisão tipográfica desktop aprovada pelo dono está
+aplicada por tokens `@theme` + utilitários `lg:` (ADR-043); F8.2/F8.3 ainda não migram
+as telas existentes para os primitives.
+
+**Aceitação da revisão tipográfica (ADR-043)**
+- [x] 1280 e 1440 px: corpo 16, título 36, bloco 16, lede 15, rótulos 13, métrica 20, herói 28, tabela 14/13, cadeia 14/13, gráfico 12, busca 14/12,5, builder 13/14 e modal 16/22; sem overflow/truncamento fora das regiões de tabela.
+- [x] 412 px sem mudança de tamanho/line-height; alvos ≥ 44 px.
+- [x] shadcn sem `text-sm` herdado; sans de sistema, mono tabular, sem zoom/scale/CSS arbitrário.
+- [x] lint/typecheck/cobertura, duas builds limpas idênticas e console limpo.
 
 **Aceitação F8**
 - [ ] componentes shadcn cobrem os padrões interativos sem perder acessibilidade ou foco

@@ -6,13 +6,13 @@ export function ErrorBox({ error }: { error: Error | null }): ReactNode {
   const api = error instanceof ApiError ? error : null
   return (
     <div className="error" role="alert">
-      <div className="code">{api?.code ?? 'erro'}</div>
+      <div className="code lg:text-label">{api?.code ?? 'erro'}</div>
       <div>{error.message}</div>
-      {api?.hint && <div className="note">{api.hint}</div>}
+      {api?.hint && <div className="note lg:text-label">{api.hint}</div>}
     </div>
   )
 }
 
 export function Loading(): ReactNode {
-  return <p className="note">carregando…</p>
+  return <p className="note lg:text-label">carregando…</p>
 }

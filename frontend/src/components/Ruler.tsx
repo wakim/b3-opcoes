@@ -41,7 +41,7 @@ export function Ruler({
         ))}
         {pct != null && <span className="ruler__needle" style={{ left: `${pct}%` }} />}
       </span>
-      <span className="ruler__scale">
+      <span className="ruler__scale lg:text-chart">
         {marks.map((mark) => (
           <span key={mark}>{format(mark)}</span>
         ))}

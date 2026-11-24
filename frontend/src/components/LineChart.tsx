@@ -75,7 +75,7 @@ export function LineChart({
     .filter((v): v is number => v != null && Number.isFinite(v))
 
   if (labels.length < 2 || finite.length < 2) {
-    return <p className="chart-empty">sem pontos suficientes para desenhar</p>
+    return <p className="chart-empty lg:text-detail">sem pontos suficientes para desenhar</p>
   }
 
   const W = 320
@@ -244,7 +244,7 @@ export function LineChart({
 
   return (
     <div className={`chart${compact ? ' chart--compact' : ''}`} ref={wrapRef}>
-      <div className="chart__bounds" aria-hidden="true">
+      <div className="chart__bounds lg:text-chart" aria-hidden="true">
         <span>máx {formatValue(hi)}</span>
         <span>mín {formatValue(lo)}</span>
       </div>
@@ -359,20 +359,20 @@ export function LineChart({
         return (
           <span
             key={`tag-${index}`}
-            className="chart__band-tag"
+            className="chart__band-tag lg:text-chart"
             style={{ left: `${((band.x1 + band.x2) / 2 / W) * 100}%` }}
           >
             sem IV
           </span>
         )
       })}
-      <div className="chart__axis" aria-hidden="true">
+      <div className="chart__axis lg:text-chart" aria-hidden="true">
         {axis.map((label) => (
           <span key={label}>{label}</span>
         ))}
       </div>
       {tipLabel != null && (
-        <div className="chart__tip" style={{ left: `clamp(112px, ${tipPosition}%, calc(100% - 112px))` }} aria-hidden="true">
+        <div className="chart__tip lg:text-chart lg:leading-table" style={{ left: `clamp(112px, ${tipPosition}%, calc(100% - 112px))` }} aria-hidden="true">
           <div className="chart__tip-head">{tipLabel}</div>
           {tipRows.map((row) => (
             <div className="chart__tip-row" key={row.label}>
@@ -386,7 +386,7 @@ export function LineChart({
       <p className="visually-hidden" aria-live="polite">
         {liveText}
       </p>
-      <div className="chart__legend">
+      <div className="chart__legend lg:text-chart">
         {series.map((s) => (
           <span key={s.label}>
             <i className={`chart__key${s.dashed ? ' chart__key--dashed' : ''}`} aria-hidden="true" />
@@ -404,7 +404,7 @@ export function LineChart({
           <span className="chart__legend-note">traço tracejado: intervalo sem IV</span>
         )}
       </div>
-      {caption && <p className="chart__caption">{caption}</p>}
+      {caption && <p className="chart__caption lg:text-chart">{caption}</p>}
     </div>
   )
 }

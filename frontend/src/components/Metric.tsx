@@ -25,9 +25,9 @@ export function Metric({ label, value, note, onOpen, emphasis = false, hint }: M
 
   const content = (
     <>
-      <span className="metric__label">{label}</span>
-      <span className="metric__value">{value}</span>
-      {note && <span className="metric__note">{note}</span>}
+      <span className="metric__label lg:text-label">{label}</span>
+      <span className={`metric__value lg:leading-title ${emphasis ? 'lg:text-hero' : 'lg:text-metric'}`}>{value}</span>
+      {note && <span className="metric__note lg:text-label">{note}</span>}
     </>
   )
 

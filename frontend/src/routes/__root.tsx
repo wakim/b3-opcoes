@@ -63,7 +63,7 @@ function AppShell() {
   return (
     <div className="app">
       <header className="appbar">
-        <span className="wordmark">Opções B3</span>
+        <span className="wordmark lg:text-block-title">Opções B3</span>
         <Stamp
           session={shownSession}
           loading={health.isLoading && !offline}
@@ -83,7 +83,7 @@ function AppShell() {
           <Link
             key={item.to}
             to={item.to}
-            className={pathname === item.to ? 'active' : undefined}
+            className={`${pathname === item.to ? 'active' : ''} lg:text-label`.trim()}
             aria-current={pathname === item.to ? 'page' : undefined}
           >
             {item.label}

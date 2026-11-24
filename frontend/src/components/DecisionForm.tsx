@@ -75,8 +75,7 @@ function loadDraft(): DraftState | null {
       predictionEnabled: value.predictionEnabled === true,
       metric,
       operator,
-      predictionValue:
-        typeof value.predictionValue === 'string' ? value.predictionValue : '',
+      predictionValue: typeof value.predictionValue === 'string' ? value.predictionValue : '',
       horizon: typeof value.horizon === 'string' ? value.horizon : '5',
       evaluateOn: typeof value.evaluateOn === 'string' ? value.evaluateOn : '',
     }
@@ -123,9 +122,7 @@ export function DecisionForm({
   const [operator, setOperator] = useState<JournalPredictionInput['operator']>(
     initialDraft?.operator ?? '>=',
   )
-  const [predictionValue, setPredictionValue] = useState(
-    initialDraft?.predictionValue ?? '',
-  )
+  const [predictionValue, setPredictionValue] = useState(initialDraft?.predictionValue ?? '')
   const [horizon, setHorizon] = useState(initialDraft?.horizon ?? '5')
   const [evaluateOn, setEvaluateOn] = useState(initialDraft?.evaluateOn ?? '')
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -166,8 +163,7 @@ export function DecisionForm({
   ])
 
   const create = useMutation({
-    mutationFn: (body: JournalCreateRequest) =>
-      apiWrite<JournalDetailData>('/api/journal', body),
+    mutationFn: (body: JournalCreateRequest) => apiWrite<JournalDetailData>('/api/journal', body),
     onMutate: () => onBusyChange(true),
     onSuccess: (result) => {
       try {
@@ -248,14 +244,17 @@ export function DecisionForm({
     <>
       <header className="modal__head">
         <div>
-          <div className="modal__eyebrow">journal append-only</div>
-          <h2 className="modal__title" id="decision-form-title">
+          <div className="modal__eyebrow lg:text-label">journal append-only</div>
+          <h2
+            className="modal__title lg:text-modal-title lg:leading-title"
+            id="decision-form-title"
+          >
             Nova decisão
           </h2>
         </div>
         <button
           type="button"
-          className="modal__close"
+          className="modal__close lg:text-modal-title"
           onClick={discard}
           aria-label="Fechar formulário"
           disabled={create.isPending}
@@ -265,12 +264,16 @@ export function DecisionForm({
       </header>
 
       <form className="position-form" onSubmit={submit} aria-busy={create.isPending} noValidate>
-        <fieldset className="position-form__fieldset position-form__fieldset--all" disabled={create.isPending}>
+        <fieldset
+          className="position-form__fieldset position-form__fieldset--all"
+          disabled={create.isPending}
+        >
           <legend className="visually-hidden">Dados da decisão</legend>
           <div className="position-form__grid">
             <label className="builder__field">
-              <span className="builder__field-label">Ativo-objeto</span>
+              <span className="builder__field-label lg:text-label">Ativo-objeto</span>
               <input
+                className="lg:text-control"
                 value={underlying}
                 onChange={(event) => setUnderlying(event.target.value.toUpperCase())}
                 placeholder="PETR4"
@@ -282,12 +285,18 @@ export function DecisionForm({
               />
             </label>
             <label className="builder__field">
-              <span className="builder__field-label">Sessão (opcional)</span>
-              <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+              <span className="builder__field-label lg:text-label">Sessão (opcional)</span>
+              <input
+                className="lg:text-control"
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+              />
             </label>
             <label className="builder__field">
-              <span className="builder__field-label">Tipo de decisão</span>
+              <span className="builder__field-label lg:text-label">Tipo de decisão</span>
               <select
+                className="lg:text-control"
                 value={decisionType}
                 onChange={(event) => setDecisionType(event.target.value as DecisionType)}
               >
@@ -299,8 +308,9 @@ export function DecisionForm({
               </select>
             </label>
             <label className="builder__field">
-              <span className="builder__field-label">Contexto (opcional)</span>
+              <span className="builder__field-label lg:text-label">Contexto (opcional)</span>
               <input
+                className="lg:text-control"
                 value={context}
                 onChange={(event) => setContext(event.target.value)}
                 maxLength={500}
@@ -308,9 +318,9 @@ export function DecisionForm({
               />
             </label>
             <label className="builder__field position-form__full">
-              <span className="builder__field-label">Notas</span>
+              <span className="builder__field-label lg:text-label">Notas</span>
               <textarea
-                className="position-form__textarea"
+                className="position-form__textarea lg:text-control lg:leading-body"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="o que você decidiu e por quê"
@@ -321,23 +331,27 @@ export function DecisionForm({
           </div>
 
           <fieldset className="position-form__fieldset" disabled={create.isPending}>
-            <legend className="position-form__legend">Previsão estruturada</legend>
-            <label className="position-form__toggle">
+            <legend className="position-form__legend lg:text-block-title lg:leading-title">
+              Previsão estruturada
+            </legend>
+            <label className="position-form__toggle lg:text-label">
               <input
+                className="lg:text-control"
                 type="checkbox"
                 checked={predictionEnabled}
                 onChange={(event) => setPredictionEnabled(event.target.checked)}
               />
               <span>Adicionar previsão avaliável</span>
             </label>
-            <p className="chain-note">
+            <p className="chain-note lg:text-label lg:leading-body">
               Notas continuam texto livre. Só os campos abaixo entram na calibração.
             </p>
             {predictionEnabled && (
               <div className="position-form__grid position-form__prediction">
                 <label className="builder__field position-form__full">
-                  <span className="builder__field-label">Métrica</span>
+                  <span className="builder__field-label lg:text-label">Métrica</span>
                   <select
+                    className="lg:text-control"
                     value={metric}
                     onChange={(event) => setMetric(event.target.value as PredictionMetric)}
                   >
@@ -349,8 +363,9 @@ export function DecisionForm({
                   </select>
                 </label>
                 <label className="builder__field">
-                  <span className="builder__field-label">Operador</span>
+                  <span className="builder__field-label lg:text-label">Operador</span>
                   <select
+                    className="lg:text-control"
                     value={operator}
                     onChange={(event) =>
                       setOperator(event.target.value as JournalPredictionInput['operator'])
@@ -363,8 +378,11 @@ export function DecisionForm({
                   </select>
                 </label>
                 <label className="builder__field">
-                  <span className="builder__field-label">Valor {unit && `(${unit})`}</span>
+                  <span className="builder__field-label lg:text-label">
+                    Valor {unit && `(${unit})`}
+                  </span>
                   <input
+                    className="lg:text-control"
                     type="text"
                     inputMode="decimal"
                     maxLength={64}
@@ -374,8 +392,9 @@ export function DecisionForm({
                   />
                 </label>
                 <label className="builder__field">
-                  <span className="builder__field-label">Horizonte (sessões)</span>
+                  <span className="builder__field-label lg:text-label">Horizonte (sessões)</span>
                   <input
+                    className="lg:text-control"
                     type="number"
                     inputMode="numeric"
                     min={1}
@@ -386,8 +405,9 @@ export function DecisionForm({
                   />
                 </label>
                 <label className="builder__field">
-                  <span className="builder__field-label">Avaliar em</span>
+                  <span className="builder__field-label lg:text-label">Avaliar em</span>
                   <input
+                    className="lg:text-control"
                     type="date"
                     value={evaluateOn}
                     onChange={(event) => setEvaluateOn(event.target.value)}
@@ -397,12 +417,12 @@ export function DecisionForm({
             )}
           </fieldset>
 
-          <p className="note">
+          <p className="note lg:text-label">
             A data de avaliação precisa corresponder ao horizonte no calendário B3. O lote EOD usa o
             primeiro pregão posterior; métrica ausente vira “sem dados”, não erro.
           </p>
           {validationError && (
-            <p className="notice" role="alert">
+            <p className="notice lg:text-label" role="alert">
               {validationError}
             </p>
           )}
@@ -410,7 +430,7 @@ export function DecisionForm({
           <div className="position-form__actions">
             <button
               type="button"
-              className="builder__button"
+              className="builder__button lg:text-control"
               onClick={discard}
               disabled={create.isPending}
             >
@@ -418,7 +438,7 @@ export function DecisionForm({
             </button>
             <button
               type="submit"
-              className="builder__button builder__button--primary"
+              className="builder__button builder__button--primary lg:text-control"
               disabled={create.isPending}
             >
               {create.isPending ? 'registrando…' : 'Registrar decisão'}

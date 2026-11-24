@@ -16,13 +16,13 @@ export function Stamp({
   ageSessions?: number | null
   offline?: boolean
 }) {
-  if (loading) return <span className="stamp">carregando sessão…</span>
+  if (loading) return <span className="stamp lg:text-label">carregando sessão…</span>
   if (!session) {
-    return <span className="stamp">{offline ? 'offline · sessão indisponível' : 'sessão indisponível'}</span>
+    return <span className="stamp lg:text-label">{offline ? 'offline · sessão indisponível' : 'sessão indisponível'}</span>
   }
   if (offline) {
     return (
-      <span className="stamp">
+      <span className="stamp lg:text-label">
         sessão <strong>{session}</strong>
         <span className="stamp__sep">·</span>offline
       </span>
@@ -30,7 +30,7 @@ export function Stamp({
   }
   const age = typeof ageSessions === 'number' ? ageSessions : null
   return (
-    <span className="stamp">
+    <span className="stamp lg:text-label">
       sessão <strong>{session}</strong>
       {age != null && (
         <>

@@ -52,7 +52,9 @@ function loadDraft(): DraftState | null {
     const value = JSON.parse(raw) as Record<string, unknown>
     const legs = Array.isArray(value.legs)
       ? value.legs
-          .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object')
+          .filter(
+            (item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object',
+          )
           .slice(0, MAX_LEGS)
           .map((item, index): FormLeg => ({
             id: index + 1,
@@ -106,9 +108,7 @@ export function PositionForm({
   onBusyChange: (busy: boolean) => void
 }) {
   const [initialDraft] = useState(loadDraft)
-  const nextId = useRef(
-    initialDraft ? Math.max(...initialDraft.legs.map((leg) => leg.id)) + 1 : 1,
-  )
+  const nextId = useRef(initialDraft ? Math.max(...initialDraft.legs.map((leg) => leg.id)) + 1 : 1)
   const [clientPositionId] = useState(
     () => initialDraft?.clientPositionId ?? globalThis.crypto.randomUUID(),
   )
@@ -116,9 +116,7 @@ export function PositionForm({
   const [date, setDate] = useState(initialDraft?.date ?? '')
   const [notes, setNotes] = useState(initialDraft?.notes ?? '')
   const [capitalLimit, setCapitalLimit] = useState(initialDraft?.capitalLimit ?? '')
-  const [legs, setLegs] = useState<FormLeg[]>(
-    initialDraft?.legs ?? [{ ...defaultLeg(), id: 0 }],
-  )
+  const [legs, setLegs] = useState<FormLeg[]>(initialDraft?.legs ?? [{ ...defaultLeg(), id: 0 }])
   const [predictionEnabled, setPredictionEnabled] = useState(
     initialDraft?.predictionEnabled ?? false,
   )
@@ -126,9 +124,7 @@ export function PositionForm({
   const [operator, setOperator] = useState<PositionPredictionInput['operator']>(
     initialDraft?.operator ?? '>=',
   )
-  const [predictionValue, setPredictionValue] = useState(
-    initialDraft?.predictionValue ?? '',
-  )
+  const [predictionValue, setPredictionValue] = useState(initialDraft?.predictionValue ?? '')
   const [horizon, setHorizon] = useState(initialDraft?.horizon ?? '5')
   const [evaluateOn, setEvaluateOn] = useState(initialDraft?.evaluateOn ?? '')
   const [validationError, setValidationError] = useState<string | null>(null)
@@ -221,7 +217,10 @@ export function PositionForm({
           ? {
               ...leg,
               kind,
-              ticker: kind === 'stock' && !leg.ticker.trim() ? underlying.trim().toUpperCase() : leg.ticker,
+              ticker:
+                kind === 'stock' && !leg.ticker.trim()
+                  ? underlying.trim().toUpperCase()
+                  : leg.ticker,
             }
           : leg,
       ),
@@ -317,14 +316,17 @@ export function PositionForm({
     <>
       <header className="modal__head">
         <div>
-          <div className="modal__eyebrow">journal append-only</div>
-          <h2 className="modal__title" id="position-form-title">
+          <div className="modal__eyebrow lg:text-label">journal append-only</div>
+          <h2
+            className="modal__title lg:text-modal-title lg:leading-title"
+            id="position-form-title"
+          >
             Nova posição
           </h2>
         </div>
         <button
           type="button"
-          className="modal__close"
+          className="modal__close lg:text-modal-title"
           onClick={discardDraft}
           aria-label="Fechar formulário"
           disabled={create.isPending}
@@ -339,249 +341,284 @@ export function PositionForm({
           disabled={create.isPending}
         >
           <legend className="visually-hidden">Dados da posição</legend>
-        <div className="position-form__grid">
-          <label className="builder__field">
-            <span className="builder__field-label">Ativo-objeto</span>
-            <input
-              value={underlying}
-              onChange={(event) => setUnderlying(event.target.value.toUpperCase())}
-              placeholder="PETR4"
-              maxLength={32}
-              autoComplete="off"
-              spellCheck={false}
-              data-autofocus
-              required
-            />
-          </label>
-          <label className="builder__field">
-            <span className="builder__field-label">Data da sessão (opcional)</span>
-            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          </label>
-          <label className="builder__field">
-            <span className="builder__field-label">Limite de capital (R$, opcional)</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={capitalLimit}
-              onChange={(event) => setCapitalLimit(event.target.value)}
-              placeholder="5000,00"
-              maxLength={32}
-              autoComplete="off"
-            />
-          </label>
-          <label className="builder__field position-form__full">
-            <span className="builder__field-label">Notas</span>
-            <textarea
-              className="position-form__textarea"
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              placeholder="contexto da decisão"
-              maxLength={2000}
-              rows={3}
-            />
-          </label>
-        </div>
-
-        <fieldset className="position-form__fieldset" disabled={create.isPending}>
-          <legend className="position-form__legend">
-            Pernas
-            <HelpTip
-              label="O que é uma perna?"
-              text="Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade. Uma coberta, por exemplo, tem duas pernas: a ação comprada e a call vendida."
-            />
-          </legend>
-          <p className="chain-note">
-            A quantidade é em ações. 100 ações = 1 contrato padrão; nada é multiplicado por 100.
-          </p>
-          <div className="position-form__legs">
-            {legs.map((leg, index) => (
-              <div className="position-form__leg" key={leg.id}>
-                <div className="position-form__leg-head">
-                  <span className="quiet">Perna {index + 1}</span>
-                  <button
-                    type="button"
-                    className="builder__remove"
-                    onClick={() => setLegs((prev) => prev.filter((item) => item.id !== leg.id))}
-                    disabled={legs.length === 1}
-                    aria-label={`Remover perna ${index + 1}`}
-                  >
-                    remover
-                  </button>
-                </div>
-                <div className="position-form__leg-grid">
-                  <label className="builder__field">
-                    <span className="builder__field-label">Tipo</span>
-                    <select
-                      value={leg.kind}
-                      onChange={(event) => changeKind(leg.id, event.target.value as LegKind)}
-                      aria-label={`Tipo da perna ${index + 1}`}
-                    >
-                      <option value="option">opção</option>
-                      <option value="stock">ação</option>
-                    </select>
-                  </label>
-                  <label className="builder__field">
-                    <span className="builder__field-label">Ticker</span>
-                    <input
-                      value={leg.ticker}
-                      onChange={(event) => updateLeg(leg.id, { ticker: event.target.value.toUpperCase() })}
-                      placeholder={leg.kind === 'stock' ? underlying.trim().toUpperCase() || 'PETR4' : 'PETRL44'}
-                      maxLength={32}
-                      autoComplete="off"
-                      spellCheck={false}
-                      aria-label={`Ticker da perna ${index + 1}`}
-                      required
-                    />
-                  </label>
-                  <label className="builder__field">
-                    <span className="builder__field-label">Lado</span>
-                    <select
-                      value={leg.side}
-                      onChange={(event) => updateLeg(leg.id, { side: event.target.value as LegSide })}
-                      aria-label={`Lado da perna ${index + 1}`}
-                    >
-                      <option value="long">comprada</option>
-                      <option value="short">vendida</option>
-                    </select>
-                  </label>
-                  <label className="builder__field">
-                    <span className="builder__field-label">Ações</span>
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={Number.MAX_SAFE_INTEGER}
-                      step={1}
-                      value={leg.quantity}
-                      onChange={(event) => updateLeg(leg.id, { quantity: event.target.value })}
-                      aria-label={`Quantidade de ações da perna ${index + 1}`}
-                      required
-                    />
-                  </label>
-                </div>
-              </div>
-            ))}
+          <div className="position-form__grid">
+            <label className="builder__field">
+              <span className="builder__field-label lg:text-label">Ativo-objeto</span>
+              <input
+                className="lg:text-control"
+                value={underlying}
+                onChange={(event) => setUnderlying(event.target.value.toUpperCase())}
+                placeholder="PETR4"
+                maxLength={32}
+                autoComplete="off"
+                spellCheck={false}
+                data-autofocus
+                required
+              />
+            </label>
+            <label className="builder__field">
+              <span className="builder__field-label lg:text-label">Data da sessão (opcional)</span>
+              <input
+                className="lg:text-control"
+                type="date"
+                value={date}
+                onChange={(event) => setDate(event.target.value)}
+              />
+            </label>
+            <label className="builder__field">
+              <span className="builder__field-label lg:text-label">
+                Limite de capital (R$, opcional)
+              </span>
+              <input
+                className="lg:text-control"
+                type="text"
+                inputMode="decimal"
+                value={capitalLimit}
+                onChange={(event) => setCapitalLimit(event.target.value)}
+                placeholder="5000,00"
+                maxLength={32}
+                autoComplete="off"
+              />
+            </label>
+            <label className="builder__field position-form__full">
+              <span className="builder__field-label lg:text-label">Notas</span>
+              <textarea
+                className="position-form__textarea lg:text-control lg:leading-body"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="contexto da decisão"
+                maxLength={2000}
+                rows={3}
+              />
+            </label>
           </div>
-          <div className="position-form__add">
-            <button
-              type="button"
-              className="builder__button"
-              onClick={() => addLeg('option')}
-              disabled={legs.length >= MAX_LEGS}
-            >
-              Adicionar opção
-            </button>
-            <button
-              type="button"
-              className="builder__button"
-              onClick={() => addLeg('stock')}
-              disabled={legs.length >= MAX_LEGS}
-            >
-              Adicionar ação
-            </button>
-            <span className="block-count">
-              {legs.length}/{MAX_LEGS}
-            </span>
-          </div>
-        </fieldset>
 
-        <fieldset className="position-form__fieldset" disabled={create.isPending}>
-          <legend className="position-form__legend">Tese</legend>
-          <label className="position-form__toggle">
-            <input
-              type="checkbox"
-              checked={predictionEnabled}
-              onChange={(event) => setPredictionEnabled(event.target.checked)}
-            />
-            <span>Registrar previsão estruturada</span>
-          </label>
-          {predictionEnabled && (
-            <div className="position-form__grid position-form__prediction">
-              <label className="builder__field">
-                <span className="builder__field-label">Métrica</span>
-                <select
-                  value={metric}
-                  onChange={(event) => setMetric(event.target.value)}
-                  aria-label="Métrica da previsão"
-                >
-                  <option value="spot">Preço (spot / fechamento)</option>
-                  <option value="iv_atm_30d">IV ATM 30d</option>
-                  <option value="vrp">VRP</option>
-                  <option value="rr25">RR25</option>
-                </select>
-              </label>
-              <label className="builder__field">
-                <span className="builder__field-label">Operador</span>
-                <select
-                  value={operator}
-                  onChange={(event) => setOperator(event.target.value as PositionPredictionInput['operator'])}
-                >
-                  <option value="<">&lt;</option>
-                  <option value="<=">&lt;=</option>
-                  <option value=">">&gt;</option>
-                  <option value=">=">&gt;=</option>
-                </select>
-              </label>
-              <label className="builder__field">
-                <span className="builder__field-label">Valor</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  maxLength={64}
-                  value={predictionValue}
-                  onChange={(event) => setPredictionValue(event.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="builder__field">
-                <span className="builder__field-label">Horizonte (sessões)</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={252}
-                  step={1}
-                  value={horizon}
-                  onChange={(event) => setHorizon(event.target.value)}
-                />
-              </label>
-              <label className="builder__field position-form__full">
-                <span className="builder__field-label">Avaliar em</span>
-                <input type="date" value={evaluateOn} onChange={(event) => setEvaluateOn(event.target.value)} />
-              </label>
+          <fieldset className="position-form__fieldset" disabled={create.isPending}>
+            <legend className="position-form__legend lg:text-block-title lg:leading-title">
+              Pernas
+              <HelpTip
+                label="O que é uma perna?"
+                text="Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade. Uma coberta, por exemplo, tem duas pernas: a ação comprada e a call vendida."
+              />
+            </legend>
+            <p className="chain-note lg:text-label lg:leading-body">
+              A quantidade é em ações. 100 ações = 1 contrato padrão; nada é multiplicado por 100.
+            </p>
+            <div className="position-form__legs">
+              {legs.map((leg, index) => (
+                <div className="position-form__leg" key={leg.id}>
+                  <div className="position-form__leg-head">
+                    <span className="quiet lg:text-label">Perna {index + 1}</span>
+                    <button
+                      type="button"
+                      className="builder__remove lg:text-label"
+                      onClick={() => setLegs((prev) => prev.filter((item) => item.id !== leg.id))}
+                      disabled={legs.length === 1}
+                      aria-label={`Remover perna ${index + 1}`}
+                    >
+                      remover
+                    </button>
+                  </div>
+                  <div className="position-form__leg-grid">
+                    <label className="builder__field">
+                      <span className="builder__field-label lg:text-label">Tipo</span>
+                      <select
+                        className="lg:text-control"
+                        value={leg.kind}
+                        onChange={(event) => changeKind(leg.id, event.target.value as LegKind)}
+                        aria-label={`Tipo da perna ${index + 1}`}
+                      >
+                        <option value="option">opção</option>
+                        <option value="stock">ação</option>
+                      </select>
+                    </label>
+                    <label className="builder__field">
+                      <span className="builder__field-label lg:text-label">Ticker</span>
+                      <input
+                        className="lg:text-control"
+                        value={leg.ticker}
+                        onChange={(event) =>
+                          updateLeg(leg.id, { ticker: event.target.value.toUpperCase() })
+                        }
+                        placeholder={
+                          leg.kind === 'stock'
+                            ? underlying.trim().toUpperCase() || 'PETR4'
+                            : 'PETRL44'
+                        }
+                        maxLength={32}
+                        autoComplete="off"
+                        spellCheck={false}
+                        aria-label={`Ticker da perna ${index + 1}`}
+                        required
+                      />
+                    </label>
+                    <label className="builder__field">
+                      <span className="builder__field-label lg:text-label">Lado</span>
+                      <select
+                        className="lg:text-control"
+                        value={leg.side}
+                        onChange={(event) =>
+                          updateLeg(leg.id, { side: event.target.value as LegSide })
+                        }
+                        aria-label={`Lado da perna ${index + 1}`}
+                      >
+                        <option value="long">comprada</option>
+                        <option value="short">vendida</option>
+                      </select>
+                    </label>
+                    <label className="builder__field">
+                      <span className="builder__field-label lg:text-label">Ações</span>
+                      <input
+                        className="lg:text-control"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={Number.MAX_SAFE_INTEGER}
+                        step={1}
+                        value={leg.quantity}
+                        onChange={(event) => updateLeg(leg.id, { quantity: event.target.value })}
+                        aria-label={`Quantidade de ações da perna ${index + 1}`}
+                        required
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-        </fieldset>
+            <div className="position-form__add">
+              <button
+                type="button"
+                className="builder__button lg:text-control"
+                onClick={() => addLeg('option')}
+                disabled={legs.length >= MAX_LEGS}
+              >
+                Adicionar opção
+              </button>
+              <button
+                type="button"
+                className="builder__button lg:text-control"
+                onClick={() => addLeg('stock')}
+                disabled={legs.length >= MAX_LEGS}
+              >
+                Adicionar ação
+              </button>
+              <span className="block-count lg:text-label">
+                {legs.length}/{MAX_LEGS}
+              </span>
+            </div>
+          </fieldset>
 
-        <p className="note">
-          O backend resolve preço de entrada, strike, IV e delta da sessão. Nenhum número financeiro é
-          calculado aqui.
-        </p>
+          <fieldset className="position-form__fieldset" disabled={create.isPending}>
+            <legend className="position-form__legend lg:text-block-title lg:leading-title">
+              Tese
+            </legend>
+            <label className="position-form__toggle lg:text-label">
+              <input
+                className="lg:text-control"
+                type="checkbox"
+                checked={predictionEnabled}
+                onChange={(event) => setPredictionEnabled(event.target.checked)}
+              />
+              <span>Registrar previsão estruturada</span>
+            </label>
+            {predictionEnabled && (
+              <div className="position-form__grid position-form__prediction">
+                <label className="builder__field">
+                  <span className="builder__field-label lg:text-label">Métrica</span>
+                  <select
+                    className="lg:text-control"
+                    value={metric}
+                    onChange={(event) => setMetric(event.target.value)}
+                    aria-label="Métrica da previsão"
+                  >
+                    <option value="spot">Preço (spot / fechamento)</option>
+                    <option value="iv_atm_30d">IV ATM 30d</option>
+                    <option value="vrp">VRP</option>
+                    <option value="rr25">RR25</option>
+                  </select>
+                </label>
+                <label className="builder__field">
+                  <span className="builder__field-label lg:text-label">Operador</span>
+                  <select
+                    className="lg:text-control"
+                    value={operator}
+                    onChange={(event) =>
+                      setOperator(event.target.value as PositionPredictionInput['operator'])
+                    }
+                  >
+                    <option value="<">&lt;</option>
+                    <option value="<=">&lt;=</option>
+                    <option value=">">&gt;</option>
+                    <option value=">=">&gt;=</option>
+                  </select>
+                </label>
+                <label className="builder__field">
+                  <span className="builder__field-label lg:text-label">Valor</span>
+                  <input
+                    className="lg:text-control"
+                    type="text"
+                    inputMode="decimal"
+                    maxLength={64}
+                    value={predictionValue}
+                    onChange={(event) => setPredictionValue(event.target.value)}
+                    autoComplete="off"
+                  />
+                </label>
+                <label className="builder__field">
+                  <span className="builder__field-label lg:text-label">Horizonte (sessões)</span>
+                  <input
+                    className="lg:text-control"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={252}
+                    step={1}
+                    value={horizon}
+                    onChange={(event) => setHorizon(event.target.value)}
+                  />
+                </label>
+                <label className="builder__field position-form__full">
+                  <span className="builder__field-label lg:text-label">Avaliar em</span>
+                  <input
+                    className="lg:text-control"
+                    type="date"
+                    value={evaluateOn}
+                    onChange={(event) => setEvaluateOn(event.target.value)}
+                  />
+                </label>
+              </div>
+            )}
+          </fieldset>
 
-        {validationError && (
-          <p className="notice" role="alert">
-            {validationError}
+          <p className="note lg:text-label">
+            O backend resolve preço de entrada, strike, IV e delta da sessão. Nenhum número
+            financeiro é calculado aqui.
           </p>
-        )}
-        {create.isError && <ErrorState error={create.error} title="Posição não registrada" />}
 
-        <div className="position-form__actions">
-          <button
-            type="button"
-            className="builder__button"
-            onClick={discardDraft}
-            disabled={create.isPending}
-          >
-            Cancelar
-          </button>
-          <button
-            type="submit"
-            className="builder__button builder__button--primary"
-            disabled={create.isPending}
-          >
-            {create.isPending ? 'registrando…' : 'Registrar posição'}
-          </button>
-        </div>
+          {validationError && (
+            <p className="notice lg:text-label" role="alert">
+              {validationError}
+            </p>
+          )}
+          {create.isError && <ErrorState error={create.error} title="Posição não registrada" />}
+
+          <div className="position-form__actions">
+            <button
+              type="button"
+              className="builder__button lg:text-control"
+              onClick={discardDraft}
+              disabled={create.isPending}
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="builder__button builder__button--primary lg:text-control"
+              disabled={create.isPending}
+            >
+              {create.isPending ? 'registrando…' : 'Registrar posição'}
+            </button>
+          </div>
         </fieldset>
       </form>
     </>

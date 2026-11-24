@@ -1,7 +1,7 @@
 # Direção visual — aprovada
 
 **Caráter escolhido:** A · Bancada fria (ver `direcao.html`)
-**Status:** aprovada pelo dono em 22/11/2026 · escala desktop ajustada no F5-F em 24/11/2026, sem alterar a direção nem o mobile
+**Status:** aprovada pelo dono em 22/11/2026 · revisão tipográfica desktop aprovada em 24/11/2026, sem alterar a direção nem o mobile
 
 ---
 
@@ -55,25 +55,37 @@ Dentro do gráfico, se duas séries precisarem se distinguir, a regra é **branc
 
 Hierarquia por **tamanho e cor**, nunca por peso. Nada de caixa alta com tracking, nada de itálico.
 
-### Desktop ≥ 1024 px (F5-F)
+### Desktop ≥ 1024 px — revisão aprovada em 24/11/2026
 
-O mobile/tablet (< 1024 px) mantém a escala acima. No desktop, a leitura a 100% usa:
+O mobile/tablet (< 1024 px) mantém a escala acima, sem alteração de computed
+styles. No desktop, a leitura a 100% usa:
 
-| Elemento | Tamanho |
-|---|---:|
-| base (`body`) | **15 px** |
-| título de tela | **32 px** |
-| título de bloco / lede | **15 px / 14 px** |
-| rótulos e notas | **12 px** |
-| valor de métrica / ênfase | **18 px / 24 px** |
-| tabela / cabeçalho | **12,5 px / 12 px** |
-| cadeia / detalhe | **13 px / 12 px** |
-| eixos, legendas e tooltip de gráfico | **11 px** |
-| busca (nome / meta) | **12,5 px / 11,5 px** |
-| builder (rótulos / inputs) | **12 px / 13 px** |
-| modal (texto / título) | **15 px / 20 px** |
+| Elemento | Tamanho | Line-height |
+|---|---:|---:|
+| base (`body`) e corpo | **16 px** | **1,5** |
+| título de tela | **36 px** | **1,15** |
+| título de bloco | **16 px** | **1,15** |
+| lede | **15 px** | 1,5 |
+| rótulos e notas | **13 px** | 1,5 |
+| valor de métrica | **20 px** | — |
+| número-herói | **28 px** | — |
+| tabela | **14 px** | **1,4** |
+| cabeçalho de tabela | **13 px** | 1,4 |
+| cadeia / detalhe | **14 px / 13 px** | 1,4 |
+| eixos, legendas e tooltip de gráfico | **12 px** | 1,4 |
+| busca (nome / meta) | **14 px / 12,5 px** | 1,5 |
+| builder (rótulos / inputs) | **13 px / 14 px** | 1,5 |
+| modal (corpo / título) | **16 px / 22 px** | 1,5 / 1,15 |
 
-Só tamanho e line-height mudam. Cor, matiz, espaço vertical, raio e hierarquia continuam os mesmos.
+A escala vive nos tokens `--text-*` e `--leading-*` de `@theme` no Tailwind e
+é aplicada somente com utilitários `lg:`. Não há seletores CSS desktop novos,
+`zoom`, `transform: scale` nem tamanho arbitrário espalhado pelos componentes.
+Button, Input, Select, Table e Dialog do shadcn usam os mesmos tokens — nenhum
+primitive fica preso a `text-sm`.
+
+Sans de sistema na interface; números continuam mono com `tabular-nums`.
+Hierarquia por tamanho e cor, sem compensar com peso, caixa alta ou tracking.
+Cor, matiz, espaço vertical, raio e direção continuam os mesmos.
 
 ### Espaço, raio, movimento
 

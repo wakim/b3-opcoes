@@ -96,7 +96,7 @@ export function Dialog({
     >
       <section
         ref={dialogRef}
-        className={`modal ${className}`.trim()}
+        className={`modal lg:text-modal-body lg:leading-body ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-busy={busy}

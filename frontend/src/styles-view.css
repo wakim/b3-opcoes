@@ -1,5 +1,6 @@
 /* Componentes das telas de leitura (F5-B). Consome os tokens de styles.css;
    não redefine variáveis e não introduz matiz fora dos gráficos. */
+@layer components {
 
 /* Casca ---------------------------------------------------------------- */
 .appbar {
@@ -1436,112 +1437,6 @@
   outline-offset: -2px;
 }
 
-/* F5-F — escala desktop (≥ 1024 px). Mobile/tablet ficam com os tamanhos
-   acima. Nenhuma cor, margem, padding ou hierarquia muda. */
-@media (min-width: 1024px) {
-  .lede {
-    font-size: 14px;
-  }
-
-  .block-title {
-    font-size: 15px;
-  }
-
-  .block-count,
-  .chain-note,
-  .quiet-line,
-  .notice,
-  .note,
-  .state-loading,
-  .metric__label,
-  .ruler__scale,
-  .chain-group__head,
-  .chain-head,
-  .chain-detail__label,
-  .chain-detail__row,
-  .identity dt,
-  .screen-table th,
-  .error-state__code,
-  .error-state__hint,
-  .modal__eyebrow,
-  .modal__source,
-  .modal__value-label,
-  .modal__block-title,
-  .modal__error,
-  .modal__note,
-  .ticker-search__label,
-  .builder__qty,
-  .builder__field-label,
-  .builder__remove,
-  .builder__scenarios-title,
-  .term-table__title {
-    font-size: 12px;
-  }
-
-  .metric__value {
-    font-size: 18px;
-  }
-
-  .metric--emphasis .metric__value {
-    font-size: 24px;
-  }
-
-  .screen-table {
-    font-size: 12.5px;
-  }
-
-  .chain-row,
-  .identity dd {
-    font-size: 13px;
-  }
-
-  .chain-detail__flags,
-  .chain-detail__empty,
-  .chart-empty,
-  .chain-empty,
-  .ticker-search__meta {
-    font-size: 11.5px;
-  }
-
-  .chart__bounds,
-  .chart__axis,
-  .chart__legend,
-  .chart__band-tag,
-  .chart__tip,
-  .chart__caption {
-    font-size: 11px;
-  }
-
-  .chart-data summary,
-  .selector button,
-  .liquidity__more,
-  .ticker-search__name,
-  .error-state__msg,
-  .modal__block-text code {
-    font-size: 12.5px;
-  }
-
-  .ticker-search__input,
-  .modal__block-text,
-  .error-state__title {
-    font-size: 15px;
-  }
-
-  .builder__qty input,
-  .builder__qty select,
-  .builder__field input,
-  .builder__field select,
-  .builder__button,
-  .maturity-picker__select {
-    font-size: 13px;
-  }
-
-  .modal__title,
-  .modal__value-number {
-    font-size: 20px;
-  }
-}
-
 /* F6 — Carteira e posições ------------------------------------------------ */
 .portfolio-head,
 .position-detail__head {
@@ -2057,41 +1952,4 @@
     flex: 1 1 140px;
   }
 }
-
-@media (min-width: 1024px) {
-  .position-card__title {
-    font-size: 22px;
-  }
-
-  .position-card__kind,
-  .position-card__meta,
-  .position-card__row,
-  .position-card__link,
-  .journal-outcome__row,
-  .journal-card__context,
-  .position-flags,
-  .position-flags-line,
-  .token-gate--compact .block-title,
-  .position-form__toggle {
-    font-size: 12px;
-  }
-
-  .journal-table__n {
-    font-size: 11.5px;
-  }
-
-  .position-card__notes,
-  .position-detail__notes,
-  .position-confirm__text {
-    font-size: 13px;
-  }
-
-  .position-form__legend,
-  .position-thesis__line {
-    font-size: 15px;
-  }
-
-  .position-form__textarea {
-    font-size: 15px;
-  }
 }

@@ -86,11 +86,11 @@ function TickerPage() {
 
   return (
     <>
-      <Link className="back" to="/">
+      <Link className="back lg:text-label" to="/">
         <span aria-hidden="true">‹</span> Hoje
       </Link>
-      <h1 className="screen-title">{ticker}</h1>
-      <p className="quiet-line">
+      <h1 className="screen-title lg:text-screen-title lg:leading-title">{ticker}</h1>
+      <p className="quiet-line lg:text-label">
         {data.counts.term} vencimentos · {data.counts.smile}{' '}
         <abbr title="preços de exercício">strikes</abbr> · {data.counts.history} dias de histórico
       </p>
@@ -183,7 +183,7 @@ function TickerPage() {
       </MetricGrid>
 
       {summary?.flags.includes('rv_shock_day') && (
-        <p className="notice" role="status">
+        <p className="notice lg:text-label" role="status">
           {sharePct(summary.rv_shock_share_pct)} de tudo o que {ticker} oscilou nos últimos 30
           pregões veio de um só dia ({dateBr(summary.rv_shock_date)}). A volatilidade realizada, o
           prêmio de volatilidade e os desvios-padrão do prêmio refletem esse dia: o número é real,
@@ -192,10 +192,10 @@ function TickerPage() {
       )}
 
       {data.notes.map((note) => (
-        <p className="note" key={note}>{note}</p>
+        <p className="note lg:text-label" key={note}>{note}</p>
       ))}
 
-      <h2 className="block-title">Volatilidade implícita por vencimento</h2>
+      <h2 className="block-title lg:text-block-title lg:leading-title">Volatilidade implícita por vencimento</h2>
       {withIv.length >= 2 ? (
         <LineChart
           labels={termWindow.map((point) => point.maturity.slice(5))}
@@ -219,27 +219,27 @@ function TickerPage() {
           caption={`Volatilidade implícita em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''} · eixo x proporcional ao tempo`}
         />
       ) : (
-        <p className="chart-empty">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
+        <p className="chart-empty lg:text-detail">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
       )}
       {withIv.length > 0 && (
         <div className="term-table-block">
-          <p className="term-table__title">
-            Vencimentos com IV <span className="block-count">{withIv.length}</span>
+          <p className="term-table__title lg:text-label">
+            Vencimentos com IV <span className="block-count lg:text-label">{withIv.length}</span>
           </p>
           <TermTable rows={withIv} />
-          <p className="note">
+          <p className="note lg:text-label">
             IV é a do strike de |Δ| mais próximo de 0,5; Líquidas = séries líquidas no vencimento.
           </p>
         </div>
       )}
       {withoutIv.length > 0 && (
         <details className="chart-data">
-          <summary>Ver os {withoutIv.length} vencimentos sem IV</summary>
+          <summary className="lg:text-label">Ver os {withoutIv.length} vencimentos sem IV</summary>
           <TermTable rows={withoutIv} />
         </details>
       )}
 
-      <h2 className="block-title">Volatilidade implícita vs realizada</h2>
+      <h2 className="block-title lg:text-block-title lg:leading-title">Volatilidade implícita vs realizada</h2>
       <LineChart
         compact
         labels={history.map((point) => point.date.slice(5))}
@@ -254,12 +254,12 @@ function TickerPage() {
         showPoints={false}
       />
 
-      <h2 className="block-title">Vencimento</h2>
+      <h2 className="block-title lg:text-block-title lg:leading-title">Vencimento</h2>
       {term.length > 0 && (
         <div className="maturity-picker" role="group" aria-label="Vencimento">
           <button
             type="button"
-            className="maturity-picker__step"
+            className="maturity-picker__step lg:text-metric"
             aria-label="Vencimento anterior"
             disabled={maturityIndex <= 0}
             onClick={() => stepMaturity(-1)}
@@ -267,7 +267,7 @@ function TickerPage() {
             ‹
           </button>
           <select
-            className="maturity-picker__select"
+            className="maturity-picker__select lg:text-control"
             aria-label="Escolher vencimento"
             value={activeMaturity ?? ''}
             onChange={(event) => setPickedMaturity(event.target.value)}
@@ -281,7 +281,7 @@ function TickerPage() {
           </select>
           <button
             type="button"
-            className="maturity-picker__step"
+            className="maturity-picker__step lg:text-metric"
             aria-label="Próximo vencimento"
             disabled={maturityIndex >= term.length - 1}
             onClick={() => stepMaturity(1)}
@@ -292,11 +292,11 @@ function TickerPage() {
       )}
 
       <div className="block-head">
-        <h2 className="block-title">Cadeia de opções</h2>
+        <h2 className="block-title lg:text-block-title lg:leading-title">Cadeia de opções</h2>
         <div className="selector" role="group" aria-label="Filtro da cadeia">
           <button
             type="button"
-            className={filter === 'strict' ? 'active' : undefined}
+            className={`${filter === 'strict' ? 'active' : ''} lg:text-control`.trim()}
             aria-pressed={filter === 'strict'}
             onClick={() => setFilter('strict')}
           >
@@ -304,7 +304,7 @@ function TickerPage() {
           </button>
           <button
             type="button"
-            className={filter === 'all' ? 'active' : undefined}
+            className={`${filter === 'all' ? 'active' : ''} lg:text-control`.trim()}
             aria-pressed={filter === 'all'}
             onClick={() => setFilter('all')}
           >
@@ -312,7 +312,7 @@ function TickerPage() {
           </button>
         </div>
       </div>
-      <p className="chain-note">
+      <p className="chain-note lg:text-label lg:leading-body">
         Put = opção de venda · Call = opção de compra · Strike = preço de exercício · números em
         volatilidade implícita ao ano.
       </p>
@@ -321,7 +321,7 @@ function TickerPage() {
       {chain.data && (
         <>
           {chain.data.meta?.truncated && (
-            <p className="notice" role="status">
+            <p className="notice lg:text-label" role="status">
               A cadeia foi cortada em {chain.data.meta.returned} de {chain.data.meta.total} linhas.
             </p>
           )}
@@ -346,12 +346,12 @@ function TickerPage() {
 function TermTable({ rows }: { rows: Term[] }) {
   return (
     <div className="table-wrap">
-      <table className="screen-table term-table">
+      <table className="screen-table term-table lg:text-table lg:leading-table">
         <thead>
           <tr>
-            <th>Vencimento</th>
-            <th title="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</th>
-            <th title="Séries líquidas no vencimento">Líquidas</th>
+            <th className="lg:text-table-head">Vencimento</th>
+            <th className="lg:text-table-head" title="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</th>
+            <th className="lg:text-table-head" title="Séries líquidas no vencimento">Líquidas</th>
           </tr>
         </thead>
         <tbody>

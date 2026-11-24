@@ -20,9 +20,9 @@ function section(md: string, name: string): string {
 function Block({ title, text }: { title: string; text: string }) {
   if (!text) return null
   return (
-    <div className="modal__block">
-      <div className="modal__block-title">{title}</div>
-      <p className="modal__block-text">
+    <div className="modal__block lg:text-modal-body lg:leading-body">
+      <div className="modal__block-title lg:text-label">{title}</div>
+      <p className="modal__block-text lg:text-modal-body lg:leading-body">
         <InlineMd text={text} />
       </p>
     </div>
@@ -100,7 +100,7 @@ export function MetricModal({
     <div className="modal-backdrop" onMouseDown={onClose}>
       <section
         ref={dialogRef}
-        className="modal"
+        className="modal lg:text-modal-body lg:leading-body"
         role="dialog"
         aria-modal="true"
         aria-labelledby="metric-modal-title"
@@ -109,31 +109,31 @@ export function MetricModal({
       >
         <header className="modal__head">
           <div>
-            <div className="modal__eyebrow">verbete</div>
-            <h2 className="modal__title" id="metric-modal-title">{target.label}</h2>
+            <div className="modal__eyebrow lg:text-label">verbete</div>
+            <h2 className="modal__title lg:text-modal-title lg:leading-title" id="metric-modal-title">{target.label}</h2>
             {source && source !== target.label && (
-              <div className="modal__source">glossário: {source}</div>
+              <div className="modal__source lg:text-label">glossário: {source}</div>
             )}
           </div>
-          <button ref={closeRef} type="button" className="modal__close" onClick={onClose} aria-label="Fechar">
+          <button ref={closeRef} type="button" className="modal__close lg:text-modal-title" onClick={onClose} aria-label="Fechar">
             ×
           </button>
         </header>
 
         <div className="modal__body">
           <div className="modal__value">
-            <span className="modal__value-label">no painel</span>
-            <span className="modal__value-number">{target.value}</span>
+            <span className="modal__value-label lg:text-label">no painel</span>
+            <span className="modal__value-number lg:text-metric">{target.value}</span>
           </div>
           {entry.isError && (
-            <div className="modal__error" role="alert">
+            <div className="modal__error lg:text-label" role="alert">
               verbete indisponível: {entry.error instanceof Error ? entry.error.message : 'erro'}
             </div>
           )}
-          {entry.isLoading && <p className="state-loading">carregando verbete…</p>}
+          {entry.isLoading && <p className="state-loading lg:text-label">carregando verbete…</p>}
           <Block title="O que é" text={definition} />
           <Block title="Erro comum" text={mistake} />
-          {!key && <p className="modal__note">esta métrica ainda não tem verbete no glossário.</p>}
+          {!key && <p className="modal__note lg:text-label">esta métrica ainda não tem verbete no glossário.</p>}
         </div>
       </section>
     </div>

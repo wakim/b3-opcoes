@@ -32,12 +32,12 @@ export function TickerSearch() {
 
   return (
     <div className="ticker-search">
-      <label className="ticker-search__label" htmlFor="ticker-search">
+      <label className="ticker-search__label lg:text-label" htmlFor="ticker-search">
         Buscar papel
       </label>
       <input
         id="ticker-search"
-        className="ticker-search__input"
+        className="ticker-search__input lg:text-search"
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
@@ -52,14 +52,14 @@ export function TickerSearch() {
 
       {debounced.length > 0 && (
         <div className="ticker-search__results" aria-live="polite">
-          {search.isLoading && <p className="note">buscando…</p>}
+          {search.isLoading && <p className="note lg:text-label">buscando…</p>}
           {search.isError && <ErrorState error={search.error} title="Busca indisponível" />}
           {search.data && rows.length === 0 && (
-            <p className="note">nenhum papel para “{debounced}”</p>
+            <p className="note lg:text-label">nenhum papel para “{debounced}”</p>
           )}
           {search.data && rows.length > 0 && (
             <>
-              <p className="note">
+              <p className="note lg:text-label">
                 {rows.length < total
                   ? `mostrando ${rows.length} de ${total} papéis`
                   : `${total} ${total === 1 ? 'papel' : 'papéis'}`}
@@ -68,9 +68,9 @@ export function TickerSearch() {
                 {rows.map((row) => (
                   <li key={row.ticker}>
                     <Link className="ticker-search__row" to="/t/$ticker" params={{ ticker: row.ticker }}>
-                      <span className="ticker-search__code num">{row.ticker}</span>
-                      <span className="ticker-search__name">{row.corp_name}</span>
-                      <span className="ticker-search__meta quiet">
+                      <span className="ticker-search__code num lg:text-search">{row.ticker}</span>
+                      <span className="ticker-search__name lg:text-search">{row.corp_name}</span>
+                      <span className="ticker-search__meta quiet lg:text-search-meta">
                         {row.in_universe ? 'no universo' : 'fora do universo'} ·{' '}
                         {row.has_options ? 'com opções' : 'sem opções'}
                       </span>

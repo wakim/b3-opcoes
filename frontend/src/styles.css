@@ -1,5 +1,57 @@
 @import "tailwindcss";
 
+/* Escala tipográfica única. Os valores desktop entram só por utilitários lg:
+   o mobile continua usando os tamanhos históricos dos componentes. */
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --text-label: 13px;
+  --text-body: 16px;
+  --text-screen-title: 36px;
+  --text-block-title: 16px;
+  --text-lede: 15px;
+  --text-metric: 20px;
+  --text-hero: 28px;
+  --text-table: 14px;
+  --text-table-head: 13px;
+  --text-chain: 14px;
+  --text-detail: 13px;
+  --text-chart: 12px;
+  --text-search: 14px;
+  --text-search-meta: 12.5px;
+  --text-control: 14px;
+  --text-modal-body: 16px;
+  --text-modal-title: 22px;
+
+  --leading-body: 1.5;
+  --leading-table: 1.4;
+  --leading-title: 1.15;
+}
+
+/* Tokens semânticos usados pelos primitives shadcn. A paleta continua sendo
+   a bancada fria; nenhuma cor nova entra na interface. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface-2);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-ink);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-3);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--neg);
+  --color-border: var(--line);
+  --color-input: var(--line-strong);
+  --color-ring: var(--accent);
+}
+
 /* Tokens de docs/direcao.md — "A · Bancada fria". Nesta sessão (F5-A) servem
    de base ao wireframe; os 9 passes do unslop entram na F5-B. */
 :root {
@@ -21,6 +73,7 @@
   --r-sheet: 8px;
 }
 
+@layer components {
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -325,45 +378,4 @@ main {
   font-family: var(--mono);
   font-size: 12px;
 }
-
-/* F5-F — legibilidade no desktop. O corte < 1024 px continua exatamente como
-   acima; só tamanho de texto/line-height muda, sem cor ou espaço novo. */
-@media (min-width: 1024px) {
-  html,
-  body {
-    font-size: 15px;
-  }
-
-  .stamp {
-    font-size: 12px;
-  }
-
-  .screen-title {
-    font-size: 32px;
-  }
-
-  .section-label,
-  .metric .k,
-  .note,
-  .error .code,
-  .nav a,
-  .glossary-item .level {
-    font-size: 12px;
-  }
-
-  .metric .v {
-    font-size: 18px;
-  }
-
-  .rows {
-    font-size: 12.5px;
-  }
-
-  .acc-sign {
-    font-size: 18px;
-  }
-
-  .back {
-    font-size: 13px;
-  }
 }

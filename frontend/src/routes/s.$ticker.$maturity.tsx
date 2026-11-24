@@ -49,20 +49,20 @@ function SeriesPage() {
 
   return (
     <>
-      <Link className="back" to="/t/$ticker" params={{ ticker }}>
+      <Link className="back lg:text-label" to="/t/$ticker" params={{ ticker }}>
         <span aria-hidden="true">‹</span> {ticker}
       </Link>
-      <h1 className="screen-title">Série</h1>
+      <h1 className="screen-title lg:text-screen-title lg:leading-title">Série</h1>
 
       <dl className="identity">
-        <div><dt>Contrato</dt><dd className="num">{data.ticker}</dd></div>
-        <div><dt>Lado / estilo</dt><dd>{sideLabel(data.side)} / {styleLabel(data.style)}</dd></div>
-        <div><dt>Preço de exercício</dt><dd className="num">{brl(data.strike_brl)}</dd></div>
-        <div><dt>Vencimento</dt><dd className="num">{data.maturity}</dd></div>
-        <div><dt>Perna</dt><dd className="num">{data.leg_id}</dd></div>
+        <div><dt className="lg:text-label">Contrato</dt><dd className="num lg:text-detail">{data.ticker}</dd></div>
+        <div><dt className="lg:text-label">Lado / estilo</dt><dd className="lg:text-detail">{sideLabel(data.side)} / {styleLabel(data.style)}</dd></div>
+        <div><dt className="lg:text-label">Preço de exercício</dt><dd className="num lg:text-detail">{brl(data.strike_brl)}</dd></div>
+        <div><dt className="lg:text-label">Vencimento</dt><dd className="num lg:text-detail">{data.maturity}</dd></div>
+        <div><dt className="lg:text-label">Perna</dt><dd className="num lg:text-detail">{data.leg_id}</dd></div>
       </dl>
 
-      <h2 className="block-title">Último ponto · {data.last.date}</h2>
+      <h2 className="block-title lg:text-block-title lg:leading-title">Último ponto · {data.last.date}</h2>
       <MetricGrid>
         <Metric label="Data" value={data.last.date} />
         <GlossaryMetric
@@ -121,11 +121,11 @@ function SeriesPage() {
       </MetricGrid>
 
       <div className="block-head">
-        <h2 className="block-title">Histórico</h2>
+        <h2 className="block-title lg:text-block-title lg:leading-title">Histórico</h2>
         <div className="selector" role="group" aria-label="Série do gráfico">
           <button
             type="button"
-            className={view === 'price' ? 'active' : undefined}
+            className={`${view === 'price' ? 'active' : ''} lg:text-control`.trim()}
             aria-pressed={view === 'price'}
             onClick={() => setView('price')}
           >
@@ -133,7 +133,7 @@ function SeriesPage() {
           </button>
           <button
             type="button"
-            className={view === 'iv' ? 'active' : undefined}
+            className={`${view === 'iv' ? 'active' : ''} lg:text-control`.trim()}
             aria-pressed={view === 'iv'}
             onClick={() => setView('iv')}
           >
@@ -153,17 +153,17 @@ function SeriesPage() {
         ariaLabel={`Histórico de ${view === 'price' ? 'preço' : 'volatilidade implícita'} de ${data.ticker}`}
         showPoints={false}
       />
-      {data.flags.length > 0 && <p className="note">flags: {data.flags.join(' · ')}</p>}
+      {data.flags.length > 0 && <p className="note lg:text-label">flags: {data.flags.join(' · ')}</p>}
 
-      <h2 className="block-title">Últimos pregões</h2>
+      <h2 className="block-title lg:text-block-title lg:leading-title">Últimos pregões</h2>
       <div className="table-wrap">
-        <table className="screen-table">
+        <table className="screen-table lg:text-table lg:leading-table">
           <thead>
             <tr>
-              <th>Data</th>
-              <th>Fechamento</th>
-              <th>Volatilidade implícita</th>
-              <th>Delta</th>
+              <th className="lg:text-table-head">Data</th>
+              <th className="lg:text-table-head">Fechamento</th>
+              <th className="lg:text-table-head">Volatilidade implícita</th>
+              <th className="lg:text-table-head">Delta</th>
             </tr>
           </thead>
           <tbody>

@@ -461,7 +461,7 @@ Critérios de desempate, nesta ordem:
 
 ## ADR-039 — F5-F: escala tipográfica desktop sem tocar no mobile
 
-- **Data:** 2026-11-24 · **Status:** provisória · **Custo de reverter:** baixo (dois blocos CSS + documento de direção)
+- **Data:** 2026-11-24 · **Status:** superada pela ADR-043 · **Custo de reverter:** baixo (dois blocos CSS + documento de direção)
 - **Contexto:** a base de 13,5 px e os rótulos de 11 px funcionam no celular, mas ficam pequenos no monitor a 100%. O dono pediu legibilidade desktop sem zoom e sem alterar o mobile.
 - **Decisão:**
   1. Um bloco `@media (min-width: 1024px)` em `styles.css`/`styles-view.css` eleva a base para **15 px**, título de tela para **32 px**, rótulos/notas para **12 px**, valores para **18/24 px**, tabela para **12,5/12 px**, cadeia para **13/12 px**, eixos/legendas para **11 px**, busca para **12,5/11,5 px**, builder para **12/13 px** e modal para **15/20 px**.
@@ -470,6 +470,19 @@ Critérios de desempate, nesta ordem:
 - **Por quê:** melhorar leitura sem redesenhar; media query mantém o comportamento mobile já validado e torna a exceção auditável.
 - **Consequência:** nenhum componente, número, dado ou `model_version` muda. A validação compara computed styles antes/depois em 412, 1280 e 1440 px.
 - **Revisar em:** após uma semana de uso no monitor ou se o dono preferir outra densidade.
+
+## ADR-043 — F8: revisão aprovada da tipografia desktop com tokens Tailwind
+
+- **Data:** 2026-11-24 · **Status:** ratificada pelo dono · **Custo de reverter:** baixo (tokens + utilitários)
+- **Contexto:** o dono considerou o texto desktop pequeno. A escala do ADR-039 (base 15, título 32, rótulos 12) fica substituída; o mobile < 1024 px não muda. A revisão também vale para os primitives shadcn da F8, que não podem herdar `text-sm`.
+- **Decisão:**
+  1. `@theme` centraliza a nova escala em px: corpo 16, título de tela 36, título de bloco 16, lede 15, rótulos/notas 13, métrica 20, herói 28, tabela 14/13, cadeia/detalhe 14/13, gráfico 12, busca 14/12,5, builder 13/14 e modal 16/22.
+  2. Line-heights: corpo 1,5; tabela 1,4; títulos 1,15. A aplicação desktop usa exclusivamente utilitários `lg:`; os blocos `@media (min-width: 1024px)` de tipografia foram removidos.
+  3. Button, Input, Select, Table e Dialog gerados pelo shadcn usam os mesmos tokens. Sans de sistema e mono tabular continuam; hierarquia por tamanho e cor, sem peso extra, caixa alta ou tracking.
+  4. Nenhum `zoom`, `transform: scale` ou tamanho arbitrário espalhado. A validação é feita em 1280, 1440 e 412 px, incluindo overflow, truncamento, console e alvos de toque.
+- **Por quê:** atende ao pedido explícito de legibilidade a 100% sem redesenhar a interface e move a escala para um contrato único, reutilizável pela F8.
+- **Consequência:** o ADR-039 fica superado. `docs/direcao.md` registra a revisão aprovada e o relatório da F8 guarda a evidência. Nenhum número, fórmula, dado ou `model_version` muda.
+- **Revisar em:** depois de uma semana de uso no monitor ou se o dono pedir outra densidade.
 
 ## ADR-040 — F6: journal append-only por eventos e escritas com token
 

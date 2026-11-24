@@ -68,13 +68,13 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
   return (
     <section className="liquidity" aria-labelledby="liquidity-title">
       <div className="block-head">
-        <h2 className="block-title" id="liquidity-title">
-          Liquidez <span className="block-count">{ranked.length} papéis com série líquida</span>
+        <h2 className="block-title lg:text-block-title lg:leading-title" id="liquidity-title">
+          Liquidez <span className="block-count lg:text-label">{ranked.length} papéis com série líquida</span>
         </h2>
         <div className="selector" role="group" aria-label="Tipo de liquidez">
           <button
             type="button"
-            className={tab === 'papers' ? 'active' : undefined}
+            className={`${tab === 'papers' ? 'active' : ''} lg:text-control`.trim()}
             aria-pressed={tab === 'papers'}
             onClick={() => setTab('papers')}
           >
@@ -82,7 +82,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
           </button>
           <button
             type="button"
-            className={tab === 'series' ? 'active' : undefined}
+            className={`${tab === 'series' ? 'active' : ''} lg:text-control`.trim()}
             aria-pressed={tab === 'series'}
             onClick={() => setTab('series')}
           >
@@ -90,11 +90,11 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
           </button>
         </div>
       </div>
-      <p className="chain-note">ordenado por liquidez; não é recomendação</p>
+      <p className="chain-note lg:text-label lg:leading-body">ordenado por liquidez; não é recomendação</p>
 
       {tab === 'papers' ? (
         ranked.length === 0 ? (
-          <p className="chart-empty">nenhum papel com série líquida nesta sessão</p>
+          <p className="chart-empty lg:text-detail">nenhum papel com série líquida nesta sessão</p>
         ) : (
           <>
             <div
@@ -104,15 +104,15 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
               aria-label="Papéis com mais séries líquidas"
               tabIndex={0}
             >
-              <table className="screen-table liquidity-table">
+              <table className="screen-table liquidity-table lg:text-table lg:leading-table">
                 <thead>
                   <tr>
-                    <th>Papel</th>
-                    <th>Fechamento</th>
-                    <th>Séries líquidas</th>
-                    <th>Vencimentos</th>
-                    <th>Volatilidade implícita 30d</th>
-                    <th title="VRP = volatilidade implícita − realizada">Prêmio de volatilidade</th>
+                    <th className="lg:text-table-head">Papel</th>
+                    <th className="lg:text-table-head">Fechamento</th>
+                    <th className="lg:text-table-head">Séries líquidas</th>
+                    <th className="lg:text-table-head">Vencimentos</th>
+                    <th className="lg:text-table-head">Volatilidade implícita 30d</th>
+                    <th className="lg:text-table-head" title="VRP = volatilidade implícita − realizada">Prêmio de volatilidade</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -125,12 +125,12 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                       onClick={() => openTicker(row.underlying)}
                       onKeyDown={rowKeyDown(() => openTicker(row.underlying))}
                     >
-                      <td className="num">{row.underlying}</td>
-                      <td>{brl(row.spot_brl)}</td>
-                      <td>{row.n_liquid_series}</td>
-                      <td>{row.n_expiries}</td>
-                      <td>{fmt(row.iv_atm_30d)}</td>
-                      <td>
+                      <td className="num lg:leading-table">{row.underlying}</td>
+                      <td className="lg:leading-table">{brl(row.spot_brl)}</td>
+                      <td className="lg:leading-table">{row.n_liquid_series}</td>
+                      <td className="lg:leading-table">{row.n_expiries}</td>
+                      <td className="lg:leading-table">{fmt(row.iv_atm_30d)}</td>
+                      <td className="lg:leading-table">
                         {fmt(row.vrp)}
                         {row.vrp != null && row.flags.includes('rv_shock_day') && (
                           <span
@@ -150,7 +150,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
             {ranked.length > 10 && (
               <button
                 type="button"
-                className="liquidity__more"
+                className="liquidity__more lg:text-control"
                 aria-expanded={showAll}
                 aria-controls="liquidity-papers"
                 onClick={() => setShowAll((value) => !value)}
@@ -167,11 +167,11 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
       ) : !liquid.data ? (
         <Loading label="carregando séries…" />
       ) : liquid.data.data.rows.length === 0 ? (
-        <p className="chart-empty">nenhuma série líquida nesta sessão</p>
+        <p className="chart-empty lg:text-detail">nenhuma série líquida nesta sessão</p>
       ) : (
         <>
           {liquid.data.meta?.truncated && (
-            <p className="notice" role="status">
+            <p className="notice lg:text-label" role="status">
               Mostrando {liquid.data.meta.returned} de {liquid.data.meta.total} séries por volume.
             </p>
           )}
@@ -181,20 +181,20 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
             aria-label="Séries líquidas mais negociadas"
             tabIndex={0}
           >
-            <table className="screen-table liquidity-table liquidity-table--series">
+            <table className="screen-table liquidity-table liquidity-table--series lg:text-table lg:leading-table">
               <thead>
                 <tr>
-                  <th>Série</th>
-                  <th>Papel</th>
-                  <th>Lado / estilo</th>
-                  <th>Strike</th>
-                  <th>Vencimento</th>
-                  <th title="Volume financeiro da sessão, em reais">Volume</th>
-                  <th>Negócios</th>
-                  <th title="Spread percentual do fechamento; reais quando não há percentual">Spread</th>
-                  <th>Volatilidade implícita</th>
-                  <th>Delta</th>
-                  <th>Liquidez</th>
+                  <th className="lg:text-table-head">Série</th>
+                  <th className="lg:text-table-head">Papel</th>
+                  <th className="lg:text-table-head">Lado / estilo</th>
+                  <th className="lg:text-table-head">Strike</th>
+                  <th className="lg:text-table-head">Vencimento</th>
+                  <th className="lg:text-table-head" title="Volume financeiro da sessão, em reais">Volume</th>
+                  <th className="lg:text-table-head">Negócios</th>
+                  <th className="lg:text-table-head" title="Spread percentual do fechamento; reais quando não há percentual">Spread</th>
+                  <th className="lg:text-table-head">Volatilidade implícita</th>
+                  <th className="lg:text-table-head">Delta</th>
+                  <th className="lg:text-table-head">Liquidez</th>
                 </tr>
               </thead>
               <tbody>
@@ -207,17 +207,17 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     onClick={() => openSeries(row.ticker, row.maturity)}
                     onKeyDown={rowKeyDown(() => openSeries(row.ticker, row.maturity))}
                   >
-                    <td className="num">{row.ticker}</td>
-                    <td className="num">{row.underlying}</td>
-                    <td>{sideLabel(row.side)} / {styleLabel(row.style)}</td>
-                    <td>{brl(row.strike_brl)}</td>
-                    <td className="num">{dateBr(row.maturity)}</td>
-                    <td title={`Volume financeiro: ${brl(row.volume_brl)}`}>{brlCompact(row.volume_brl)}</td>
-                    <td>{row.trades}</td>
-                    <td>{spreadLabel(row.spread_pct, row.spread_brl)}</td>
-                    <td>{fmt(row.iv_pct)}</td>
-                    <td>{fmt(row.delta, 3)}</td>
-                    <td className="quiet">{row.is_liquid ? 'líquida' : '—'}</td>
+                    <td className="num lg:leading-table">{row.ticker}</td>
+                    <td className="num lg:leading-table">{row.underlying}</td>
+                    <td className="lg:leading-table">{sideLabel(row.side)} / {styleLabel(row.style)}</td>
+                    <td className="lg:leading-table">{brl(row.strike_brl)}</td>
+                    <td className="num lg:leading-table">{dateBr(row.maturity)}</td>
+                    <td className="lg:leading-table" title={`Volume financeiro: ${brl(row.volume_brl)}`}>{brlCompact(row.volume_brl)}</td>
+                    <td className="lg:leading-table">{row.trades}</td>
+                    <td className="lg:leading-table">{spreadLabel(row.spread_pct, row.spread_brl)}</td>
+                    <td className="lg:leading-table">{fmt(row.iv_pct)}</td>
+                    <td className="lg:leading-table">{fmt(row.delta, 3)}</td>
+                    <td className="quiet lg:leading-table">{row.is_liquid ? 'líquida' : '—'}</td>
                   </tr>
                 ))}
               </tbody>

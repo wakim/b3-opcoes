@@ -59,14 +59,14 @@ function DetailRow({
     return (
       <button
         type="button"
-        className="chain-detail__row chain-detail__row--button"
+        className="chain-detail__row chain-detail__row--button lg:text-detail"
         onClick={() => onMetric(field, label, value)}
       >
         {content}
       </button>
     )
   }
-  return <div className="chain-detail__row">{content}</div>
+  return <div className="chain-detail__row lg:text-detail">{content}</div>
 }
 
 function SideDetail({
@@ -84,8 +84,8 @@ function SideDetail({
   if (!row) {
     return (
       <div className="chain-detail__side">
-        <div className="chain-detail__label">{title}</div>
-        <div className="chain-detail__empty">sem série neste lado</div>
+        <div className="chain-detail__label lg:text-label">{title}</div>
+        <div className="chain-detail__empty lg:text-detail">sem série neste lado</div>
       </div>
     )
   }
@@ -96,7 +96,7 @@ function SideDetail({
   const canAdd = Number.isInteger(parsed) && parsed > 0
   return (
     <div className="chain-detail__side">
-      <div className="chain-detail__label">
+      <div className="chain-detail__label lg:text-label">
         {title} <span className="chain-detail__ticker">{row.ticker}</span>
       </div>
       <DetailRow label="Volatilidade implícita" value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
@@ -114,18 +114,19 @@ function SideDetail({
         onMetric={onMetric}
       />
       <DetailRow label="Ofertas (bid/ask)" value={book} field="bid_brl" onMetric={onMetric} />
-      <div className="chain-detail__flags">
+      <div className="chain-detail__flags lg:text-detail">
         {row.flags.length > 0 ? row.flags.join(' · ') : 'sem flags'}
       </div>
       {onAddLeg && (
         <div className="chain-add">
-          <label className="builder__qty">
+          <label className="builder__qty lg:text-label">
             <span className="quiet">ações</span>
             <input
               type="number"
               inputMode="numeric"
               min={1}
               step={1}
+              className="lg:text-control"
               value={quantity}
               aria-label={`Quantidade de ações para ${row.ticker}`}
               onChange={(event) => setQuantity(event.target.value)}
@@ -133,7 +134,7 @@ function SideDetail({
           </label>
           <button
             type="button"
-            className="builder__button"
+            className="builder__button lg:text-control"
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'long', parsed)}
           >
@@ -141,7 +142,7 @@ function SideDetail({
           </button>
           <button
             type="button"
-            className="builder__button"
+            className="builder__button lg:text-control"
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'short', parsed)}
           >
@@ -169,18 +170,18 @@ export function Chain({
   const groups = useMemo(() => group(rows), [rows])
 
   if (groups.length === 0) {
-    return <p className="chain-empty">nenhuma série neste recorte</p>
+    return <p className="chain-empty lg:text-detail">nenhuma série neste recorte</p>
   }
 
   return (
     <div className="chain">
       {groups.map((groupRow) => (
         <section className="chain-group" key={groupRow.maturity}>
-          <header className="chain-group__head">
+          <header className="chain-group__head lg:text-label">
             <span>{groupRow.maturity}</span>
             <span className="num">{groupRow.strikes.length} strikes</span>
           </header>
-          <div className="chain-head" aria-hidden="true">
+          <div className="chain-head lg:text-label" aria-hidden="true">
             <span>Put</span>
             <span>Preço de exercício</span>
             <span>Call</span>
@@ -192,7 +193,7 @@ export function Chain({
               <div className="chain-item" key={id}>
                 <button
                   type="button"
-                  className="chain-row"
+                  className="chain-row lg:text-chain lg:leading-table"
                   aria-expanded={expanded}
                   onClick={() => setOpen(expanded ? null : id)}
                 >

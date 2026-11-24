@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import tailwindcss from '@tailwindcss/vite'
@@ -37,6 +38,11 @@ function publicAssets(): Plugin {
 // (`/api/health?probe=1`) fica de fora do cache — ela é justamente quem diz se o
 // servidor está no ar (cache não pode responder "online" por ele).
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+    },
+  },
   plugins: [
     publicAssets(),
     TanStackRouterVite({ target: 'react', autoCodeSplitting: false }),

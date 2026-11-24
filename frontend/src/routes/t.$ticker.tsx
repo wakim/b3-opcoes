@@ -192,6 +192,15 @@ function TickerPage() {
       {withIv.length >= 2 ? (
         <LineChart
           labels={termWindow.map((point) => point.maturity.slice(5))}
+          xValues={termWindow.map((point) => point.t)}
+          xTickValues={term.map((point) => point.t)}
+          dashedGap={0.12}
+          tipLabels={termWindow.map((point) => dateBr(point.maturity))}
+          details={termWindow.map((point) =>
+            `${point.n_liquid_strikes} ${point.n_liquid_strikes === 1 ? 'série líquida' : 'séries líquidas'}${
+              point.forward_brl != null ? ` · forward ${brl(point.forward_brl)}` : ''
+            }`,
+          )}
           series={[{
             label: 'Volatilidade implícita',
             values: termWindow.map((point) => point.iv_atm),
@@ -199,16 +208,49 @@ function TickerPage() {
           }]}
           formatValue={(v) => fmt(v, 1)}
           ariaLabel={`Volatilidade implícita por vencimento de ${ticker}`}
-          caption={`Volatilidade implícita em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''}`}
+          caption={`Volatilidade implícita em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''} · eixo x proporcional ao tempo`}
         />
       ) : (
         <p className="chart-empty">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
+      )}
+      {term.length > 0 && (
+        <details className="chart-data">
+          <summary>Ver os {term.length} vencimentos e a volatilidade</summary>
+          <div className="table-wrap">
+            <table className="screen-table">
+              <thead>
+                <tr>
+                  <th>Vencimento</th>
+                  <th>Volatilidade implícita</th>
+                  <th>Séries líquidas</th>
+                  <th>Forward</th>
+                </tr>
+              </thead>
+              <tbody>
+                {term.map((point) => (
+                  <tr key={point.maturity}>
+                    <td className="num">{dateBr(point.maturity)}</td>
+                    <td>{fmt(point.iv_atm)}</td>
+                    <td>{point.n_liquid_strikes}</td>
+                    <td>{brl(point.forward_brl)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="note">
+            Volatilidade implícita é a do strike de |Δ| mais próximo de 0,5; “—” = vencimento sem
+            IV na sessão. Séries líquidas seguem a regra de liquidez no vencimento.
+          </p>
+        </details>
       )}
 
       <h2 className="block-title">Volatilidade implícita vs realizada</h2>
       <LineChart
         compact
         labels={history.map((point) => point.date.slice(5))}
+        tipLabels={history.map((point) => dateBr(point.date))}
+        details={history.map((point) => (point.vrp != null ? `VRP ${fmt(point.vrp)}` : null))}
         series={[
           { label: 'Volatilidade implícita', values: history.map((point) => point.iv_atm_30d) },
           { label: 'Realizada 30d', values: history.map((point) => point.rv30), dashed: true },

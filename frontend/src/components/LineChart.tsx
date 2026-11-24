@@ -2,7 +2,18 @@
  *
  * Série principal em branco-gelo, comparador em cinza tracejado: é a regra da
  * direção para distinguir séries sem inventar cor. Só formata o que vem da API.
+ *
+ * O eixo x pode ser **por tempo** (`xValues`, ex.: `t` em anos): a distância
+ * entre pontos passa a refletir o intervalo real, não o índice. Quando há
+ * buracos de observação, `dashedGap` liga os pontos com tracejado em vez de
+ * fingir uma curva contínua.
+ *
+ * Leitura ponto a ponto: crosshair + legenda flutuante (desktop) ou leitura
+ * fixa (mobile), com mouse, toque e teclado. A tabela de valores fica na página
+ * que usa o gráfico — o tooltip não substitui o dado acessível.
  */
+import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+
 export interface ChartSeries {
   label: string
   values: Array<number | null>
@@ -23,7 +34,19 @@ export interface LineChartProps {
   showPoints?: boolean
   /** Rodapé quieto para explicar lacunas e liquidez do recorte. */
   caption?: string
+  /** Posição numérica de cada rótulo no eixo x (monotônica). Sem isso, o índice. */
+  xValues?: number[]
+  /** Posições de todos os vencimentos do recorte, para marcar a densidade real. */
+  xTickValues?: number[]
+  /** Liga observações com tracejado quando o salto em x passa deste limiar. */
+  dashedGap?: number
+  /** Rótulo completo de cada ponto (ex.: data com ano); o eixo segue curto. */
+  tipLabels?: string[]
+  /** Linha quieta extra no tooltip (ex.: séries líquidas e forward). */
+  details?: Array<string | null>
 }
+
+type Point = { i: number; x: number; y: number }
 
 export function LineChart({
   labels,
@@ -35,7 +58,15 @@ export function LineChart({
   compact = false,
   showPoints = true,
   caption,
+  xValues,
+  xTickValues = [],
+  dashedGap,
+  tipLabels,
+  details = [],
 }: LineChartProps) {
+  const [active, setActive] = useState<number | null>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
   const finite = series
     .flatMap((s) => s.values)
     .filter((v): v is number => v != null && Number.isFinite(v))
@@ -56,34 +87,141 @@ export function LineChart({
     hi += 1
   }
   const span = hi - lo
-  const x = (i: number) => PAD_X + (i / (labels.length - 1)) * (W - 2 * PAD_X)
-  const y = (v: number) => PAD + inner - ((v - lo) / span) * inner
 
-  function pathOf(values: Array<number | null>): string {
-    let d = ''
-    let connected = false
-    values.forEach((v, i) => {
-      if (v == null || !Number.isFinite(v)) {
-        connected = false
-        return
-      }
-      d += `${connected ? ' L' : ' M'}${x(i).toFixed(2)} ${y(v).toFixed(2)}`
-      connected = true
-    })
-    return d
-  }
+  const timeAxis = Array.isArray(xValues) && xValues.length === labels.length
+  const xMin = timeAxis ? Math.min(...xValues) : 0
+  const xMax = timeAxis ? Math.max(...xValues) : labels.length - 1
+  const xAt = (value: number): number =>
+    PAD_X + ((value - xMin) / (xMax - xMin || 1)) * (W - 2 * PAD_X)
+  const x = (i: number): number => (timeAxis ? xAt(xValues[i]) : PAD_X + (i / (labels.length - 1)) * (W - 2 * PAD_X))
+  const y = (v: number): number => PAD + inner - ((v - lo) / span) * inner
 
-  function pointsOf(values: Array<number | null>): Array<{ i: number; x: number; y: number }> {
+  function pointsOf(values: Array<number | null>): Point[] {
     return values
       .map((v, i) => (v != null && Number.isFinite(v) ? { i, x: x(i), y: y(v) } : null))
-      .filter((point): point is { i: number; x: number; y: number } => point !== null)
+      .filter((point): point is Point => point !== null)
   }
 
-  const axis = [labels[0], labels[Math.floor((labels.length - 1) / 2)], labels[labels.length - 1]]
+  /** Separa o traço em trechos sólidos e trechos tracejados (salto grande). */
+  function segmentsOf(values: Array<number | null>): { solid: Point[][]; gap: Point[][] } {
+    const points = pointsOf(values)
+    const solid: Point[][] = []
+    const gap: Point[][] = []
+    let run: Point[] = []
+    for (let k = 0; k < points.length; k += 1) {
+      const point = points[k]
+      if (k === 0) {
+        run = [point]
+        continue
+      }
+      const prev = points[k - 1]
+      const step = timeAxis ? xValues[point.i] - xValues[prev.i] : point.i - prev.i
+      const broken = dashedGap == null ? point.i !== prev.i + 1 : step > dashedGap
+      if (broken) {
+        if (run.length > 1) solid.push(run)
+        if (dashedGap != null) gap.push([prev, point])
+        run = [point]
+      } else {
+        run.push(point)
+      }
+    }
+    if (run.length > 1) solid.push(run)
+    return { solid, gap }
+  }
+
+  function pathOf(segment: Point[]): string {
+    return segment
+      .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(' ')
+  }
+
+  const axisIndices = (() => {
+    if (!timeAxis) {
+      return [0, Math.floor((labels.length - 1) / 2), labels.length - 1]
+    }
+    const fractions = [0, 0.5, 1]
+    const picks = fractions.map((fraction) => {
+      const target = xMin + fraction * (xMax - xMin)
+      let best = 0
+      let bestDistance = Infinity
+      labels.forEach((_, index) => {
+        const distance = Math.abs(xValues[index] - target)
+        if (distance < bestDistance) {
+          best = index
+          bestDistance = distance
+        }
+      })
+      return best
+    })
+    return [...new Set(picks)]
+  })()
+
+  const axis = axisIndices
+    .map((index) => labels[index])
     .filter((value, index, all) => all.indexOf(value) === index)
 
+  const activeIndex = active != null && active < labels.length ? active : null
+  const activePoint = activeIndex != null && activeIndex >= 0 && activeIndex < labels.length ? activeIndex : null
+
+  function nearestIndex(clientX: number, rect: DOMRect): number {
+    const position = ((clientX - rect.left) / rect.width) * W
+    let best = 0
+    let bestDistance = Infinity
+    labels.forEach((_, index) => {
+      const distance = Math.abs(x(index) - position)
+      if (distance < bestDistance) {
+        best = index
+        bestDistance = distance
+      }
+    })
+    return best
+  }
+
+  function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setActive(nearestIndex(event.clientX, rect))
+  }
+
+  function handlePointerLeave(event: PointerEvent<SVGSVGElement>) {
+    if (event.pointerType === 'mouse') setActive(null)
+  }
+
+  function handleKeyDown(event: KeyboardEvent<SVGSVGElement>) {
+    const current = activeIndex ?? -1
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      setActive(Math.max(0, current - 1))
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      setActive(Math.min(labels.length - 1, current + 1))
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      setActive(0)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      setActive(labels.length - 1)
+    } else if (event.key === 'Escape') {
+      setActive(null)
+    }
+  }
+
+  const tipLabel = activePoint != null ? (tipLabels?.[activePoint] ?? labels[activePoint]) : null
+  const tipPosition = activePoint != null ? (x(activePoint) / W) * 100 : 50
+  const tipRows = activePoint != null
+    ? series.map((s) => {
+        const value = s.values[activePoint]
+        const shown = value != null && Number.isFinite(value) ? formatValue(value) : '—'
+        return { label: s.label, value: shown }
+      })
+    : []
+  const tipDetail = activePoint != null ? details[activePoint] : null
+  const liveText =
+    activePoint != null
+      ? `${tipLabel}: ${tipRows.map((row) => `${row.label} ${row.value}`).join('; ')}${tipDetail ? `. ${tipDetail}` : ''}`
+      : ''
+
   return (
-    <div className={`chart${compact ? ' chart--compact' : ''}`}>
+    <div className={`chart${compact ? ' chart--compact' : ''}`} ref={wrapRef}>
       <div className="chart__bounds" aria-hidden="true">
         <span>máx {formatValue(hi)}</span>
         <span>mín {formatValue(lo)}</span>
@@ -92,11 +230,29 @@ export function LineChart({
         className="chart__svg"
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={ariaLabel}
+        aria-label={`${ariaLabel}. Use as setas para percorrer os pontos.`}
+        tabIndex={0}
+        onPointerMove={handlePointerMove}
+        onPointerDown={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setActive(null)}
       >
         <line className="chart__grid" x1={0} x2={W} y1={PAD} y2={PAD} />
         <line className="chart__grid chart__grid--mid" x1={0} x2={W} y1={PAD + inner / 2} y2={PAD + inner / 2} />
         <line className="chart__grid" x1={0} x2={W} y1={H - PAD} y2={H - PAD} />
+        {xTickValues
+          .filter((value) => value >= xMin && value <= xMax)
+          .map((value) => (
+            <line
+              key={`tick-${value}`}
+              className="chart__tick"
+              x1={xAt(value)}
+              x2={xAt(value)}
+              y1={H - PAD}
+              y2={H - PAD + 4}
+            />
+          ))}
         {marks.map((mark) => {
           const index = labels.indexOf(mark)
           if (index < 0) return null
@@ -111,27 +267,49 @@ export function LineChart({
             />
           )
         })}
+        {activePoint != null && (
+          <line
+            className="chart__cross"
+            x1={x(activePoint)}
+            x2={x(activePoint)}
+            y1={PAD - 2}
+            y2={H - PAD + 2}
+          />
+        )}
         {series.map((s) => {
+          const { solid, gap } = segmentsOf(s.values)
           const points = pointsOf(s.values)
           const lastIndex = points.length > 0 ? points[points.length - 1].i : -1
           return (
             <g key={s.label}>
-              <path
-                className={`chart__line${s.dashed ? ' chart__line--dashed' : ''}`}
-                d={pathOf(s.values)}
-                fill="none"
-              />
+              {solid.map((segment, index) => (
+                <path
+                  key={`solid-${index}`}
+                  className={`chart__line${s.dashed ? ' chart__line--dashed' : ''}`}
+                  d={pathOf(segment)}
+                  fill="none"
+                />
+              ))}
+              {gap.map((segment, index) => (
+                <path
+                  key={`gap-${index}`}
+                  className="chart__line chart__line--gap"
+                  d={pathOf(segment)}
+                  fill="none"
+                />
+              ))}
               {points
-                .filter((point) => showPoints || point.i === lastIndex)
+                .filter((point) => showPoints || point.i === lastIndex || point.i === activePoint)
                 .map((point) => {
                   const hollow = s.hollow?.[point.i] === true
+                  const isActive = point.i === activePoint
                   return (
                     <circle
                       key={point.i}
                       className={`chart__dot${s.dashed ? ' chart__dot--muted' : ''}${hollow ? ' chart__dot--hollow' : ''}`}
                       cx={point.x}
                       cy={point.y}
-                      r={point.i === lastIndex ? 2.5 : 1.8}
+                      r={isActive ? 3.2 : point.i === lastIndex ? 2.5 : 1.8}
                     />
                   )
                 })}
@@ -144,6 +322,21 @@ export function LineChart({
           <span key={label}>{label}</span>
         ))}
       </div>
+      {tipLabel != null && (
+        <div className="chart__tip" style={{ left: `clamp(112px, ${tipPosition}%, calc(100% - 112px))` }} aria-hidden="true">
+          <div className="chart__tip-head">{tipLabel}</div>
+          {tipRows.map((row) => (
+            <div className="chart__tip-row" key={row.label}>
+              <span>{row.label}</span>
+              <span className="num">{row.value}</span>
+            </div>
+          ))}
+          {tipDetail && <div className="chart__tip-note">{tipDetail}</div>}
+        </div>
+      )}
+      <p className="visually-hidden" aria-live="polite">
+        {liveText}
+      </p>
       <div className="chart__legend">
         {series.map((s) => (
           <span key={s.label}>
@@ -155,6 +348,7 @@ export function LineChart({
         {series.some((s) => s.hollow?.some(Boolean)) && (
           <span className="chart__legend-note">ponto vazado: ATM sem série líquida</span>
         )}
+        {dashedGap != null && <span className="chart__legend-note">traço tracejado: intervalo sem IV</span>}
       </div>
       {caption && <p className="chart__caption">{caption}</p>}
     </div>

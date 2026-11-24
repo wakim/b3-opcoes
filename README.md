@@ -11,8 +11,8 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 | | |
 |---|---|
 | Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…037) |
-| Código | 🟢 **F0–F4 completos + F5-A/B/C entregues; F5-D pronto no host** — lake 2024–2026, `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` e PWA. F5-C: builder inline, offline e busca. F5-D: HTTPS somente na tailnet na 8443, MCP por hostname do tailnet e ícone/metadados iOS. Falta a confirmação de instalação no celular. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F5-D — validação no celular** — URL `https://desktop-vlp5tqv.tail5745cb.ts.net:8443`; infraestrutura provada em `docs/relatorios/2026-11-24-revisao-f5d.md` |
+| Código | 🟢 **F0–F4 completos + F5-A/B/C/D entregues** — lake 2024–2026, `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` e PWA. F5-C: builder inline, offline e busca. F5-D: HTTPS somente na tailnet na 8443, MCP por hostname do tailnet, ícone/metadados iOS e **Android instalado/funcionando (confirmado pelo dono)**. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F5-E — liquidez no Hoje** — F5-D fechado com parecer em `docs/relatorios/2026-11-24-revisao-f5d.md` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 

@@ -23,7 +23,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 |---|---|
 | Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…037) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5-D — confirmação no celular.** A infraestrutura HTTPS está pronta e provada: `tailscale serve` na **8443 (tailnet only)** aponta para o b3o na 8083 e coexiste com o Funnel da 443 do `realestate`; URL `https://desktop-vlp5tqv.tail5745cb.ts.net:8443`. MCP com allowlist por `B3_MCP_ALLOWED_HOSTS`, ícone Apple 180 e metadados iOS entregues; smokes 53/53 e 93/93 local/HTTPS, PWA e offline→online no host verdes. **Falta só o dono instalar no aparelho e enviar as capturas**; sem isso F5.9 e a aceitação de celular ficam pendentes. Prompt/relatório em `docs/prompts/f5-d.md` e `docs/relatorios/2026-11-24-revisao-f5d.md`. Depois da confirmação, seguir **F5-E** (liquidez no Hoje) e **F5-F** (tipografia desktop). |
+| Retomar em | **F5-E — liquidez no Hoje.** F5-D fechado: instalação Android confirmada pelo dono em 24/11/2026. HTTPS `https://desktop-vlp5tqv.tail5745cb.ts.net:8443` (Serve 8443 only-tailnet, Funnel 443 preservado), MCP por `B3_MCP_ALLOWED_HOSTS`, ícone Apple 180 e metadados iOS; smokes 53/53 e 93/93 local/HTTPS. Agora executar o bloco **Liquidez** (top papéis por séries líquidas + top séries por volume) e depois **F5-F** (tipografia desktop). |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -378,7 +378,7 @@ Worktree próprio; app provado em `B3_APP_PORT=8083`.
 
 **Não marcado aqui:** F5-D (Tailscale/celular), F5-E (liquidez no Hoje), Carteira/Diário reais (F6).
 
-### F5-D — sessão 4 de 4 (Tailscale + celular) — parcial
+### F5-D — sessão 4 de 4 (Tailscale + celular)
 
 Contrato em `docs/prompts/f5-d.md`; ADR-037; evidência em
 `docs/relatorios/2026-11-24-revisao-f5d.md`. App em `127.0.0.1:8083`; URL
@@ -395,11 +395,11 @@ Contrato em `docs/prompts/f5-d.md`; ADR-037; evidência em
 - [x] **Regressão no host:** Hoje 289/157/132, Ticker com 7 métricas/3 réguas/2 gráficos/28
   vencimentos/6+22, 412 px sem overflow e 165 alvos ≥ 44 px; SW + `b3o-api`, offline com
   shell/banner/carimbo e retorno online sem erros; `data/` inalterado.
-- [ ] **Instalação no aparelho físico:** ligar Tailscale, instalar o PWA, confirmar standalone,
-  ícone, carimbo, offline real e bloqueio fora da tailnet, com capturas do dono.
+- [x] **Instalação no aparelho físico:** dono confirmou o Android instalado e funcionando em
+  24/11/2026, após ligar o Tailscale, abrir a URL, instalar o PWA e testar o ciclo offline/online.
+  As capturas não foram anexadas; a confirmação explícita do dono fecha o critério.
 
-**Não marcado:** F5.9 e a aceitação “instalado no celular”. F5-D inteiro só fecha com a confirmação
-física.
+**F5-D fechado:** F5.9 e a aceitação “instalado no celular” marcadas com a confirmação física do dono.
 
 ### F5-E — Hoje: liquidez como ponto de partida (pedido do dono, 23/11/2026)
 
@@ -501,7 +501,7 @@ vertical ou hierarquia — só tamanho e o que o tamanho exigir (line-height/alt
 paralelo.
 
 **Aceitação F5**
-- [ ] instalado no celular pelo domínio `*.ts.net` (HTTPS)
+- [x] instalado no celular pelo domínio `*.ts.net` (HTTPS) — Android confirmado pelo dono em 24/11/2026
 - [ ] `npm run build` roda **dentro do container** (`podman compose run --rm web`) e o FastAPI serve o `dist`
 - [ ] `npm run lint` e `tsc --noEmit` limpos; os tipos da API vêm de um único arquivo de contrato
 - [x] offline mostra a última sessão com o carimbo correto

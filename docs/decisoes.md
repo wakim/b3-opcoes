@@ -435,7 +435,7 @@ Critérios de desempate, nesta ordem:
 
 ## ADR-037 — F5-D: Serve 8443 only-tailnet, allowlist por ambiente e ícone iOS
 
-- **Data:** 2026-11-24 · **Status:** provisória (instalação física no celular pendente) · **Custo de reverter:** baixo (exposição + metadados; nenhuma fórmula)
+- **Data:** 2026-11-24 · **Status:** ratificada pelo dono (Android confirmado) · **Custo de reverter:** baixo (exposição + metadados; nenhuma fórmula)
 - **Contexto:** a spec D12 escolhe `tailscale serve`, mas este host já usa a 443 com **Funnel público** para outro projeto (`realestate` → `127.0.0.1:8080`). O b3o tem leitura sem autenticação; publicá-lo por Funnel ampliaria o painel para a internet. Além disso, o `TransportSecuritySettings` do MCP só aceitava hosts locais e devolvia **421** para o hostname `*.ts.net`. O PWA também ainda não tinha o `apple-touch-icon` de 180 px exigido pelo iOS.
 - **Decisão:**
   1. O b3o roda em `127.0.0.1:8083` e é publicado por `tailscale serve --bg --https=8443 http://127.0.0.1:8083`. A Serve **coexiste** com o Funnel: `tailscale serve status` mostra `8443 (tailnet only)` para o b3o e `443 (Funnel on)` para o `realestate`. A 443 não foi alterada; **nunca** usar Funnel para o b3o sem decisão do dono.
@@ -443,7 +443,7 @@ Critérios de desempate, nesta ordem:
   3. O gerador de ícones passa a produzir `apple-touch-icon.png` **180×180** com o mesmo desenho grafite + agulha. `index.html` ganha `apple-touch-icon` e os três metadados iOS; o ícone entra no precache. Manifest, nome e `standalone` não mudam.
   4. Nenhuma métrica, fórmula, SQL, journal ou `model_version` muda. O app segue `model_version 2`.
 - **Evidência (24/11/2026):** HTTPS 200; `/api/health` local = HTTPS (`2026-11-23`, `age_sessions 0`, `model_version 2`); `mcp_smoke` **53/53** local e HTTPS; `structure_smoke` **93/93** local e HTTPS; Host `nao-autorizado.example` → **421 Invalid Host header**; PWA com 1 registro, controller ativo, precache + `b3o-api` (6 entradas, sonda fora do cache); offline com servidor parado serviu o shell, banner “sem rede — última sessão 2026-11-23” e carimbo “offline” sem `D-n`; retorno online com 289 linhas e zero erros de console. `data/` inalterado (202 arquivos, SHA-256/tamanho/mtime).
-- **Consequência:** a URL pronta é `https://desktop-vlp5tqv.tail5745cb.ts.net:8443`. A prova no host/nó da tailnet não substitui a instalação física: `tailscale status` ainda mostra só o desktop, sem celular. **F5.9 e a aceitação “instalado no celular” ficam pendentes** até o dono confirmar e enviar as capturas.
+- **Consequência:** a URL pronta é `https://desktop-vlp5tqv.tail5745cb.ts.net:8443`. O dono confirmou em 24/11/2026 que o **Android está instalado e funcionando**, incluindo o ciclo offline/online. As capturas não foram anexadas, mas a confirmação explícita fecha F5.9 e a aceitação de celular no `PLAN.md`.
 - **Revisar em:** confirmação da instalação no celular ou mudança do hostname/porta da tailnet.
 
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta

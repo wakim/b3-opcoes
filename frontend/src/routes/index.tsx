@@ -18,7 +18,12 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
     return <p className="chart-empty">nenhum papel nesta seção do recorte</p>
   }
   return (
-    <div className="table-wrap">
+    <div
+      className="table-wrap table-wrap--scroll"
+      role="region"
+      aria-label={withOptions ? 'Papéis com opções' : 'Papéis sem opções'}
+      tabIndex={0}
+    >
       <table className="screen-table">
         <thead>
           <tr>

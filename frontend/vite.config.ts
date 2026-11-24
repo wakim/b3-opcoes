@@ -82,11 +82,12 @@ export default defineConfig({
           },
           {
             // Escritas do journal não podem ser sobrescritas por um GET cacheado.
-            urlPattern: /\/api\/positions(?:\/|$)/,
+            // O Workbox testa a URL completa: incluir `?` pega as listas paginadas.
+            urlPattern: /\/api\/positions(?:[/?]|$)/,
             handler: 'NetworkOnly',
           },
           {
-            urlPattern: /\/api\/journal(?:\/|$)/,
+            urlPattern: /\/api\/journal(?:[/?]|$)/,
             handler: 'NetworkOnly',
           },
           {

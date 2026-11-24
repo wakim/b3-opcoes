@@ -5,7 +5,8 @@ Este documento é o contrato: o que fazer, em que ordem, como provar, quando par
 
 **Pasta:** `C:\Users\wakim\Projects\b3-opcoes` · **Runner:** `podman compose` (o host não tem Node) ·
 **App:** `127.0.0.1:${B3_APP_PORT}` (a 8080 do host está ocupada; 8081 pode estar com o container da
-sessão anterior — use outra porta e não pare container alheio).
+sessão anterior — use outra porta e não pare container alheio). Rebuild da imagem (`podman compose
+build app`) depois de mexer em `frontend/` ou `docs/glossario.md`: os dois entram na imagem.
 
 > Esta é uma sessão **ÚNICA**, sem sessão paralela. Pode tocar `frontend/`, `frontend/scripts/`,
 > `backend/scripts/` e a documentação. **Não** toque em `backend/src/b3o/{metrics,ingest,store,derive}`
@@ -40,6 +41,22 @@ sessão anterior — use outra porta e não pare container alheio).
   **35 / 42,76 / 35 / 40**; trava de baixa (PETRX14 + / PETRX42 −) **99 / 42,42 / 99 / 151**;
   straddle 4316 **315 / 40,01 e 46,31 / 315 / ilimitado**.
 - **Aprender não é desta sessão.** Nada de reescrever a ficha do Aprender.
+- **Entrou na `main` depois do F5-B (23/11, não redescubra):**
+  - `6d2fa93` (ADR-034): **2026-10-26 é choque real de mercado** (IBOV −14,35%), não artefato. Os
+    textos de "data-armadilha" foram corrigidos; o veredito do portão não mudou.
+  - `424b9ff` (ADR-035): aviso de **pregão dominante na RV**. O `screen` (e o `summary` do
+    `/api/t/{ticker}`, que é a mesma linha) traz `rv_shock_date`, `rv_shock_share_pct` (0–100) e a flag
+    `rv_shock_day` (≥ 50% da variância de 30 pregões num dia só); o resumo traz `rv_shock_count` e
+    `rv_shock_dates`. Na tela: aviso + link "O que é isso" no Hoje, marca `†` no prêmio de volatilidade
+    (só quando há valor), métrica "Pregão dominante na realizada" + aviso no Ticker. Em 19/11:
+    **116 de 163** papéis marcados (115 por 26/10). A fração é exibida com **piso** (`sharePct`): ABEV3
+    tem 49,97% e não pode aparecer "50%" sem a marca.
+  - `53b3141`: o `MetricModal` renderiza `**negrito**`, `` `código` `` e links do verbete via
+    `components/InlineMd.tsx` (nós React, sem HTML cru e sem biblioteca).
+  - Glossário servido: **31** verbetes (30 + "Pregão dominante na RV", slug `pregao-dominante-na-rv`,
+    já mapeado em `metricKeys.ts` para `rv_shock_share_pct` e `rv_shock_date`).
+- **Não pode regredir também:** o aviso/`†` do Hoje, a 7ª métrica e o aviso do Ticker, e o negrito da
+  ficha. Ticker agora tem **7** métricas (não 6).
 
 ---
 
@@ -96,6 +113,12 @@ Arquivos: `frontend/vite.config.ts`, `frontend/package.json` + `package-lock.jso
   persistida em `localStorage` a cada sucesso. Nunca inventar sessão: sem cache, "sessão indisponível".
 - O carimbo online continua vindo de `/api/health`; offline usa o último valor persistido e diz que é
   offline. Não confunda cache de query em memória com persistência entre reloads.
+- **O carimbo hoje mente por construção:** `components/Stamp.tsx` escreve `D-1` **fixo**, seja qual
+  for a idade do dado. O `/api/health` já devolve `age_sessions` (pregões de atraso contra
+  `expected_last_session`; 0 em 23/11 com o lake em 19/11, porque 20/11 foi feriado e 23/11 ainda não
+  fechou). Derive o sufixo dele: `0` → `D-1`; `n > 0` → `D-{n+1} · atrasada` (texto quieto, sem
+  matiz); ausente → só a data. Offline, mostre a data persistida + "offline" e **nenhum** `D-n` (não
+  se sabe a idade sem o servidor). Nada vem do relógio do navegador.
 - Build oficial no container (`node:26-slim`, serviço `web`); `npm run build` com `rm -rf dist` antes.
 - **Teste de offline real**: carregar online, confirmar SW registrado + `manifest` + `caches.keys()`;
   **parar o container `app`**; recarregar a página; exigir shell + banner offline + carimbo da última
@@ -109,7 +132,10 @@ Arquivo novo: `frontend/scripts/glossary-coverage.mjs` + script `npm run coverag
 
 - Ler `src/components/metricKeys.ts` e extrair os **slugs** do mapa `KEYS`.
 - Ler os campos usados como tocáveis nas rotas/componentes (`field="..."`, `onMetric('...')`,
-  `openMetric('...')`) e conferir que **todo campo tem slug no mapa**.
+  `openMetric('...')`) e conferir que **todo campo tem slug no mapa**. Inclui o
+  `openMetric('rv_shock_share_pct', …)` do aviso do Hoje.
+- **Não é `pytest` nem suíte** (ADR-019): é um script de conferência no dado/servidor real, como o
+  `mcp_smoke.py`. Não crie `tests/`.
 - Chamar `GET /api/glossary` (base `B3_HTTP_URL`, default `http://host.containers.internal:8080`) e
   conferir que **todo slug do mapa existe** no glossário.
 - Falha = lista do que falta + exit 1. Não invente slug: se a métrica é real e não tem verbete, o
@@ -168,7 +194,9 @@ P&L ou histórico.
    ciclo online→offline→online.
 5. **Busca**: `/api/tickers?q=PETR` → PETR3/PETR4 com `in_universe`/`has_options`; digitar e navegar;
    ≤ 60; 412 px sem overflow e alvos ≥ 44 px.
-6. **Regressão:** Hoje 289/163/126 + paginação `offset`; Ticker/Série e `MetricModal` intactos;
+6. **Regressão:** Hoje 289/163/126 + paginação `offset` + aviso "116 de 163" com `†`; Ticker com 7
+   métricas e aviso de pregão dominante em B3SA3 (`26/10/2026 · 91%`); Série e `MetricModal` (com
+   negrito) intactos; carimbo `D-1` derivado de `age_sessions` (não literal);
    `mcp_smoke.py` **53/53** e `structure_smoke.py` **93/93**; `GET /api/health` `model_version 2`;
    `npm run build` dentro do container; nenhum arquivo em `data/` muda por GET.
 7. **Vocabulário:** grep de `premium_rich|premium_cheap|signal_class|acerto|ranking|caro|barato|recomend`

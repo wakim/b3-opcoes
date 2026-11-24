@@ -23,7 +23,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 |---|---|
 | Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…035) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5-D (Tailscale + celular).** F5-C entregue: builder de estrutura inline na Ticker (F5.6, números só do `POST /api/structure`), PWA offline (F5.7, precache do shell + `NetworkFirst` em `/api`, banner e carimbo offline), cobertura campo↔glossário (`npm run coverage`, 15 campos/44 no mapa/31 verbetes) e busca de papel (B1) no topo de Hoje. Carimbo agora deriva de `age_sessions` (0 → `D-1`). F5-B mergeado (`a62c218`) e ADR-034/035 na `main`. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; F5.9 (instalar no celular) em aberto. **Prompt da próxima sessão em `docs/prompts/f5-d.md`.** Depois do F5-D, **F5-E**: bloco de liquidez no Hoje (top papéis por séries líquidas + top séries por volume), como ponto de partida descritivo — a busca sozinha não resolve a descoberta. |
+| Retomar em | **F5-D (Tailscale + celular).** F5-C entregue: builder de estrutura inline na Ticker (F5.6, números só do `POST /api/structure`), PWA offline (F5.7, precache do shell + `NetworkFirst` em `/api`, banner e carimbo offline), cobertura campo↔glossário (`npm run coverage`, 15 campos/44 no mapa/31 verbetes) e busca de papel (B1) no topo de Hoje. Carimbo agora deriva de `age_sessions` (0 → `D-1`). F5-B mergeado (`a62c218`) e ADR-034/035 na `main`. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; F5.9 (instalar no celular) em aberto. **Prompt da próxima sessão em `docs/prompts/f5-d.md`.** Depois do F5-D, **F5-E**: bloco de liquidez no Hoje (top papéis por séries líquidas + top séries por volume), como ponto de partida descritivo — a busca sozinha não resolve a descoberta. **F5-F**: tipografia do desktop (base 15 px, rótulos ≥ 12 px), mobile intacto. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -303,6 +303,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F5.8 | Dockerfile multi-stage (Node build → imagem final Python) — já existe desde o F0.1b; aqui entra o estágio `web` | 1.5 h |
 | F5.9 | `tailscale serve` + instalação no celular + teste de offline | 1 h |
 | F5.10 | Hoje: bloco de liquidez (papéis com série líquida + séries por volume) — ponto de partida, não recomendação | 2.5 h |
+| F5.11 | Tipografia no desktop: base 15 px e rótulos ≥ 12 px (mobile intacto) | 1 h |
 
 ### F5-A — sessão 1 de 4 (infraestrutura + API + cliente tipado + wireframe)
 
@@ -427,6 +428,55 @@ continua sendo a calculadora. (ADR-024: nada preditivo.)
 **Estimativa:** 2,5 h · **Depende de:** F5-C (campos do `screen`). Pode vir antes ou depois do F5-D;
 não depende do Tailscale.
 
+### F5-F — Tipografia no desktop (pedido do dono, 23/11/2026)
+
+**Problema:** no desktop o texto está pequeno. A base é **13,5 px** e a maior parte dos rótulos é
+**11 px** (`.metric__label`, `.note`, `.chain-note`, `.quiet-line`, `.stamp`), a tabela é 11,5 px e
+os eixos/legendas de gráfico são 10–10,5 px. No celular isso funciona; no monitor, a 100% de zoom,
+a leitura fica desconfortável. **Não é para “resolver” com zoom do navegador** — o app tem que ser
+legível em 100%.
+
+**Escopo:** `frontend/src/styles.css`, `frontend/src/styles-view.css` e a escala em
+`docs/direcao.md` (contrato visual do dono). Nenhuma lógica de componente, nenhum número novo.
+Não usar `zoom` nem `transform: scale` (distorce gráficos, sticky e alvos de toque).
+
+**Abordagem:** criar tokens de tamanho (`--fs-xs/sm/base/lg/...`) ou um bloco
+`@media (min-width: 1024px)` que sobrescreva as classes atuais; preferir os tokens para não
+multiplicar px soltos. O corte mobile/tablet (< 1024 px) fica **exatamente como está**.
+
+**Escala inicial a validar (desktop ≥ 1024 px):**
+
+| Elemento | Hoje | Proposta |
+|---|---:|---:|
+| base (`body`) | 13,5 px | **15 px** |
+| `.screen-title` | 28 px | 32 px |
+| `.block-title` | 13 px | 15 px |
+| `.lede` | 12,5 px | 14 px |
+| rótulos (`.metric__label`, `.note`, `.chain-note`, `.quiet-line`, `.stamp`) | 11 px | **12 px** |
+| `.metric__value` / ênfase | 16 / 22 px | 18 / 24 px |
+| tabela (`.screen-table`) / `th` | 11,5 / 11 px | 12,5 / 12 px |
+| `.chain-row` / detalhe | 12 / 11 px | 13 / 12 px |
+| eixos e legendas de gráfico | 10–10,5 px | 11 px |
+| busca (nome / meta) | 11,5 / 10,5 px | 12,5 / 11,5 px |
+| builder (rótulos / inputs) | 11 / 12 px | 12 / 13 px |
+| modal (texto / título) | 13,5 / 18 px | 15 / 20 px |
+
+Números em mono continuam tabulares e alinhados à direita; não mexer em cor, matiz, espaçamento
+vertical ou hierarquia — só tamanho e o que o tamanho exigir (line-height/altura de linha).
+
+**Aceitação F5-F**
+- [ ] em 1280 e 1440 px: `body` 15 px, rótulos ≥ 12 px, tabela ≥ 12,5 px; sem overflow horizontal
+      fora do `.table-wrap`; coluna sticky e tabela de Hoje intactas.
+- [ ] Hoje, Ticker, Série, Aprender, busca, builder, modal e os três gráficos legíveis; eixos/legendas
+      sem colidir; o gráfico em largura total continua sem clipping.
+- [ ] 412 px **sem mudança** de tamanho (comparar computed styles antes/depois); alvos ≥ 44 px.
+- [ ] `docs/direcao.md` atualizado com a escala desktop (e o ADR, se a mudança for registrada).
+- [ ] `lint`/`typecheck`/duas builds idênticas; console limpo; zero mudança de dado.
+- [ ] capturas em 1280/1440 e 412 no relatório.
+
+**Estimativa:** 1 h · **Depende de:** F5-C (UI atual). Independente de F5-D/F5-E; pode entrar em
+paralelo.
+
 **Aceitação F5**
 - [ ] instalado no celular pelo domínio `*.ts.net` (HTTPS)
 - [ ] `npm run build` roda **dentro do container** (`podman compose run --rm web`) e o FastAPI serve o `dist`
@@ -436,6 +486,7 @@ não depende do Tailscale.
 - [ ] nada depende de hover; alvo de toque ≥ 44 px
 - [x] teste de cobertura: campo da API ↔ chave do glossário
 - [ ] Hoje tem o bloco de liquidez (F5-E): papéis com série líquida + séries por volume, como ponto de partida
+- [ ] desktop legível em 100%: base ≥ 15 px e rótulos ≥ 12 px (F5-F)
 
 ---
 

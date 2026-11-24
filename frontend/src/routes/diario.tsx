@@ -9,9 +9,9 @@ function Diario() {
     <>
       <h1 className="screen-title">Diário</h1>
       <div className="placeholder">
-        Decisões e previsões estruturadas entram no F6/F7.
+        A Carteira já registra posições e previsões vinculadas.
         <br />
-        Nenhuma rota de escrita existe nesta versão.
+        Decisões sem posição e calibração pessoal entram no F7.
       </div>
     </>
   )

@@ -104,11 +104,35 @@ export function apiGet<T>(path: string, signal?: AbortSignal): Promise<Envelope<
   return request<T>(path, { method: 'GET', signal })
 }
 
-/** Cálculo de estrutura (POST /api/structure) — não grava nada (F6 é que grava). */
+/** Cálculo de estrutura (POST /api/structure) — não grava nada e não exige token. */
 export function apiPost<T>(path: string, body: unknown): Promise<Envelope<T>> {
   return request<T>(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export const APP_TOKEN_STORAGE_KEY = 'b3o:app-token'
+
+/** Escrita do journal (F6): injeta o token salvo neste navegador, sem expô-lo. */
+export function apiWrite<T>(path: string, body: unknown): Promise<Envelope<T>> {
+  let token: string
+  try {
+    token = (typeof localStorage === 'undefined' ? '' : localStorage.getItem(APP_TOKEN_STORAGE_KEY))?.trim() ?? ''
+  } catch {
+    token = ''
+  }
+  if (!token) {
+    throw new ApiError(401, {
+      code: 'app_token_required',
+      message: 'token do aplicativo ausente',
+      hint: 'digite o token na Carteira; ele fica salvo apenas neste navegador',
+    })
+  }
+  return request<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-App-Token': token },
     body: JSON.stringify(body),
   })
 }
@@ -420,6 +444,172 @@ export interface StructureRequest {
   legs: StructureLegInput[]
   capital?: number
   scenarios?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// F6 — posições e carteira (docs/contratos/f6.md)
+// ---------------------------------------------------------------------------
+
+export interface PositionSummary {
+  id: string
+  underlying: string
+  kind: string
+  status: 'open' | 'closed' | string
+  opened_session: string
+  closed_session: string | null
+  capital_committed_brl: number | null
+  capital_limit_brl: number | null
+  pnl_brl: number | null
+  pnl_pct: number | null
+  delta: number | null
+  delta_exposure_brl: number | null
+  gamma: number | null
+  theta_brl: number | null
+  vega_brl: number | null
+  days_to_expiry: number | null
+  maturity: string | null
+  breakeven_brl: number[]
+  flags: string[]
+  notes: string | null
+}
+
+export interface PositionTotals {
+  open_positions: number
+  capital_committed_brl: number | null
+  pnl_brl: number | null
+  pnl_pct: number | null
+  delta: number | null
+  delta_exposure_brl: number | null
+  gamma: number | null
+  theta_brl: number | null
+  vega_brl: number | null
+  flags: string[]
+}
+
+export interface PositionsData {
+  session: string
+  positions: PositionSummary[]
+  totals: PositionTotals
+}
+
+/** Lê todas as páginas da Carteira (60 por vez); totais continuam vindo do backend. */
+export async function fetchPositionsAll(signal?: AbortSignal): Promise<Envelope<PositionsData>> {
+  const limit = 60
+  const byId = new Map<string, PositionSummary>()
+  let duplicate = false
+  let offset = 0
+  let first: Envelope<PositionsData> | null = null
+  for (let page = 0; page < 1000; page += 1) {
+    const current = await apiGet<PositionsData>(
+      `/api/positions?max_rows=${limit}&offset=${offset}`,
+      signal,
+    )
+    first ??= current
+    for (const position of current.data.positions) {
+      if (byId.has(position.id)) duplicate = true
+      byId.set(position.id, position)
+    }
+    const next = current.meta?.next_offset
+    if (next == null || next <= offset) break
+    offset = next
+  }
+  if (!first) throw new Error('Carteira vazia sem envelope')
+  const positions = [...byId.values()]
+  const total = first.meta?.total ?? positions.length
+  const inconsistent = duplicate || positions.length !== total
+  return {
+    ...first,
+    data: { ...first.data, positions },
+    meta: {
+      ...(first.meta ?? { total, returned: positions.length, truncated: false }),
+      total,
+      returned: positions.length,
+      truncated: positions.length < total || inconsistent,
+      note: inconsistent
+        ? 'A carteira mudou durante a paginação; a lista pode estar incompleta. Recarregue para tentar novamente.'
+        : first.meta?.note,
+      offset: 0,
+      next_offset: null,
+    },
+  }
+}
+
+export interface PositionLeg {
+  id: string
+  ticker: string
+  side: LegSide | string
+  /** O journal consolida `stock`, `call` ou `put`; contratos antigos dizem `option`. */
+  type: string
+  option_side?: 'C' | 'P' | string | null
+  maturity: string | null
+  qty: number
+  entry_price_brl: number
+  entry_strike_brl: number | null
+  current_strike_brl: number | null
+  entry_iv_pct: number | null
+  entry_delta: number | null
+}
+
+export interface PositionMark {
+  leg_id: string
+  ticker: string
+  mark_brl: number | null
+  strike_brl: number | null
+  iv_pct: number | null
+  delta: number | null
+  gamma: number | null
+  theta_brl: number | null
+  vega_brl: number | null
+  spread_brl: number | null
+  spread_pct: number | null
+  one_sided: boolean
+  flags: string[]
+}
+
+export interface PositionPrediction {
+  metric: string
+  operator: '<' | '<=' | '>' | '>=' | string
+  value: number
+  horizon_sessions: number
+  evaluate_on: string
+  status: 'pending' | 'hit' | 'miss' | 'void' | string
+  observed: number | null
+}
+
+export interface PositionDetail extends PositionSummary {
+  legs: PositionLeg[]
+  marks: PositionMark[]
+  breakeven_brl: number[]
+  entry_iv_atm_30d: number | null
+  current_iv_atm_30d: number | null
+  prediction: PositionPrediction | null
+  thesis_line: string | null
+  payoff: Array<{ spot_brl: number; pnl_brl: number }>
+}
+
+export type PositionLegInput = StructureLegInput
+
+export interface PositionPredictionInput {
+  metric: string
+  operator: '<' | '<=' | '>' | '>='
+  value: number
+  horizon_sessions: number
+  evaluate_on: string
+}
+
+export interface PositionCreateRequest {
+  /** UUID4 estável no rascunho: repetir o POST não duplica a posição. */
+  client_position_id?: string
+  underlying: string
+  date?: string | null
+  notes?: string | null
+  capital_limit_brl?: number | null
+  legs: PositionLegInput[]
+  prediction?: PositionPredictionInput | null
+}
+
+export interface PositionCloseRequest {
+  date?: string | null
 }
 
 export interface TickerRow {

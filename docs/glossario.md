@@ -220,6 +220,46 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 **No painel** — `2,4` é confortável. Acima de ~10, a estrutura deixa de ser desmontável no prazo do vencimento.
 
+## Perna de uma posição
+
+**O que é** — cada operação individual que compõe a posição: uma ação ou uma opção, com ticker, lado (comprada/vendida) e quantidade em ações. Uma coberta tem duas pernas — a ação comprada e a call vendida —, mas uma posição pode ter mais.
+
+**Erro comum** — achar que “perna” é um contrato de 100 ações. O registro usa quantidade em ações; 100 ações = 1 contrato padrão apenas como equivalência de rótulo, nunca como multiplicação escondida.
+
+**Na carteira (F6)** — cada perna tem `id` próprio; marcações e snapshots de fechamento usam esse `leg_id`, não apenas o ticker.
+
+## P&L da posição
+
+**O que é** — o resultado financeiro das pernas registradas: `Σ sinal × quantidade × (marca − entrada)`. `pnl_brl` está em reais; `pnl_pct` divide esse resultado pelo capital comprometido. Posição fechada usa a marcação gravada no evento de fechamento.
+
+**Erro comum** — tratar P&L como realizado enquanto a posição está aberta. Na Carteira, posição aberta é marcação EOD; só o evento `close` fixa o resultado realizado. Sem capital comprometido, o percentual é `null`, nunca zero.
+
+**Na carteira (F6)** — marca ausente, zero ou não finita vira `null` + `mark_missing`; o fechamento é bloqueado até todas as pernas terem marca positiva.
+
+## Exposição delta em reais
+
+**O que é** — `delta × quantidade × spot`: quanto o P&L da posição tende a variar, em reais, para uma variação de R$ 1,00 no ativo-objeto, mantendo o resto constante. É a tradução monetária do delta líquido.
+
+**Erro comum** — comparar o delta em reais entre papéis com preços muito diferentes sem olhar também o delta em ações. Os dois campos descrevem a mesma exposição em unidades diferentes.
+
+**Na carteira (F6)** — `delta_exposure_brl` é `null` quando alguma grega necessária está ausente; a flag `gregas_parciais` explica a falta.
+
+## Sessões até o vencimento
+
+**O que é** — quantidade de pregões entre a sessão de referência e o vencimento mais próximo das pernas. O vencimento expira no fechamento; na própria sessão do vencimento o valor é zero.
+
+**Erro comum** — usar dias corridos ou relógio de parede. A contagem segue o calendário B3, com feriados e dias sem negócio; posição vencida não fica com número negativo.
+
+**Na carteira (F6)** — `days_to_expiry` alimenta o alerta `near_expiry` quando há até 5 sessões.
+
+## Limite de capital
+
+**O que é** — teto opcional definido pelo dono para comparar com o capital comprometido calculado pelo backend. Não é margem da corretora e não altera o cálculo do P&L.
+
+**Erro comum** — digitar um limite e supor que o sistema impediu a operação. O limite é um alerta: `capital_over` aparece quando o comprometido supera o teto. Risco ilimitado pode ter capital `null` e flag `unbounded_loss`.
+
+**Na carteira (F6)** — `capital_limit_brl` é `null` quando não foi informado; nenhum percentual de perda é fabricado sem base de capital.
+
 ---
 
 ## Taxa histórica do sinal

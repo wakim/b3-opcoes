@@ -75,6 +75,11 @@ export default defineConfig({
             handler: 'NetworkOnly',
           },
           {
+            // Escritas do journal não podem ser sobrescritas por um GET cacheado.
+            urlPattern: /\/api\/positions(?:\/|$)/,
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /\/api\//,
             handler: 'NetworkFirst',
             options: {

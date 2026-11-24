@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AprenderRouteImport } from './routes/aprender'
 import { Route as CarteiraRouteImport } from './routes/carteira'
 import { Route as DiarioRouteImport } from './routes/diario'
+import { Route as CarteiraPositionIdRouteImport } from './routes/carteira_.$positionId'
 import { Route as TTickerRouteImport } from './routes/t.$ticker'
 import { Route as STickerMaturityRouteImport } from './routes/s.$ticker.$maturity'
 
@@ -36,6 +37,11 @@ const DiarioRoute = DiarioRouteImport.update({
   path: '/diario',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CarteiraPositionIdRoute = CarteiraPositionIdRouteImport.update({
+  id: '/carteira_/$positionId',
+  path: '/carteira/$positionId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TTickerRoute = TTickerRouteImport.update({
   id: '/t/$ticker',
   path: '/t/$ticker',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/aprender': typeof AprenderRoute
   '/carteira': typeof CarteiraRoute
   '/diario': typeof DiarioRoute
+  '/carteira/$positionId': typeof CarteiraPositionIdRoute
   '/t/$ticker': typeof TTickerRoute
   '/s/$ticker/$maturity': typeof STickerMaturityRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/aprender': typeof AprenderRoute
   '/carteira': typeof CarteiraRoute
   '/diario': typeof DiarioRoute
+  '/carteira/$positionId': typeof CarteiraPositionIdRoute
   '/t/$ticker': typeof TTickerRoute
   '/s/$ticker/$maturity': typeof STickerMaturityRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/aprender': typeof AprenderRoute
   '/carteira': typeof CarteiraRoute
   '/diario': typeof DiarioRoute
+  '/carteira_/$positionId': typeof CarteiraPositionIdRoute
   '/t/$ticker': typeof TTickerRoute
   '/s/$ticker/$maturity': typeof STickerMaturityRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/aprender'
     | '/carteira'
     | '/diario'
+    | '/carteira/$positionId'
     | '/t/$ticker'
     | '/s/$ticker/$maturity'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/aprender'
     | '/carteira'
     | '/diario'
+    | '/carteira/$positionId'
     | '/t/$ticker'
     | '/s/$ticker/$maturity'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/aprender'
     | '/carteira'
     | '/diario'
+    | '/carteira_/$positionId'
     | '/t/$ticker'
     | '/s/$ticker/$maturity'
   fileRoutesById: FileRoutesById
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   AprenderRoute: typeof AprenderRoute
   CarteiraRoute: typeof CarteiraRoute
   DiarioRoute: typeof DiarioRoute
+  CarteiraPositionIdRoute: typeof CarteiraPositionIdRoute
   TTickerRoute: typeof TTickerRoute
   STickerMaturityRoute: typeof STickerMaturityRoute
 }
@@ -138,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DiarioRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/carteira_/$positionId': {
+      id: '/carteira_/$positionId'
+      path: '/carteira/$positionId'
+      fullPath: '/carteira/$positionId'
+      preLoaderRoute: typeof CarteiraPositionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/t/$ticker': {
       id: '/t/$ticker'
       path: '/t/$ticker'
@@ -160,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   AprenderRoute: AprenderRoute,
   CarteiraRoute: CarteiraRoute,
   DiarioRoute: DiarioRoute,
+  CarteiraPositionIdRoute: CarteiraPositionIdRoute,
   TTickerRoute: TTickerRoute,
   STickerMaturityRoute: STickerMaturityRoute,
 }

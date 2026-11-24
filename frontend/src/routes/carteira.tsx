@@ -25,6 +25,7 @@ import {
 import { PositionForm } from '../components/PositionForm'
 import { ErrorState, Loading } from '../components/State'
 import { TokenGate, useAppToken } from '../components/TokenGate'
+import { Button } from '../components/ui/button'
 
 export const Route = createFileRoute('/carteira')({
   component: Carteira,
@@ -89,9 +90,9 @@ function Carteira() {
         </div>
         {auth.hasToken && (
           <div className="portfolio-actions">
-            <button
+            <Button
+              id="new-position-trigger"
               type="button"
-              className="builder__button builder__button--primary lg:text-control"
               onClick={() => {
                 setWriteNotice(null)
                 setFormBusy(false)
@@ -99,10 +100,10 @@ function Carteira() {
               }}
             >
               Nova posição
-            </button>
-            <button type="button" className="inline-link lg:text-label" onClick={changeToken}>
+            </Button>
+            <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
               Trocar token
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -172,30 +173,36 @@ function Carteira() {
 
       <MetricModal target={modal} onClose={() => setModal(null)} />
 
-      {formOpen && (
-        <Dialog
-          labelledBy="position-form-title"
-          onClose={closeForm}
-          busy={formBusy}
-          className="modal--form"
-        >
-          {!auth.hasToken && (
-            <TokenGate
-              compact
-              title="Token para registrar"
-              autoFocus
-              notice={tokenNotice}
-              onUnlock={() => setTokenNotice(null)}
+      <Dialog
+        open={formOpen}
+        title="Nova posição"
+        eyebrow="journal append-only"
+        onClose={closeForm}
+        busy={formBusy}
+        showCloseButton={false}
+        size="wide"
+        returnFocusSelector="#new-position-trigger"
+      >
+        {formOpen && (
+          <>
+            {!auth.hasToken && (
+              <TokenGate
+                compact
+                title="Token para registrar"
+                autoFocus
+                notice={tokenNotice}
+                onUnlock={() => setTokenNotice(null)}
+              />
+            )}
+            <PositionForm
+              onCreated={handleCreated}
+              onCancel={closeForm}
+              onUnauthorized={handleUnauthorized}
+              onBusyChange={setFormBusy}
             />
-          )}
-          <PositionForm
-            onCreated={handleCreated}
-            onCancel={closeForm}
-            onUnauthorized={handleUnauthorized}
-            onBusyChange={setFormBusy}
-          />
-        </Dialog>
-      )}
+          </>
+        )}
+      </Dialog>
     </>
   )
 }

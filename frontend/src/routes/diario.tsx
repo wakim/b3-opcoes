@@ -23,6 +23,15 @@ import { MetricModal } from '../components/MetricModal'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 import { ErrorState, Loading } from '../components/State'
 import { TokenGate, useAppToken } from '../components/TokenGate'
+import { Button } from '../components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table'
 
 export const Route = createFileRoute('/diario')({
   component: Diario,
@@ -162,9 +171,9 @@ function Diario() {
         </div>
         {auth.hasToken && (
           <div className="portfolio-actions">
-            <button
+            <Button
+              id="new-decision-trigger"
               type="button"
-              className="builder__button builder__button--primary lg:text-control"
               onClick={() => {
                 setWriteNotice(null)
                 setFormBusy(false)
@@ -172,10 +181,10 @@ function Diario() {
               }}
             >
               Nova decisão
-            </button>
-            <button type="button" className="inline-link lg:text-label" onClick={changeToken}>
+            </Button>
+            <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
               Trocar token
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -248,33 +257,39 @@ function Diario() {
 
       <MetricModal target={modal} onClose={() => setModal(null)} />
 
-      {formOpen && (
-        <Dialog
-          labelledBy="decision-form-title"
-          onClose={closeForm}
-          busy={formBusy}
-          className="modal--form"
-        >
-          {!auth.hasToken && (
-            <TokenGate
-              compact
-              title="Token para registrar"
-              description="O registro grava um evento append-only e exige o token de escrita."
-              autoFocus
-              notice={tokenNotice}
-              onUnlock={() => setTokenNotice(null)}
+      <Dialog
+        open={formOpen}
+        title="Nova decisão"
+        eyebrow="journal append-only"
+        onClose={closeForm}
+        busy={formBusy}
+        showCloseButton={false}
+        size="wide"
+        returnFocusSelector="#new-decision-trigger"
+      >
+        {formOpen && (
+          <>
+            {!auth.hasToken && (
+              <TokenGate
+                compact
+                title="Token para registrar"
+                description="O registro grava um evento append-only e exige o token de escrita."
+                autoFocus
+                notice={tokenNotice}
+                onUnlock={() => setTokenNotice(null)}
+              />
+            )}
+            <DecisionForm
+              defaultSession={health.data?.data.last_session ?? null}
+              onCreated={handleCreated}
+              onCancel={closeForm}
+              onUnauthorized={handleUnauthorized}
+              onConflict={handleConflict}
+              onBusyChange={setFormBusy}
             />
-          )}
-          <DecisionForm
-            defaultSession={health.data?.data.last_session ?? null}
-            onCreated={handleCreated}
-            onCancel={closeForm}
-            onUnauthorized={handleUnauthorized}
-            onConflict={handleConflict}
-            onBusyChange={setFormBusy}
-          />
-        </Dialog>
-      )}
+          </>
+        )}
+      </Dialog>
     </>
   )
 }
@@ -321,26 +336,28 @@ function CalibrationReport({
           aria-label="Calibração por métrica e horizonte"
           tabIndex={0}
         >
-          <table className="screen-table journal-table lg:text-table lg:leading-table">
-            <thead>
-              <tr>
-                <th scope="col" className="lg:text-table-head">Métrica</th>
-                <th scope="col" className="lg:text-table-head">Horizonte</th>
-                <th scope="col" className="lg:text-table-head">n</th>
-                <th scope="col" className="lg:text-table-head">Acertos</th>
-                <th scope="col" className="lg:text-table-head">Erros</th>
-                <th scope="col" className="lg:text-table-head">Sem dados</th>
-                <th scope="col" className="lg:text-table-head">Taxa</th>
-                <th scope="col" className="lg:text-table-head">Motivo de void</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table contained={false} className="screen-table journal-table lg:text-table lg:leading-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col" className="font-normal lg:text-table-head">Métrica</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">Horizonte</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">n</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">Acertos</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">Erros</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">Sem dados</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">Taxa</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">Motivo de void</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.groups.map((group) => (
-                <tr key={`${group.metric}:${group.horizon_sessions}`}>
-                  <th scope="row" className="lg:text-table-head">
-                    <button
+                <TableRow key={`${group.metric}:${group.horizon_sessions}`}>
+                  <TableHead scope="row" className="px-2 py-2.5 font-normal lg:text-table-head">
+                    <Button
                       type="button"
-                      className="inline-link lg:text-label"
+                      variant="link"
+                      size="sm"
+                      className="h-[44px] px-0 lg:text-label"
                       onClick={() =>
                         onMetric(
                           group.metric,
@@ -350,18 +367,18 @@ function CalibrationReport({
                       }
                     >
                       {metricLabel(group.metric)}
-                    </button>
-                  </th>
-                  <td className="num">{sessionsLabel(group.horizon_sessions)}</td>
-                  <td className="num">{group.n}</td>
-                  <td className="num">{group.hit}</td>
-                  <td className="num">{group.miss}</td>
-                  <td className="num">{group.void}</td>
-                  <td className="num">
+                    </Button>
+                  </TableHead>
+                  <TableCell className="num px-2 py-2.5">{sessionsLabel(group.horizon_sessions)}</TableCell>
+                  <TableCell className="num px-2 py-2.5">{group.n}</TableCell>
+                  <TableCell className="num px-2 py-2.5">{group.hit}</TableCell>
+                  <TableCell className="num px-2 py-2.5">{group.miss}</TableCell>
+                  <TableCell className="num px-2 py-2.5">{group.void}</TableCell>
+                  <TableCell className="num px-2 py-2.5">
                     {group.hit_rate_pct == null ? '—' : `${fmt(group.hit_rate_pct, 1)}%`}
                     <span className="journal-table__n lg:text-detail">n {group.n}</span>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell className="px-2 py-2.5">
                     {group.void_reasons.length === 0
                       ? '—'
                       : group.void_reasons
@@ -370,11 +387,11 @@ function CalibrationReport({
                               `${VOID_LABELS[item.reason] ?? item.reason}: ${item.count}`,
                           )
                           .join(' · ')}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       )}
     </>
@@ -443,13 +460,15 @@ function PredictionOutcome({
       <div className="journal-outcome__row lg:text-label">
         <span className="quiet lg:text-label">Previsão</span>
         <span className="num">
-          <button
+          <Button
             type="button"
-            className="inline-link lg:text-label"
+            variant="link"
+            size="sm"
+            className="h-[44px] px-0 lg:text-label"
             onClick={() => onMetric(prediction.metric, metricLabel(prediction.metric), threshold)}
           >
             {metricLabel(prediction.metric)}
-          </button>{' '}
+          </Button>{' '}
           {prediction.operator} {threshold} · {sessionsLabel(prediction.horizon_sessions)} · avaliar em{' '}
           {dateBr(prediction.evaluate_on)}
         </span>
@@ -464,9 +483,11 @@ function PredictionOutcome({
       <div className="journal-outcome__row lg:text-label">
         <span className="quiet lg:text-label">Desfecho</span>
         <span className="num">
-          <button
+          <Button
             type="button"
-            className="inline-link lg:text-label"
+            variant="link"
+            size="sm"
+            className="h-[44px] px-0 lg:text-label"
             onClick={() =>
               onMetric(
                 'prediction_status',
@@ -476,7 +497,7 @@ function PredictionOutcome({
             }
           >
             {STATUS_LABELS[prediction.status] ?? prediction.status}
-          </button>
+          </Button>
           {prediction.status === 'void' && prediction.void_reason && (
             <span className="journal-outcome__reason">
               {' '}

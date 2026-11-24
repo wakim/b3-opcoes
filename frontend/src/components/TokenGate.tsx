@@ -1,6 +1,8 @@
 /** Token de escrita do PWA: digitado uma vez, salvo só no localStorage. */
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
 import { APP_TOKEN_STORAGE_KEY } from '../lib/api'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
 
 const APP_TOKEN_EVENT = 'b3o:app-token-change'
 
@@ -98,9 +100,8 @@ export function TokenGate({
       <form className="token-gate__form" onSubmit={submit}>
         <label className="builder__field token-gate__field" htmlFor={`${id}-token`}>
           <span className="builder__field-label lg:text-label">Token do aplicativo</span>
-          <input
+          <Input
             id={`${id}-token`}
-            className="lg:text-control"
             type="password"
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -112,9 +113,7 @@ export function TokenGate({
             autoFocus={autoFocus}
           />
         </label>
-        <button type="submit" className="builder__button builder__button--primary lg:text-control">
-          Salvar token
-        </button>
+        <Button type="submit">Salvar token</Button>
       </form>
       {(notice || error) && (
         <p className="notice lg:text-label" role="alert">

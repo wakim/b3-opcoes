@@ -1,112 +1,102 @@
-/** Diálogo acessível reutilizado pelo formulário e pela confirmação de fechamento. */
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
-
-const FOCUSABLE =
-  'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"]):not(:disabled)'
+/** Diálogo acessível sobre o primitive shadcn/Radix. */
+import { useRef, type ReactNode } from 'react'
+import {
+  Dialog as DialogRoot,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 
 export function Dialog({
-  labelledBy,
-  describedBy,
+  title,
+  description,
+  eyebrow,
+  open = true,
   onClose,
   busy = false,
   children,
-  className = '',
+  className,
+  initialFocus = 'autofocus',
+  showCloseButton = true,
+  size = 'default',
+  returnFocusSelector,
 }: {
-  labelledBy: string
-  describedBy?: string
+  open?: boolean
+  title: string
+  description?: string
+  eyebrow?: string
   onClose: () => void
   busy?: boolean
   children: ReactNode
   className?: string
+  initialFocus?: 'autofocus' | 'close'
+  showCloseButton?: boolean
+  size?: 'default' | 'wide'
+  returnFocusSelector?: string
 }) {
-  const dialogRef = useRef<HTMLElement>(null)
-  const onCloseRef = useRef(onClose)
-  const busyRef = useRef(busy)
+  const previousFocus = useRef<HTMLElement | null>(null)
 
-  useEffect(() => {
-    onCloseRef.current = onClose
-    busyRef.current = busy
-  }, [onClose, busy])
-
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    const focusables = () =>
-      Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-        (node) =>
-          dialogRef.current?.contains(node) &&
-          !node.matches(':disabled') &&
-          node.getClientRects().length > 0,
-      )
-    const preferred = dialogRef.current?.querySelector<HTMLElement>('[data-autofocus]')
-    const initialFocus = preferred && !preferred.matches(':disabled') ? preferred : focusables()[0]
-    initialFocus?.focus()
-
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape' && !busyRef.current) {
-        event.preventDefault()
-        onCloseRef.current()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-
-    return () => {
-      window.removeEventListener('keydown', onKeyDown)
-      document.body.style.overflow = previousOverflow
-      if (previous?.isConnected) previous.focus()
-    }
-  }, [])
-
-  function trapFocus(event: KeyboardEvent<HTMLElement>) {
-    if (event.key !== 'Tab') return
-    const nodes = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
-      (node) =>
-        dialogRef.current?.contains(node) &&
-        !node.matches(':disabled') &&
-        node.getClientRects().length > 0,
-    )
-    if (nodes.length === 0) {
-      event.preventDefault()
-      return
-    }
-    const first = nodes[0]
-    const last = nodes[nodes.length - 1]
-    if (!dialogRef.current?.contains(document.activeElement)) {
-      event.preventDefault()
-      const target = event.shiftKey ? last : first
-      target.focus()
-    } else if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault()
-      last.focus()
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault()
-      first.focus()
-    }
-  }
-
-  return createPortal(
-    <div
-      className="modal-backdrop"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose()
+  return (
+    <DialogRoot
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !busy) onClose()
       }}
+      modal
     >
-      <section
-        ref={dialogRef}
-        className={`modal lg:text-modal-body lg:leading-body ${className}`.trim()}
-        role="dialog"
-        aria-modal="true"
+      <DialogContent
         aria-busy={busy}
-        aria-labelledby={labelledBy}
-        aria-describedby={describedBy}
-        onKeyDown={trapFocus}
+        showCloseButton={showCloseButton && !busy}
+        className={cn(
+          'max-h-[90dvh] overflow-y-auto',
+          size === 'wide' ? 'sm:max-w-3xl' : 'sm:max-w-lg',
+          className,
+        )}
+        onEscapeKeyDown={(event) => {
+          if (busy) event.preventDefault()
+        }}
+        onPointerDownOutside={(event) => {
+          if (busy) event.preventDefault()
+        }}
+        onInteractOutside={(event) => {
+          if (busy) event.preventDefault()
+        }}
+        onCloseAutoFocus={(event) => {
+          const target =
+            (returnFocusSelector
+              ? document.querySelector<HTMLElement>(returnFocusSelector)
+              : null) ?? previousFocus.current
+          if (target?.isConnected) {
+            event.preventDefault()
+            target.focus()
+          }
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          previousFocus.current = document.activeElement as HTMLElement | null
+          const content = event.currentTarget as HTMLElement | null
+          const preferred = content?.querySelector<HTMLElement>('[data-autofocus]')
+          const fallback = content?.querySelector<HTMLElement>(
+            'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+          )
+          const target =
+            initialFocus === 'close'
+              ? content?.querySelector<HTMLElement>('[data-slot="dialog-close"]')
+              : preferred ?? fallback
+          target?.focus()
+        }}
       >
+        <DialogHeader>
+          {eyebrow && (
+            <div className="lg:text-label text-muted-foreground">{eyebrow}</div>
+          )}
+          <DialogTitle>{title}</DialogTitle>
+          {description && <DialogDescription>{description}</DialogDescription>}
+        </DialogHeader>
         {children}
-      </section>
-    </div>,
-    document.body,
+      </DialogContent>
+    </DialogRoot>
   )
 }

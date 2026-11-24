@@ -27,6 +27,16 @@ import {
 import { ErrorState, Loading } from '../components/State'
 import { HelpTip } from '../components/HelpTip'
 import { TokenGate, useAppToken } from '../components/TokenGate'
+import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table'
 
 export const Route = createFileRoute('/carteira_/$positionId')({
   component: PositionDetailPage,
@@ -247,36 +257,36 @@ function PositionDetailPage() {
           tabIndex={0}
           aria-label="Tabela horizontal das pernas registradas"
         >
-          <table className="screen-table position-table lg:text-table lg:leading-table">
-            <thead>
-              <tr>
-                <th className="lg:text-table-head">Ticker</th>
-                <th className="lg:text-table-head">Tipo</th>
-                <th className="lg:text-table-head">Lado</th>
-                <th className="lg:text-table-head">Ações</th>
-                <th className="lg:text-table-head">Vencimento</th>
-                <th className="lg:text-table-head">Entrada</th>
-                <th className="lg:text-table-head">Strike</th>
-                <th className="lg:text-table-head">Volatilidade implícita na entrada</th>
-                <th className="lg:text-table-head">Delta entrada</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table contained={false} className="screen-table position-table lg:text-table lg:leading-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Tipo</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Lado</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Ações</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Vencimento</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Entrada</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Strike</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Volatilidade implícita na entrada</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Delta entrada</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.legs.map((leg) => (
-                <tr key={leg.id}>
-                  <td>{leg.ticker}</td>
-                  <td>{legTypeLabel(leg.type, leg.option_side)}</td>
-                  <td>{leg.side === 'long' ? 'comprada' : 'vendida'}</td>
-                  <td>{fmt(leg.qty, 0)}</td>
-                  <td>{dateBr(leg.maturity)}</td>
-                  <td>{brl(leg.entry_price_brl)}</td>
-                  <td>{brl(leg.entry_strike_brl)}</td>
-                  <td>{percentPoints(leg.entry_iv_pct)}</td>
-                  <td>{fmt(leg.entry_delta, 3)}</td>
-                </tr>
+                <TableRow key={leg.id}>
+                  <TableCell className="px-2 py-2.5">{leg.ticker}</TableCell>
+                  <TableCell className="px-2 py-2.5">{legTypeLabel(leg.type, leg.option_side)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{leg.side === 'long' ? 'comprada' : 'vendida'}</TableCell>
+                  <TableCell className="px-2 py-2.5">{fmt(leg.qty, 0)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{dateBr(leg.maturity)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{brl(leg.entry_price_brl)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{brl(leg.entry_strike_brl)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{percentPoints(leg.entry_iv_pct)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{fmt(leg.entry_delta, 3)}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </section>
 
@@ -288,44 +298,44 @@ function PositionDetailPage() {
           tabIndex={0}
           aria-label="Tabela horizontal da marcação da sessão"
         >
-          <table className="screen-table position-table position-table--marks lg:text-table lg:leading-table">
-            <thead>
-              <tr>
-                <th className="lg:text-table-head">Ticker</th>
-                <th className="lg:text-table-head">Marca</th>
-                <th className="lg:text-table-head">Strike vigente</th>
-                <th className="lg:text-table-head">Volatilidade implícita</th>
-                <th className="lg:text-table-head">Delta</th>
-                <th className="lg:text-table-head">Gamma</th>
-                <th className="lg:text-table-head">Theta</th>
-                <th className="lg:text-table-head">Vega</th>
-                <th className="lg:text-table-head">Spread</th>
-                <th className="lg:text-table-head">Spread %</th>
-                <th className="lg:text-table-head">Um lado</th>
-                <th className="lg:text-table-head">Flags</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table contained={false} className="screen-table position-table position-table--marks lg:text-table lg:leading-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Marca</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Strike vigente</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Volatilidade implícita</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Delta</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Gamma</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Theta</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Vega</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Spread</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Spread %</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Um lado</TableHead>
+                <TableHead className="font-normal lg:text-table-head">Flags</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {data.marks.map((mark) => (
-                <tr key={mark.leg_id}>
-                  <td>{mark.ticker}</td>
-                  <td>{brl(mark.mark_brl)}</td>
-                  <td>{brl(mark.strike_brl)}</td>
-                  <td>{percentPoints(mark.iv_pct)}</td>
-                  <td>{fmt(mark.delta, 3)}</td>
-                  <td>{fmt(mark.gamma, 3)}</td>
-                  <td>{brl(mark.theta_brl)}</td>
-                  <td>{brl(mark.vega_brl)}</td>
-                  <td>{brl(mark.spread_brl)}</td>
-                  <td>{percentPoints(mark.spread_pct)}</td>
-                  <td>{mark.one_sided ? 'sim' : 'não'}</td>
-                  <td className="position-table__flags">
+                <TableRow key={mark.leg_id}>
+                  <TableCell className="px-2 py-2.5">{mark.ticker}</TableCell>
+                  <TableCell className="px-2 py-2.5">{brl(mark.mark_brl)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{brl(mark.strike_brl)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{percentPoints(mark.iv_pct)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{fmt(mark.delta, 3)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{fmt(mark.gamma, 3)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{brl(mark.theta_brl)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{brl(mark.vega_brl)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{brl(mark.spread_brl)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{percentPoints(mark.spread_pct)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{mark.one_sided ? 'sim' : 'não'}</TableCell>
+                  <TableCell className="position-table__flags px-2 py-2.5">
                     <PositionFlags flags={mark.flags} emptyLabel="—" />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </section>
 
@@ -389,18 +399,18 @@ function PositionDetailPage() {
             <TokenGate compact notice={tokenNotice} onUnlock={() => setTokenNotice(null)} />
           )}
           <div className="position-detail__actions">
-            <button
+            <Button
+              id="close-position-trigger"
               type="button"
-              className="builder__button builder__button--primary lg:text-control"
               onClick={openConfirmation}
               disabled={!auth.hasToken}
             >
               Fechar posição
-            </button>
+            </Button>
             {auth.hasToken && (
-              <button type="button" className="inline-link lg:text-label" onClick={changeToken}>
+              <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
                 Trocar token
-              </button>
+              </Button>
             )}
           </div>
         </section>
@@ -408,75 +418,57 @@ function PositionDetailPage() {
 
       <MetricModal target={modal} onClose={() => setModal(null)} />
 
-      {confirmOpen && (
-        <Dialog
-          labelledBy="close-position-title"
-          describedBy="close-position-description"
-          onClose={closeConfirm}
-          busy={close.isPending}
-          className="modal--confirm"
-        >
-          {!auth.hasToken && (
-            <TokenGate
-              compact
-              autoFocus
-              notice={tokenNotice}
-              onUnlock={() => setTokenNotice(null)}
-            />
-          )}
-          <header className="modal__head">
-            <div>
-              <div className="modal__eyebrow lg:text-label">evento append-only</div>
-              <h2 className="modal__title lg:text-modal-title lg:leading-title" id="close-position-title">
-                Fechar posição
-              </h2>
+      <Dialog
+        open={confirmOpen}
+        title="Fechar posição"
+        eyebrow="evento append-only"
+        description="O fechamento usa a marcação EOD e acrescenta um evento que não pode ser desfeito."
+        onClose={closeConfirm}
+        busy={close.isPending}
+        returnFocusSelector="#close-position-trigger"
+      >
+        {confirmOpen && (
+          <>
+            {!auth.hasToken && (
+              <TokenGate
+                compact
+                autoFocus
+                notice={tokenNotice}
+                onUnlock={() => setTokenNotice(null)}
+              />
+            )}
+            <label className="builder__field">
+              <span className="builder__field-label lg:text-label">Data da sessão (opcional)</span>
+              <Input
+                type="date"
+                value={closeDate}
+                onChange={(event) => setCloseDate(event.target.value)}
+                data-autofocus
+                disabled={close.isPending}
+              />
+            </label>
+            <p className="note lg:text-label">Em branco, o backend usa a última sessão disponível.</p>
+            {close.isError && <ErrorState error={close.error} title="Fechamento não registrado" />}
+            <div className="position-form__actions">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={closeConfirm}
+                disabled={close.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => close.mutate(closeDate ? { date: closeDate } : {})}
+                disabled={close.isPending}
+              >
+                {close.isPending ? 'fechando…' : 'Confirmar fechamento'}
+              </Button>
             </div>
-            <button
-              type="button"
-              className="modal__close lg:text-modal-title"
-              onClick={closeConfirm}
-              aria-label="Cancelar fechamento"
-              disabled={close.isPending}
-            >
-              ×
-            </button>
-          </header>
-          <p className="position-confirm__text lg:text-body lg:leading-body" id="close-position-description">
-            O fechamento usa a marcação EOD e acrescenta um evento que não pode ser desfeito.
-          </p>
-          <label className="builder__field">
-            <span className="builder__field-label lg:text-label">Data da sessão (opcional)</span>
-            <input
-              className="lg:text-control"
-              type="date"
-              value={closeDate}
-              onChange={(event) => setCloseDate(event.target.value)}
-              data-autofocus
-              disabled={close.isPending}
-            />
-          </label>
-          <p className="note lg:text-label">Em branco, o backend usa a última sessão disponível.</p>
-          {close.isError && <ErrorState error={close.error} title="Fechamento não registrado" />}
-          <div className="position-form__actions">
-            <button
-              type="button"
-              className="builder__button lg:text-control"
-              onClick={closeConfirm}
-              disabled={close.isPending}
-            >
-              Cancelar
-            </button>
-            <button
-              type="button"
-              className="builder__button builder__button--primary lg:text-control"
-              onClick={() => close.mutate(closeDate ? { date: closeDate } : {})}
-              disabled={close.isPending}
-            >
-              {close.isPending ? 'fechando…' : 'Confirmar fechamento'}
-            </button>
-          </div>
-        </Dialog>
-      )}
+          </>
+        )}
+      </Dialog>
     </>
   )
 }

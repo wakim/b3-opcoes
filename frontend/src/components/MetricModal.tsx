@@ -4,11 +4,11 @@
  * foco no fechar, Escape, clique no backdrop e trap de Tab. Não importa
  * `lib/ui.tsx` (dono paralelo).
  */
-import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { apiGet, type GlossaryDetail } from '../lib/api'
 import { glossaryKey, type ModalTarget } from './metricKeys'
 import { InlineMd } from './InlineMd'
+import { Dialog } from './Dialog'
 
 /** `**O que é** — texto` → `texto`, parando no próximo rótulo em negrito. */
 function section(md: string, name: string): string {
@@ -20,9 +20,9 @@ function section(md: string, name: string): string {
 function Block({ title, text }: { title: string; text: string }) {
   if (!text) return null
   return (
-    <div className="modal__block lg:text-modal-body lg:leading-body">
-      <div className="modal__block-title lg:text-label">{title}</div>
-      <p className="modal__block-text lg:text-modal-body lg:leading-body">
+    <div className="lg:text-modal-body lg:leading-body grid gap-1">
+      <div className="lg:text-label text-muted-foreground">{title}</div>
+      <p className="lg:text-modal-body lg:leading-body">
         <InlineMd text={text} />
       </p>
     </div>
@@ -44,98 +44,41 @@ export function MetricModal({
     staleTime: 3_600_000,
     retry: 1,
   })
-  const dialogRef = useRef<HTMLElement>(null)
-  const closeRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!target) return
-    const previous = document.activeElement as HTMLElement | null
-    closeRef.current?.focus()
-    return () => previous?.focus?.()
-  }, [target])
-
-  useEffect(() => {
-    if (!target) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [target, onClose])
-
-  useEffect(() => {
-    if (!target) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
-  }, [target])
-
-  if (!target) return null
-
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Tab') return
-    const nodes = dialogRef.current?.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    )
-    if (!nodes || nodes.length === 0) return
-    const first = nodes[0]
-    const last = nodes[nodes.length - 1]
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault()
-      last.focus()
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault()
-      first.focus()
-    }
-  }
-
   const body = entry.data?.data.body_md ?? ''
   const definition = section(body, 'O que é')
   const mistake = section(body, 'Erro comum')
   const source = entry.data?.data.title
 
   return (
-    <div className="modal-backdrop" onMouseDown={onClose}>
-      <section
-        ref={dialogRef}
-        className="modal lg:text-modal-body lg:leading-body"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="metric-modal-title"
-        onMouseDown={(event) => event.stopPropagation()}
-        onKeyDown={onKeyDown}
-      >
-        <header className="modal__head">
-          <div>
-            <div className="modal__eyebrow lg:text-label">verbete</div>
-            <h2 className="modal__title lg:text-modal-title lg:leading-title" id="metric-modal-title">{target.label}</h2>
-            {source && source !== target.label && (
-              <div className="modal__source lg:text-label">glossário: {source}</div>
-            )}
-          </div>
-          <button ref={closeRef} type="button" className="modal__close lg:text-modal-title" onClick={onClose} aria-label="Fechar">
-            ×
-          </button>
-        </header>
-
-        <div className="modal__body">
-          <div className="modal__value">
-            <span className="modal__value-label lg:text-label">no painel</span>
-            <span className="modal__value-number lg:text-metric">{target.value}</span>
+    <Dialog
+      open={Boolean(target)}
+      title={target?.label ?? ''}
+      eyebrow="verbete"
+      description={source && source !== target?.label ? `glossário: ${source}` : undefined}
+      onClose={onClose}
+      initialFocus="close"
+    >
+      {target && (
+        <div className="grid gap-4">
+          <div className="grid gap-1 rounded-[6px] border border-border bg-muted/30 p-4">
+            <span className="lg:text-label text-muted-foreground">no painel</span>
+            <span className="num lg:text-metric">{target.value}</span>
           </div>
           {entry.isError && (
-            <div className="modal__error lg:text-label" role="alert">
+            <div className="lg:text-label text-destructive" role="alert">
               verbete indisponível: {entry.error instanceof Error ? entry.error.message : 'erro'}
             </div>
           )}
-          {entry.isLoading && <p className="state-loading lg:text-label">carregando verbete…</p>}
+          {entry.isLoading && <p className="lg:text-label text-muted-foreground">carregando verbete…</p>}
           <Block title="O que é" text={definition} />
           <Block title="Erro comum" text={mistake} />
-          {!key && <p className="modal__note lg:text-label">esta métrica ainda não tem verbete no glossário.</p>}
+          {!key && (
+            <p className="lg:text-label text-muted-foreground">
+              esta métrica ainda não tem verbete no glossário.
+            </p>
+          )}
         </div>
-      </section>
-    </div>
+      )}
+    </Dialog>
   )
 }

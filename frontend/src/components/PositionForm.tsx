@@ -13,6 +13,12 @@ import {
 } from '../lib/api'
 import { ErrorState } from './State'
 import { HelpTip } from './HelpTip'
+import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
+import { DialogClose } from './ui/dialog'
+import { Input } from './ui/input'
+import { NativeSelect } from './ui/native-select'
+import { Textarea } from './ui/textarea'
 
 const MAX_LEGS = 60
 const DEFAULT_QUANTITY = '100'
@@ -181,12 +187,16 @@ export function PositionForm({
     onSettled: () => onBusyChange(false),
   })
 
-  function discardDraft() {
+  function clearDraft() {
     try {
       sessionStorage.removeItem(DRAFT_KEY)
     } catch {
       // O descarte explícito ainda fecha o formulário se o armazenamento falhar.
     }
+  }
+
+  function discardDraft() {
+    clearDraft()
     onCancel()
   }
 
@@ -314,26 +324,19 @@ export function PositionForm({
 
   return (
     <>
-      <header className="modal__head">
-        <div>
-          <div className="modal__eyebrow lg:text-label">journal append-only</div>
-          <h2
-            className="modal__title lg:text-modal-title lg:leading-title"
-            id="position-form-title"
-          >
-            Nova posição
-          </h2>
-        </div>
-        <button
+      <DialogClose asChild>
+        <Button
           type="button"
-          className="modal__close lg:text-modal-title"
-          onClick={discardDraft}
+          variant="ghost"
+          size="icon"
+          className="absolute top-4 right-4"
+          onClick={clearDraft}
           aria-label="Fechar formulário"
           disabled={create.isPending}
         >
-          ×
-        </button>
-      </header>
+          <span aria-hidden="true">×</span>
+        </Button>
+      </DialogClose>
 
       <form className="position-form" onSubmit={submit} aria-busy={create.isPending} noValidate>
         <fieldset
@@ -344,7 +347,7 @@ export function PositionForm({
           <div className="position-form__grid">
             <label className="builder__field">
               <span className="builder__field-label lg:text-label">Ativo-objeto</span>
-              <input
+              <Input
                 className="lg:text-control"
                 value={underlying}
                 onChange={(event) => setUnderlying(event.target.value.toUpperCase())}
@@ -358,7 +361,7 @@ export function PositionForm({
             </label>
             <label className="builder__field">
               <span className="builder__field-label lg:text-label">Data da sessão (opcional)</span>
-              <input
+              <Input
                 className="lg:text-control"
                 type="date"
                 value={date}
@@ -369,7 +372,7 @@ export function PositionForm({
               <span className="builder__field-label lg:text-label">
                 Limite de capital (R$, opcional)
               </span>
-              <input
+              <Input
                 className="lg:text-control"
                 type="text"
                 inputMode="decimal"
@@ -382,7 +385,7 @@ export function PositionForm({
             </label>
             <label className="builder__field position-form__full">
               <span className="builder__field-label lg:text-label">Notas</span>
-              <textarea
+              <Textarea
                 className="position-form__textarea lg:text-control lg:leading-body"
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
@@ -409,20 +412,22 @@ export function PositionForm({
                 <div className="position-form__leg" key={leg.id}>
                   <div className="position-form__leg-head">
                     <span className="quiet lg:text-label">Perna {index + 1}</span>
-                    <button
+                    <Button
                       type="button"
-                      className="builder__remove lg:text-label"
+                      variant="link"
+                      size="sm"
+                      className="h-[44px] px-0 lg:text-label"
                       onClick={() => setLegs((prev) => prev.filter((item) => item.id !== leg.id))}
                       disabled={legs.length === 1}
                       aria-label={`Remover perna ${index + 1}`}
                     >
                       remover
-                    </button>
+                    </Button>
                   </div>
                   <div className="position-form__leg-grid">
                     <label className="builder__field">
                       <span className="builder__field-label lg:text-label">Tipo</span>
-                      <select
+                      <NativeSelect
                         className="lg:text-control"
                         value={leg.kind}
                         onChange={(event) => changeKind(leg.id, event.target.value as LegKind)}
@@ -430,11 +435,11 @@ export function PositionForm({
                       >
                         <option value="option">opção</option>
                         <option value="stock">ação</option>
-                      </select>
+                      </NativeSelect>
                     </label>
                     <label className="builder__field">
                       <span className="builder__field-label lg:text-label">Ticker</span>
-                      <input
+                      <Input
                         className="lg:text-control"
                         value={leg.ticker}
                         onChange={(event) =>
@@ -454,7 +459,7 @@ export function PositionForm({
                     </label>
                     <label className="builder__field">
                       <span className="builder__field-label lg:text-label">Lado</span>
-                      <select
+                      <NativeSelect
                         className="lg:text-control"
                         value={leg.side}
                         onChange={(event) =>
@@ -464,11 +469,11 @@ export function PositionForm({
                       >
                         <option value="long">comprada</option>
                         <option value="short">vendida</option>
-                      </select>
+                      </NativeSelect>
                     </label>
                     <label className="builder__field">
                       <span className="builder__field-label lg:text-label">Ações</span>
-                      <input
+                      <Input
                         className="lg:text-control"
                         type="number"
                         inputMode="numeric"
@@ -486,22 +491,22 @@ export function PositionForm({
               ))}
             </div>
             <div className="position-form__add">
-              <button
+              <Button
                 type="button"
-                className="builder__button lg:text-control"
+                variant="outline"
                 onClick={() => addLeg('option')}
                 disabled={legs.length >= MAX_LEGS}
               >
                 Adicionar opção
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="builder__button lg:text-control"
+                variant="outline"
                 onClick={() => addLeg('stock')}
                 disabled={legs.length >= MAX_LEGS}
               >
                 Adicionar ação
-              </button>
+              </Button>
               <span className="block-count lg:text-label">
                 {legs.length}/{MAX_LEGS}
               </span>
@@ -513,9 +518,7 @@ export function PositionForm({
               Tese
             </legend>
             <label className="position-form__toggle lg:text-label">
-              <input
-                className="lg:text-control"
-                type="checkbox"
+              <Checkbox
                 checked={predictionEnabled}
                 onChange={(event) => setPredictionEnabled(event.target.checked)}
               />
@@ -525,7 +528,7 @@ export function PositionForm({
               <div className="position-form__grid position-form__prediction">
                 <label className="builder__field">
                   <span className="builder__field-label lg:text-label">Métrica</span>
-                  <select
+                  <NativeSelect
                     className="lg:text-control"
                     value={metric}
                     onChange={(event) => setMetric(event.target.value)}
@@ -535,11 +538,11 @@ export function PositionForm({
                     <option value="iv_atm_30d">IV ATM 30d</option>
                     <option value="vrp">VRP</option>
                     <option value="rr25">RR25</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="builder__field">
                   <span className="builder__field-label lg:text-label">Operador</span>
-                  <select
+                  <NativeSelect
                     className="lg:text-control"
                     value={operator}
                     onChange={(event) =>
@@ -550,11 +553,11 @@ export function PositionForm({
                     <option value="<=">&lt;=</option>
                     <option value=">">&gt;</option>
                     <option value=">=">&gt;=</option>
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="builder__field">
                   <span className="builder__field-label lg:text-label">Valor</span>
-                  <input
+                  <Input
                     className="lg:text-control"
                     type="text"
                     inputMode="decimal"
@@ -566,7 +569,7 @@ export function PositionForm({
                 </label>
                 <label className="builder__field">
                   <span className="builder__field-label lg:text-label">Horizonte (sessões)</span>
-                  <input
+                  <Input
                     className="lg:text-control"
                     type="number"
                     inputMode="numeric"
@@ -579,7 +582,7 @@ export function PositionForm({
                 </label>
                 <label className="builder__field position-form__full">
                   <span className="builder__field-label lg:text-label">Avaliar em</span>
-                  <input
+                  <Input
                     className="lg:text-control"
                     type="date"
                     value={evaluateOn}
@@ -603,21 +606,17 @@ export function PositionForm({
           {create.isError && <ErrorState error={create.error} title="Posição não registrada" />}
 
           <div className="position-form__actions">
-            <button
+            <Button
               type="button"
-              className="builder__button lg:text-control"
+              variant="outline"
               onClick={discardDraft}
               disabled={create.isPending}
             >
               Cancelar
-            </button>
-            <button
-              type="submit"
-              className="builder__button builder__button--primary lg:text-control"
-              disabled={create.isPending}
-            >
+            </Button>
+            <Button type="submit" disabled={create.isPending}>
               {create.isPending ? 'registrando…' : 'Registrar posição'}
-            </button>
+            </Button>
           </div>
         </fieldset>
       </form>

@@ -23,7 +23,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 |---|---|
 | Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…035) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5-C (builder de estrutura + PWA offline + cobertura de glossário).** F5-B mergeado na `main` (`a62c218`): Hoje/Ticker/Série com os 9 passes, réguas, gráficos SVG, `MetricModal`, labels expandidos, tabela **Com opções (163)/Sem opções (126)** com primeira coluna sticky e `screen` paginado por `offset` (o frontend busca os 289). F5-PreB mergeado: Aprender em accordion (ADR-033). **Prompt desta sessão em `docs/prompts/f5-c.md`.** Depois do F5-B entraram ADR-034 (26/10 é choque real de mercado), ADR-035 (aviso de pregão dominante na RV, `rv_shock_day`) e o negrito na ficha (`InlineMd`); o carimbo `D-1` literal passa a derivar de `age_sessions` no F5-C. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; B1 (busca de papel) e a cobertura campo↔glossário entram no F5-C. F5.5 e a parte Hoje/Ticker/Série do F5.3 estão marcados; F5-B inteiro não (Aprender é F5-PreB). |
+| Retomar em | **F5-D (Tailscale + celular).** F5-C entregue: builder de estrutura inline na Ticker (F5.6, números só do `POST /api/structure`), PWA offline (F5.7, precache do shell + `NetworkFirst` em `/api`, banner e carimbo offline), cobertura campo↔glossário (`npm run coverage`, 15 campos/44 no mapa/31 verbetes) e busca de papel (B1) no topo de Hoje. Carimbo agora deriva de `age_sessions` (0 → `D-1`). F5-B mergeado (`a62c218`) e ADR-034/035 na `main`. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; F5.9 (instalar no celular) em aberto. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -350,14 +350,40 @@ Contrato em `docs/prompts/f5-b.md`; parecer com veredito e os 9 passes por tela 
 **Não marcado aqui:** F5.3 na parte do Aprender (F5-PreB), F5-B inteiro, smoke de cobertura
 campo↔glossário (F5-C), F5.6–F5.9.
 
+### F5-C — sessão 3 de 4 (builder + PWA offline + cobertura + busca)
+
+Contrato em `docs/prompts/f5-c.md`; parecer em `docs/relatorios/2026-11-23-revisao-f5c.md`.
+Worktree próprio; app provado em `B3_APP_PORT=8083`.
+
+- [x] **F5.6** — builder de estrutura inline na Ticker: pernas de opção (Comprar/Vender em cada lado
+  da linha expandida, 100 ações por padrão, editável) e de ação; lista com remover/limpar e limite de
+  60; `POST /api/structure` calcula e o painel exibe prêmio líquido, breakevens, perda/ganho máximo,
+  capital, Δ/Γ/Θ/ν, payoff em SVG e a tabela curta de cenários. Zero número calculado em TS; erros
+  `bad_legs`/`maturity_mismatch`/`underlying_mismatch` no envelope. As 5 formas (coberta, put caixa,
+  trava de alta, trava de baixa, straddle) foram montadas no navegador e bateram com o POST, campo a
+  campo.
+- [x] **F5.7** — PWA com `vite-plugin-pwa@2`: manifest "Opções B3" (`standalone`, `#101418`, ícones
+  192/512 monocromáticos), `registerType: autoUpdate`, precache do shell e `NetworkFirst` em `/api`
+  (cache `b3o-api`); sonda `/api/health?probe=1` fora do cache. Offline real (container parado):
+  shell servido pelo SW, banner "sem rede — última sessão 2026-11-23", carimbo "offline" sem `D-n`.
+  Carimbo online deriva de `age_sessions` (0 → `D-1`) em vez do literal.
+- [x] **Cobertura campo↔glossário** — `frontend/scripts/glossary-coverage.mjs` (`npm run coverage`):
+  15 campos tocáveis, 44 campos no mapa, 31 verbetes servidos, verde (todo campo tem slug e todo slug
+  existe em `/api/glossary`).
+- [x] **B1 — busca de papel** — `TickerSearch` no topo de Hoje com `aria-label`, TanStack Query
+  (`staleTime` 1 h, `q` vazio não dispara), prefixo-primeiro do servidor, `meta.total` honesto, linhas
+  de 58–59 px, 412 px sem overflow e navegação por teclado (Tab + Enter).
+
+**Não marcado aqui:** F5-D (Tailscale/celular), Carteira/Diário reais (F6).
+
 **Aceitação F5**
 - [ ] instalado no celular pelo domínio `*.ts.net` (HTTPS)
 - [ ] `npm run build` roda **dentro do container** (`podman compose run --rm web`) e o FastAPI serve o `dist`
 - [ ] `npm run lint` e `tsc --noEmit` limpos; os tipos da API vêm de um único arquivo de contrato
-- [ ] offline mostra a última sessão com o carimbo correto
-- [ ] busca de papel e seletor de vencimento funcionando
+- [x] offline mostra a última sessão com o carimbo correto
+- [x] busca de papel e seletor de vencimento funcionando
 - [ ] nada depende de hover; alvo de toque ≥ 44 px
-- [ ] teste de cobertura: campo da API ↔ chave do glossário
+- [x] teste de cobertura: campo da API ↔ chave do glossário
 
 ---
 

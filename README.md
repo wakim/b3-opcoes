@@ -11,8 +11,8 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 | | |
 |---|---|
 | Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…035) |
-| Código | 🟢 **F0–F4 completos + F5-A entregue** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events, structure_eval) e `b3o struct` (payoff, breakevens, capital, gregas e cenários da estrutura dada). F5-A acrescenta a SPA servida pelo FastAPI (dispatcher `/mcp` × estático), `/api/tickers`, `/api/glossary`, cliente tipado e wireframe funcional. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F5-B (visual + unslop)** — F5-A fechado com parecer em `docs/relatorios/2026-11-23-revisao-f5a.md` |
+| Código | 🟢 **F0–F4 completos + F5-A/B/C entregues** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events, structure_eval) e `b3o struct`. F5-A: SPA servida pelo FastAPI (dispatcher `/mcp` × estático), `/api/tickers`, `/api/glossary`. F5-B: Hoje/Ticker/Série com os 9 passes. F5-C: builder de estrutura inline, PWA offline e busca de papel. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F5-D (Tailscale + celular)** — F5-C fechado com parecer em `docs/relatorios/2026-11-23-revisao-f5c.md` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
@@ -105,14 +105,19 @@ Frontend: **Vite + React + TypeScript + TanStack Router/Query** (SPA pura), em `
 podman compose --profile build run --rm web
 # lint + checagem de tipos (também no container)
 podman compose --profile build run --rm --entrypoint sh web -c "npm run lint && npm run typecheck"
+# cobertura campo↔glossário (precisa do app no ar; default host.containers.internal:8080)
+podman compose --profile build run --rm -e B3_HTTP_URL=http://host.containers.internal:8081 `
+  --entrypoint sh web -c "npm run coverage"
 # dev server opcional (não é o caminho oficial de build)
 podman compose --profile dev up web-dev
 ```
 
 A SPA tem seis rotas file-based em `frontend/src/routes/`: Hoje, Carteira, Diário,
-Aprender e os drill-downs Ticker/Série. Nesta sessão Carteira e Diário são
-placeholders explícitos ("F6"); o desenho final com os 9 passes do unslop, os
-gráficos SVG, o builder de estrutura e o modo offline vêm em F5-B/F5-C.
+Aprender e os drill-downs Ticker/Série. Carteira e Diário seguem placeholders explícitos ("F6").
+A Ticker traz o **builder de estrutura** inline (prêmio, breakevens, perda/ganho máximo, capital,
+gregas, payoff e cenários vêm do `POST /api/structure`; nada é calculado em TS) e o app é um
+**PWA** (`vite-plugin-pwa`): precache do shell, `NetworkFirst` em `/api`, banner offline com a
+última sessão persistida. Hoje tem a busca de papel (`/api/tickers`) no topo.
 
 A aba Aprender já abre a ficha do verbete inline, em **accordion independente**
 (vários verbetes podem ficar abertos; ADR-033, relatório em

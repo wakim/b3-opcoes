@@ -225,6 +225,7 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - **`prepare-watch` precisa de `DATABASE_URL` e Alembic.** O serviço roda `alembic upgrade head && b3o prepare --watch`; o atalho de “nada novo” também consulta previsões pendentes elegíveis. Imagem `runtime` copia código: mudou F7 → rebuild de `prepare-watch`.
 - **Diário é HTTP-only.** Não criar tool MCP de escrita. `/api/journal*` fica `NetworkOnly` antes da rota genérica `/api/`, para GET cacheado não sobrescrever decisão confirmada.
 - **Smoke F7 isola por schema PostgreSQL.** `journal_smoke.py` usa `f7_smoke_<uuid>` e `search_path` próprio, compara o schema oficial antes/depois e não aceita `B3_JOURNAL_PATH`.
+- **“30 dias de diário” = 30 sessões de pregão consecutivas**, definição do dono em 24/11/2026. Cada sessão real precisa de decisão; fim de semana/feriado não é lacuna. A janela vem do calendário do lago, nunca do relógio. Na retomada da aceitação em 24/11, o journal oficial estava vazio: 0/30 sessões (08/10–23/11) e 0/10 previsões avaliadas. Smokes em schema descartável não contam como uso.
 
 ## Armadilhas do runtime F3 (API/MCP, medidas em 23/11/2026)
 

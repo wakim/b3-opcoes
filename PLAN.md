@@ -572,9 +572,10 @@ antigo da 8084 e o volume SQLite descartável foram removidos.
 
 **Objetivo:** medir se **as suas decisões** acertam (o sinal já foi medido no F1b).
 **Estimativa:** 1 sessão · **Depende de:** F6
-**Status em 24/11/2026:** **implementação validada, aceitação pendente** de 30 dias de diário sem lacuna e
-≥ 10 previsões avaliadas automaticamente. Contrato em `docs/contratos/f7.md`; evidências em
-`docs/relatorios/2026-11-24-f7.md`.
+**Status em 24/11/2026:** **implementação validada, aceitação pendente**. Retomada da aceitação com o
+journal oficial e o lago real: **0/30 sessões de diário** e **0/10 previsões avaliadas**. O dono definiu
+“30 dias” como **30 sessões de pregão consecutivas**, não dias corridos. Contrato em
+`docs/contratos/f7.md`; evidências em `docs/relatorios/2026-11-24-f7.md`.
 
 | ID | Tarefa | Est. |
 |---|---|---|
@@ -590,8 +591,8 @@ antigo da 8084 e o volume SQLite descartável foram removidos.
 - [x] smokes e regressões técnicos, cobertura campo↔glossário, builds idênticas e navegador sem erros.
 
 **Aceitação F7**
-- [ ] 30 dias de diário sem lacuna
-- [ ] ≥ 10 previsões avaliadas automaticamente
+- [ ] 30 sessões de pregão consecutivas com decisão real, sem lacuna (**0/30** na janela 08/10–23/11/2026)
+- [ ] ≥ 10 previsões distintas avaliadas automaticamente (**0/10**)
 - [x] relatório mostra o acerto pessoal por métrica/horizonte com `n` e o que ficou `void`, sem comparar com classe de sinal (ADR-024)
 
 ---

@@ -123,7 +123,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:8080
 
 Sem Caddy, sem certificado manual, sem container extra. A app fica publicada em `127.0.0.1:8080` (dentro do compose, `ports: ["127.0.0.1:8080:8080"]`) e só a tailnet a alcança. Funciona nos dois aparelhos, em qualquer rede.
 
-Autenticação: leitura liberada na tailnet; **escrita** (`POST /api/*`) exige `X-App-Token` (`APP_TOKEN` no ambiente), guardado no `localStorage` após a primeira digitação. Deploy público futuro = a mesma app atrás de Caddy/HTTPS, com Basic auth (padrão do projeto Imoveis).
+Autenticação: leitura liberada na tailnet; **escrita** (`POST /api/*`) exige `X-App-Token` **só quando `APP_TOKEN` está definido** (guardado no `localStorage` após a primeira digitação); com `APP_TOKEN` vazio as escritas ficam abertas e o acesso é controlado pela rede (ADR-045). Deploy público futuro = a mesma app atrás de Caddy/HTTPS, com Basic auth (padrão do projeto Imoveis).
 
 ---
 

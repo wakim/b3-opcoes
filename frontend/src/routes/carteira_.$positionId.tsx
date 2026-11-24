@@ -407,7 +407,7 @@ function PositionDetailPage() {
             >
               Fechar posição
             </Button>
-            {auth.hasToken && (
+            {auth.hasToken && auth.tokenRequired && (
               <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
                 Trocar token
               </Button>

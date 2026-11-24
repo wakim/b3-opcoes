@@ -1,6 +1,7 @@
 /** Token de escrita do PWA: digitado uma vez, salvo só no localStorage. */
 import { useCallback, useEffect, useId, useState, type FormEvent } from 'react'
-import { APP_TOKEN_STORAGE_KEY } from '../lib/api'
+import { useQuery } from '@tanstack/react-query'
+import { APP_TOKEN_STORAGE_KEY, apiGet, type Health } from '../lib/api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 
@@ -25,9 +26,18 @@ function writeStoredToken(value: string | null): boolean {
   }
 }
 
-/** Estado compartilhado entre Carteira e detalhe; o valor do token nunca sai daqui. */
+/**
+ * Estado compartilhado entre Carteira, Diário e detalhe; o valor do token nunca sai daqui.
+ * `hasToken` = pode escrever: token salvo **ou** servidor sem `APP_TOKEN` (ADR-044).
+ * Enquanto `/api/health` não respondeu, assume-se que o token é exigido.
+ */
 export function useAppToken() {
-  const [hasToken, setHasToken] = useState(() => Boolean(storedToken()))
+  const [stored, setHasToken] = useState(() => Boolean(storedToken()))
+  const health = useQuery({
+    queryKey: ['health'],
+    queryFn: ({ signal }) => apiGet<Health>('/api/health', signal),
+  })
+  const tokenRequired = health.data?.data.writes_require_token !== false
 
   useEffect(() => {
     const sync = () => setHasToken(Boolean(storedToken()))
@@ -48,7 +58,7 @@ export function useAppToken() {
     return true
   }, [])
 
-  return { hasToken, forgetToken }
+  return { hasToken: stored || !tokenRequired, tokenRequired, forgetToken }
 }
 
 export function TokenGate({

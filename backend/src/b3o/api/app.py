@@ -35,7 +35,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import GZipMiddleware
 
 from b3o.api import payloads
-from b3o.api.auth import require_write_token
+from b3o.api.auth import require_write_token, write_token_required
 from b3o.api.mcp_server import mcp
 from b3o.api.serialize import (
     DEFAULT_MAX_ROWS,
@@ -272,8 +272,14 @@ def create_app() -> FastAPI:
 
     @app.get("/api/health")
     def api_health() -> dict[str, Any]:
-        """Saúde do lake (P-C): última sessão, idade, fontes e versão do cálculo."""
-        return payloads.health_payload(_service())
+        """Saúde do lake (P-C): última sessão, idade, fontes e versão do cálculo.
+
+        Só no HTTP: `writes_require_token` diz ao PWA se as escritas pedem token
+        (ADR-044). Não é dado do lake, por isso não entra na tool MCP.
+        """
+        payload = payloads.health_payload(_service())
+        payload["data"]["writes_require_token"] = write_token_required()
+        return payload
 
     @app.get("/api/screen")
     def api_screen(

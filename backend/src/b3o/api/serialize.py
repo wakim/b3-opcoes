@@ -48,7 +48,6 @@ _STATUS_BY_CODE = {
     "decision_id_conflict": 409,
     "method_not_allowed": 405,
     "frontend_missing": 503,
-    "app_token_missing": 503,
     "glossary_missing": 503,
     "lake_missing": 503,
     "storage_error": 503,

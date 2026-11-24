@@ -101,9 +101,11 @@ function Carteira() {
             >
               Nova posição
             </Button>
-            <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
-              Trocar token
-            </Button>
+            {auth.tokenRequired && (
+              <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
+                Trocar token
+              </Button>
+            )}
           </div>
         )}
       </div>

@@ -627,3 +627,14 @@ Em qualquer outro caso: adote o default, registre, siga.
 | Fim do F3 | ADR-004 (SDK `mcp`), ADR-005 (camadas), formato das respostas |
 | Antes do F5.0 | ADR-003 (volumes do frontend) e a direção visual, se a primeira tela pedir ajuste · **Node**: resolvido em 22/11/2026 — `node:26-slim` (ADR-008) |
 | 30 dias de uso | todas as provisórias que sobrarem |
+
+## ADR-045 — Escritas abertas: `X-App-Token` opcional
+
+- **Data:** 2026-11-24 · **Status:** ratificada pelo dono · **Custo de reverter:** baixo (descomentar `APP_TOKEN` no `.env` e recriar o `app`)
+- **Contexto:** o pedido de token ("Liberar escritas") era atrito sem ganho no arranjo atual: o `app` só escuta em `127.0.0.1` e a tailnet expõe a 8443 **só para a tailnet** (`tailscale serve`), cujo único usuário é o dono. O dono decidiu controlar o acesso pela rede por enquanto.
+- **Decisão:**
+  1. `APP_TOKEN` vazio ou ausente = escritas (`POST /api/journal`, `/api/positions*`) **abertas**. Com `APP_TOKEN` definido, o comportamento da ADR-040 volta inteiro (`401 unauthorized` sem o cabeçalho certo). O `503 app_token_missing` deixa de existir.
+  2. `GET /api/health` publica `writes_require_token` (só no HTTP; não é dado do lake, não entra na tool MCP). O PWA esconde o `TokenGate` e o "Trocar token" quando é `false`; se o servidor responder 401, o pedido de token volta.
+  3. A porta padrão do host no compose passa de 8080 para **8083**: a 8080 deste host é o alvo do **Funnel público** (443) do `realestate`. Sem o `.env`, o b3o subiria na 8080 e, com o outro projeto parado, ficaria na internet com escrita aberta.
+- **Risco aceito:** qualquer coisa que alcance a porta do `app` (aparelho na tailnet, processo local) grava no journal append-only, sem desfazer. Nunca apontar `tailscale funnel` para o b3o enquanto esta ADR valer.
+- **Revisar em:** novo usuário/aparelho na tailnet, deploy público ou identidade pelo cabeçalho `Tailscale-User-Login`.

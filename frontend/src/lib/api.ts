@@ -115,7 +115,11 @@ export function apiPost<T>(path: string, body: unknown): Promise<Envelope<T>> {
 
 export const APP_TOKEN_STORAGE_KEY = 'b3o:app-token'
 
-/** Escrita do journal (F6): injeta o token salvo neste navegador, sem expô-lo. */
+/**
+ * Escrita do journal (F6): envia o token salvo neste navegador, se houver, sem expô-lo.
+ * Sem token salvo a escrita vai sem cabeçalho: o servidor decide (ADR-044 — com
+ * `APP_TOKEN` vazio as escritas são abertas; com token, responde 401).
+ */
 export function apiWrite<T>(path: string, body: unknown): Promise<Envelope<T>> {
   let token: string
   try {
@@ -123,16 +127,11 @@ export function apiWrite<T>(path: string, body: unknown): Promise<Envelope<T>> {
   } catch {
     token = ''
   }
-  if (!token) {
-    throw new ApiError(401, {
-      code: 'app_token_required',
-      message: 'token do aplicativo ausente',
-      hint: 'digite o token na Carteira ou no Diário; ele fica salvo apenas neste navegador',
-    })
-  }
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (token) headers['X-App-Token'] = token
   return request<T>(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-App-Token': token },
+    headers,
     body: JSON.stringify(body),
   })
 }
@@ -158,6 +157,8 @@ export interface Health {
   earnings_coverage: unknown
   last_error: unknown
   as_of: string | null
+  /** Só no HTTP (ADR-044): `false` = escritas abertas, sem token. */
+  writes_require_token?: boolean
 }
 
 export interface ScreenSummary {

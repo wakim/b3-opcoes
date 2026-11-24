@@ -631,7 +631,7 @@ F6 e F7 continuam pendentes de aceitação real; a autorização paralela está 
 **Aceitação F8**
 - [x] componentes shadcn cobrem os padrões interativos sem perder acessibilidade ou foco (F8.2: diálogos/formulários; F8.3: ordem e contorno de foco idênticos ao legado)
 - [ ] Tailwind é a camada principal de layout/espaçamento/tipografia; CSS global só para tokens e base — **não atingido**: `styles-view.css` ainda tem 1.097 linhas (gráficos, régua, tabelas sticky, cartões de posição, `.note`/`.quiet`/`.num`, `.block-*`)
-- [ ] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px — gráfico/alvo/número sem regressão; offline não reexercitado e `mcp_smoke` 57/58 por causa da ADR-045 (falha já presente em `701d89e`)
+- [ ] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px — gráfico/alvo/número sem regressão; offline não reexercitado; `mcp_smoke` 60/60 após ajuste à ADR-045
 - [x] duas builds limpas idênticas e navegador sem erros de console
 
 ---

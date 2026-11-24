@@ -406,7 +406,18 @@ async def main_async() -> int:
             position_offset = next_offset
         http_structure = (await http.post("/api/structure", json=STRUCTURE)).json()
 
-        check(health == http_health, "MCP = HTTP em health")
+        # ADR-045: `writes_require_token` existe só no HTTP (não é dado do lake).
+        http_health_data = dict(http_health.get("data") or {})
+        writes_flag = http_health_data.pop("writes_require_token", None)
+        check(isinstance(writes_flag, bool), "HTTP health traz writes_require_token booleano")
+        check(
+            "writes_require_token" not in (health.get("data") or {}),
+            "MCP health sem writes_require_token",
+        )
+        check(
+            health == {**http_health, "data": http_health_data},
+            "MCP = HTTP em health (fora writes_require_token)",
+        )
         check(screen == http_screen, "MCP = HTTP em screen")
         check(underlying == http_underlying, "MCP = HTTP em underlying")
         check(

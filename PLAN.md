@@ -523,7 +523,7 @@ paralelo.
 
 **Objetivo:** o painel e o agente saberem o que você já tem.
 **Estimativa:** 1,5 sessão · **Depende de:** F5
-**Status em 24/11/2026:** **implementação validada, aceitação pendente** da reconciliação manual com a corretora.
+**Status em 24/11/2026:** **implementação validada, aceitação pendente** da reconciliação manual com a corretora. Reverificação no HEAD `239685c` repetiu as regressões e confirmou o journal oficial vazio; o dono ainda não tem as duas posições reais e o extrato necessários. A regressão encontrou e corrigiu um defeito de cache do service worker no commit `9d1f961`.
 Retomada/execução em `docs/prompts/f6-retomada.md`; evidências em `docs/relatorios/2026-11-24-f6.md`.
 
 | ID | Tarefa | Est. |
@@ -572,10 +572,12 @@ antigo da 8084 e o volume SQLite descartável foram removidos.
 
 **Objetivo:** medir se **as suas decisões** acertam (o sinal já foi medido no F1b).
 **Estimativa:** 1 sessão · **Depende de:** F6
-**Status em 24/11/2026:** **implementação validada, aceitação pendente**. Reverificação final com o
-journal oficial e o lago real: **0/30 sessões de diário** e **0/10 previsões avaliadas**; faltam
+**Status em 24/11/2026:** **implementação validada, aceitação pendente**. Reverificação no HEAD
+`239685c` com o journal oficial e o lago real (sessão 2026-11-23, 723 sessões, `model_version=2`):
+**0/30 sessões de diário** e **0/10 previsões avaliadas**; faltam
 **30 sessões com decisão real** e **10 previsões distintas avaliadas automaticamente**. O dono definiu
-“30 dias” como **30 sessões de pregão consecutivas**, não dias corridos. Contrato em
+“30 dias” como **30 sessões de pregão consecutivas**, não dias corridos. A regressão encontrou e
+corrigiu um defeito de cache do service worker no commit `9d1f961`. Contrato em
 `docs/contratos/f7.md`; evidências em `docs/relatorios/2026-11-24-f7.md`.
 
 | ID | Tarefa | Est. |

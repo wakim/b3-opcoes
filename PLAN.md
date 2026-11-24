@@ -452,7 +452,7 @@ podman compose run --rm test ruff check src                  # lint
 podman compose run --rm prepare                          # baixa e deriva
 podman compose run --rm app b3o health                    # saúde do lake
 podman compose up -d app                                  # 127.0.0.1:8080 (HTTP + /mcp)
-podman compose --profile watch up -d prepare-watch         # prepare diário 21:30 BRT
+podman compose up -d prepare-watch                         # serviço padrão: prepare ao iniciar e a cada hora (ADR-036)
 podman compose --profile dev up dev                        # backend com --reload
 ```
 

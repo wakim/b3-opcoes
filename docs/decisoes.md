@@ -421,6 +421,18 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** nenhuma métrica gravada muda. Até a próxima rodada do `prepare`, o aviso fica em quase todo o universo; ele some sozinho quando 26/10 sai da janela de 30 pregões (início de dezembro).
 - **Revisar em:** F5-C (se o aviso deve aparecer também na Série) e se o dono quiser estender o aviso à rv60/rank/z (janelas mais longas, que carregam o choque por mais tempo).
 
+## ADR-036 — `prepare-watch` padrão, horário, com métricas incrementais
+
+- **Data:** 23/11/2026 · **Decidido pelo dono** (pedido explícito).
+- **Antes:** `prepare-watch` no profile `watch` (não subia no `compose up`), uma vez por dia às 21:30; e o `prepare` **não** calculava `metrics_*` — com o watch ligado, o bruto atualizava e a tela ficava no dia anterior até alguém rodar `b3o metrics --date`.
+- **Decisão:**
+  1. `prepare-watch` sem profile, `restart: unless-stopped`; roda **ao iniciar** e a cada `--interval` minutos (default 60, env `B3_WATCH_INTERVAL_MIN`). Um ciclo que levanta exceção é registrado e o laço segue.
+  2. No watch, o ciclo **pula** quando: COTAHIST 304 **e** `ingest_state.sha256` = sha do zip **e** mesmo `model_version` **e** o último prepare sem falha de fonte **e** `metrics_underlying` cobre `last_session`. Medido: 0,2–0,3 s por ciclo pulado. Fonte com falha (rates/OI/earnings) força o ciclo completo na hora seguinte — é assim que o watch re-tenta.
+  3. O `prepare` ganhou o estágio `metrics` (depois da liquidez): calcula **só** as sessões do lake posteriores à última em `metrics_underlying`, buscando a curva DI de sessões de recuperação que não a têm. Recusa com falha explícita (`metrics_missing` / `model_version_mismatch`) quando o histórico está vazio ou é de outro modelo — o backfill inteiro (~26 min) continua sendo `b3o metrics --backfill` manual, para não misturar modelos no rank (regra 6).
+- **Medido no primeiro ciclo completo (23/11/2026):** COTAHIST de 2026 já trazia a sessão **2026-11-23** às 21:35 (o arquivo saiu com `Last-Modified` 00:23 GMT do dia 24) — "D-1" não é regra rígida; prepare inteiro 320 s, RSS pico 1.762 MiB, estágio metrics 48 s para 1 sessão (167 papéis, 11.014 séries).
+- **Consequências:** o watch reconstrói o ano a cada arquivo novo (~5 min, ~1,7 GiB) com o `app` ligado na mesma máquina de 3,7 GiB. O `prepare` de um ano fechado (`--year`) não recalcula métricas daquele ano. O carimbo `b3o-session` do `index.html` é lido no lifespan do `app` (a tela usa `/api/health`, que é ao vivo).
+- **Revisar em:** 30 dias de uso (RAM do watch concorrente com o app; intervalo).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

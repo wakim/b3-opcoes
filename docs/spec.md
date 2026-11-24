@@ -94,7 +94,7 @@ intraday e qualquer preço vivo · OI com mais de 10 dias · fundamentos · not�
 | `test` | — | `target: dev` | container de ferramentas: `b3o …`, `python`, `ruff` (não há suíte de testes — ADR-019) |
 | `dev` | `dev` | `target: dev` | `uvicorn --reload` com `backend/src/` e `backend/config.yaml` montados |
 | `prepare` | `jobs` | `target: runtime` | one-shot `b3o prepare` |
-| `prepare-watch` | `watch` | `target: runtime` | `b3o prepare --watch`, diário às 21:30 BRT |
+| `prepare-watch` | — (padrão) | `target: runtime` | `b3o prepare --watch`, ao iniciar e a cada hora; `restart: unless-stopped` (ADR-036) |
 | `web` | `build` | `node:26-slim` | `npm ci && npm run build` → `frontend/dist` (entra no F5.0) |
 | `web-dev` | `dev` | `node:26-slim` | Vite em `127.0.0.1:5173`, proxy de `/api` (entra no F5.0) |
 
@@ -445,7 +445,7 @@ Offline: precache do shell; *network-first* para `/api` com fallback ao cache da
 - Se uma data já carregada mudar de conteúdo (sha por data em `ingest_state`), registrar em `health` — a substituição já cuidou do dado.
 - `model_version` sobe a cada mudança de fórmula e o histórico é **recalculado inteiro**, sobrescrevendo as tabelas derivadas (não há `model=vN/` nem ponteiro — o rank nunca mistura modelos).
 - **Validação (sem suíte de testes — ADR-019):** cada fórmula e o parser são conferidos **no dado real** e por um caminho independente (contagem por fora, valor recalculado à mão); a medição fica registrada no `AGENTS.md`. Antes de qualquer troca de `model_version`, rodar o pipeline no histórico e comparar com a medição registrada.
-- **Agendamento:** o serviço `prepare` roda no `compose up` (one-shot) e o serviço `prepare-watch` (profile `watch`) repete diariamente às 21:30 BRT. Sem `watch`, o dado envelhece com o container ligado; `health` acusa a idade.
+- **Agendamento (ADR-036):** o `prepare-watch` é serviço padrão do `compose up` (`restart: unless-stopped`): roda ao iniciar e a cada hora (`--interval`, env `B3_WATCH_INTERVAL_MIN`). Ciclo sem arquivo novo (COTAHIST 304 + lake já construído com o mesmo sha256, mesmo `model_version`, sem falha de fonte pendente e `metrics_underlying` na última sessão) só confere e dorme (~0,3 s). Arquivo novo reconstrói o ano e calcula `metrics_*` das sessões novas. O `prepare` one-shot (profile `jobs`) continua para uso manual.
 - **Sem Python no host:** nenhum passo do pipeline depende de `uv`/Python/Node instalados fora do container. O host precisa de Podman e `git`.
 - `health()` reporta: última sessão, idade, contagem por data, `rate_source`, fontes ausentes, inconsistências, último erro.
 

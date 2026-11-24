@@ -6,7 +6,7 @@ num fluxo reproduzível:
 ```
 config → client → COTAHIST → validate → parse (contando por mercado, D3) → lake
        → legs + strike_events → rates → earnings → OI → liquidez → relatório
-       → ingest_state → resumo de uma tela (P-G)
+       → metrics das sessões novas (incremental) → ingest_state → resumo de uma tela (P-G)
 ```
 
 `prepare --year` de um ano fechado é **honesto** (§4.4): a partição daquele ano é
@@ -36,8 +36,8 @@ Regras que este arquivo respeita:
 - **escrita atômica**: legs, strike_events e o relatório passam por
   `tmp/` + `fsutil.replace_file` (bind do Windows nega `os.replace` sobre
   arquivo existente);
-- `--watch`: roda e dorme até as próximas 21:30 de `America/Sao_Paulo`
-  (offset fixo −03:00 quando não há tzdata — sem horário de verão desde 2019).
+- `--watch`: roda ao iniciar e a cada `--interval` minutos (default 60); o ciclo
+  pula a reconstrução quando o COTAHIST responde 304 e o lake já é desse arquivo.
 """
 
 from __future__ import annotations
@@ -107,9 +107,9 @@ READ_TIMEOUT_S = 120.0
 DEFAULT_CONFIG_PATH = Path("config.yaml")
 """`config.yaml` na raiz (montado em `/app/config.yaml` na imagem)."""
 
-WATCH_HOUR = 21
-WATCH_MINUTE = 30
-"""Horário do `prepare` diário em `America/Sao_Paulo` (spec §11)."""
+WATCH_INTERVAL_MINUTES = 60
+"""Intervalo do `prepare --watch`: roda ao iniciar e a cada hora (decisão do dono,
+23/11/2026). O ciclo sem arquivo novo é barato: 304 + lake já construído = pula."""
 
 OI_WINDOW_SESSIONS = 10
 """Quantas sessões recentes do lake entram na janela do OI (a fonte guarda 20)."""
@@ -163,12 +163,35 @@ def _now() -> datetime:
     return datetime.now(_TZ)
 
 
-def _seconds_until_next_run(now: datetime) -> float:
-    """Segundos até as próximas 21:30 locais (função pura: recebe o `now`)."""
-    target = now.replace(hour=WATCH_HOUR, minute=WATCH_MINUTE, second=0, microsecond=0)
-    if target <= now:
-        target += timedelta(days=1)
-    return (target - now).total_seconds()
+def _up_to_date(config: Config, fetch: FetchResult, service: QueryService) -> date | None:
+    """Sessão do lake quando o ciclo do watch não tem nada a fazer; senão `None`.
+
+    Nada a fazer = o COTAHIST respondeu 304 **e** o lake foi construído com este
+    mesmo arquivo (sha256) e o mesmo `model_version` **e** o último prepare não
+    deixou fonte com falha (senão o watch nunca re-tentaria rates/OI/earnings) **e**
+    `metrics_underlying` já cobre a última sessão do lake.
+    """
+    if fetch.status != "not_modified" or fetch.sha256 is None:
+        return None
+    try:
+        state = load_ingest_state(config.data_dir)
+        previous = load_prepare_state(config.data_dir)
+    except SourceFailure:
+        return None
+    if (
+        state.sha256 != fetch.sha256
+        or state.last_session is None
+        or state.model_version != config.model_version
+        or previous.failures
+    ):
+        return None
+    try:
+        rows = service.metrics_underlying_rows(start=state.last_session)
+    except SourceFailure:
+        return None
+    if not any(row.refdate >= state.last_session for row in rows):
+        return None
+    return state.last_session
 
 
 # --------------------------------------------------------------------------- #
@@ -205,6 +228,7 @@ def run_prepare(
     client_factory: Callable[[], httpx.Client] = build_client,
     year: int | None = None,
     now: datetime | None = None,
+    skip_unchanged: bool = False,
 ) -> PrepareResult:
     """Executa o pipeline inteiro uma vez; nunca levanta por fonte indisponível.
 
@@ -262,6 +286,16 @@ def run_prepare(
                 config.cotahist_base_url,
                 client=client,
             )
+        if skip_unchanged and year is None:
+            current = _up_to_date(config, fetch, QueryService(data_dir))
+            if current is not None:
+                return PrepareResult(
+                    exit_code=0,
+                    lines=[
+                        f"prepare    nada novo: COTAHIST 304 e lake/métricas já em "
+                        f"{current.isoformat()} ({time.perf_counter() - started:.1f}s)"
+                    ],
+                )
         if fetch.status == "error":
             failures.append(StageFailure("cotahist", fetch.error))
             lines.append(
@@ -421,6 +455,20 @@ def run_prepare(
             )
             if report_path is not None:
                 lines.append(f"relatório  {report_path}")
+
+        # 9b. Métricas (F1) das sessões do lake que ainda não têm `metrics_*`:
+        #     sem isto o watch atualiza o bruto e a tela continua no dia anterior.
+        metrics_summary, metrics_error = _stage(
+            "metrics",
+            lambda: _run_pending_metrics(
+                config, service, lake_sessions, last_session, client
+            ),
+        )
+        if metrics_error is not None:
+            failures.append(metrics_error)
+            lines.append(f"metrics    FALHOU: {metrics_error.error.message}")
+        else:
+            lines.extend(_metrics_lines(metrics_summary or {}))
 
         # 10. ingest_state + sidecar de diagnóstico (D3, último erro, RSS).
         try:
@@ -930,6 +978,87 @@ def _build_and_write_liquidity(
     }
 
 
+def _run_pending_metrics(
+    config: Config,
+    service: QueryService,
+    lake_sessions: list[date],
+    rates_session: date,
+    client: httpx.Client,
+) -> dict[str, object]:
+    """Calcula `metrics_*` só das sessões do lake posteriores à última já calculada.
+
+    Incremental de propósito: o backfill inteiro custa ~26 min e é decisão
+    explícita (`b3o metrics --backfill`). Recusa — com falha explícita, que o
+    `health` acusa — quando `metrics_*` nunca rodou ou quando o histórico tem
+    outro `model_version`: gravar o dia novo num histórico de outro modelo
+    misturaria modelos no rank (regra 6 do AGENTS).
+    """
+    rows = service.metrics_underlying_rows()
+    if not rows:
+        raise SourceFailure(
+            SourceError(
+                code="metrics_missing",
+                message="metrics_underlying vazio: o prepare só calcula sessões novas",
+                hint="rode `b3o metrics --backfill` uma vez (~26 min para 3 anos)",
+            )
+        )
+    versions = {row.model_version for row in rows}
+    if versions != {config.model_version}:
+        raise SourceFailure(
+            SourceError(
+                code="model_version_mismatch",
+                message=(
+                    f"histórico com model_version {sorted(versions)} e config com "
+                    f"{config.model_version}: o dia novo misturaria modelos"
+                ),
+                hint="rode `b3o metrics --backfill` para recalcular o histórico inteiro",
+            )
+        )
+    last_done = max(row.refdate for row in rows)
+    pending = [day for day in lake_sessions if day > last_done]
+    if not pending:
+        return {"last_done": last_done.isoformat(), "pending": 0}
+
+    # A curva da última sessão já veio no estágio de rates; sessões de recuperação
+    # (o watch perdeu dias) sem curva buscam a sua — sem ela a IV sai `no_rates`.
+    rate_errors: list[str] = []
+    for day in pending:
+        if day == rates_session or service.rates_curve(day):
+            continue
+        try:
+            result = fetch_rates_di(day, client=client, data_dir=config.data_dir)
+        except SourceFailure as exc:
+            rate_errors.append(f"{day.isoformat()}: {exc.message}")
+            continue
+        if result.error is not None:
+            rate_errors.append(f"{day.isoformat()}: {result.error.message}")
+
+    summary = run_metrics(config, dates=pending, backfill=True)
+    return {
+        "last_done": last_done.isoformat(),
+        "pending": len(pending),
+        "render": summary.render(),
+        "rate_errors": rate_errors,
+    }
+
+
+def _metrics_lines(summary: Mapping[str, object]) -> list[str]:
+    """Resumo do estágio de métricas no formato de uma tela (P-G)."""
+    if not summary.get("pending"):
+        return [f"metrics    em dia (última sessão calculada {summary.get('last_done')})"]
+    rendered = summary.get("render")
+    # a 1ª linha do render já começa com "metrics"; as demais (flags/erros) recuam
+    lines = (
+        [str(line) if i == 0 else f"           {line}" for i, line in enumerate(rendered)]
+        if isinstance(rendered, list)
+        else []
+    )
+    rate_errors = summary.get("rate_errors")
+    if isinstance(rate_errors, list) and rate_errors:
+        lines.append(f"metrics    curva DI indisponível em {len(rate_errors)} sessão(ões)")
+    return lines
+
+
 def _write_text_atomic(target: Path, text: str) -> None:
     """Texto atômico: staging em `data_dir/tmp/` e `fsutil.replace_file`."""
     root = target.parents[1]
@@ -1071,27 +1200,36 @@ def prepare(
         typer.Option("--year", help="ano do COTAHIST (default: ano corrente do calendário)"),
     ] = None,
     watch: Annotated[
-        bool, typer.Option("--watch", help="repete todo dia às 21:30 America/Sao_Paulo")
+        bool,
+        typer.Option(
+            "--watch",
+            help="roda agora e repete a cada --interval minutos; pula se nada mudou",
+        ),
     ] = False,
+    interval: Annotated[
+        int,
+        typer.Option("--interval", min=1, help="minutos entre ciclos do --watch"),
+    ] = WATCH_INTERVAL_MINUTES,
 ) -> None:
-    """Baixa as fontes, valida, reconstrói o lake e deriva o essencial (1×/dia)."""
+    """Baixa as fontes, valida, reconstrói o lake e deriva o essencial."""
     if not watch:
         raise typer.Exit(code=_run_once(config, year))
 
     while True:
-        code = _run_once(config, year)
-        target = _seconds_until_next_run(_now())
+        # um ciclo que explode não pode matar o watch: registra e tenta de novo
+        try:
+            code = _run_once(config, year, skip_unchanged=True)
+        except Exception:  # noqa: BLE001 — borda do laço de serviço
+            logging.getLogger(__name__).exception("prepare-watch: ciclo falhou")
+            code = 1
         typer.echo(
-            f"prepare-watch: exit {code}; próxima execução em {target / 3600:.2f} h "
-            f"(21:30 America/Sao_Paulo)"
+            f"prepare-watch: exit {code}; próxima verificação em {interval} min "
+            f"({(_now() + timedelta(minutes=interval)).isoformat(timespec='minutes')})"
         )
-        remaining = target
-        while remaining > 0:
-            time.sleep(min(remaining, 60.0))
-            remaining -= 60.0
+        time.sleep(interval * 60)
 
 
-def _run_once(config_path: Path, year: int | None) -> int:
+def _run_once(config_path: Path, year: int | None, *, skip_unchanged: bool = False) -> int:
     """Um ciclo do prepare; devolve o código de saída (0 = ok)."""
     try:
         config = load_config(config_path)
@@ -1100,7 +1238,7 @@ def _run_once(config_path: Path, year: int | None) -> int:
         typer.secho(f"           dica: {exc.hint}", err=True)
         return 1
     configure_logging(config.log_level)
-    result = run_prepare(config, year=year)
+    result = run_prepare(config, year=year, skip_unchanged=skip_unchanged)
     for line in result.lines:
         typer.echo(line)
     if result.failures:

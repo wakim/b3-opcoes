@@ -62,11 +62,13 @@ services:
     profiles: [jobs]
     command: ["b3o", "prepare"]
 
-  # diário às 21:30 BRT (b3o prepare --watch)
+  # serviço padrão (sobe com `compose up`): roda ao iniciar e a cada hora.
+  # Ciclo sem arquivo novo (COTAHIST 304 + lake já desse arquivo) só confere e dorme;
+  # arquivo novo reconstrói o ano e calcula as métricas das sessões novas.
   prepare-watch:
     <<: *runtime-base
-    profiles: [watch]
-    command: ["b3o", "prepare", "--watch"]
+    restart: unless-stopped
+    command: ["b3o", "prepare", "--watch", "--interval", "${B3_WATCH_INTERVAL_MIN:-60}"]
 
   # build do frontend (F5.0): gera frontend/dist no bind, dentro do node:26-slim.
   # node_modules vive em volume nomeado — no bind do Windows não preserva modo e é lento.

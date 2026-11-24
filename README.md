@@ -10,9 +10,9 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…037) |
-| Código | 🟢 **F0–F4 completos + F5-A/B/C/D entregues** — lake 2024–2026, `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` e PWA. F5-C: builder inline, offline e busca. F5-D: HTTPS somente na tailnet na 8443, MCP por hostname do tailnet, ícone/metadados iOS e **Android instalado/funcionando (confirmado pelo dono)**. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F5-E — liquidez no Hoje** — F5-D fechado com parecer em `docs/relatorios/2026-11-24-revisao-f5d.md` |
+| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…038) |
+| Código | 🟢 **F0–F4 completos + F5-A/B/C/D/E entregues** — lake 2024–2026, `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` e PWA. F5-C: builder inline, offline e busca. F5-D: HTTPS tailnet + Android instalado. F5-E: bloco Liquidez no Hoje e `/api/liquid` por volume. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F5-F — tipografia do desktop** — F5-E fechado com parecer em `docs/relatorios/2026-11-24-f5e.md` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
@@ -86,6 +86,7 @@ podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
   -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/mcp_smoke.py
 podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
   -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/structure_smoke.py
+podman compose run --rm -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/liquid_smoke.py
 ```
 
 Neste host, o b3o roda na **8083** e é publicado **somente na tailnet** pela Serve na
@@ -141,7 +142,8 @@ Aprender e os drill-downs Ticker/Série. Carteira e Diário seguem placeholders 
 A Ticker traz o **builder de estrutura** inline (prêmio, breakevens, perda/ganho máximo, capital,
 gregas, payoff e cenários vêm do `POST /api/structure`; nada é calculado em TS) e o app é um
 **PWA** (`vite-plugin-pwa`): precache do shell, `NetworkFirst` em `/api`, banner offline com a
-última sessão persistida. Hoje tem a busca de papel (`/api/tickers`) no topo.
+última sessão persistida. Hoje tem a busca de papel (`/api/tickers`) no topo e o bloco **Liquidez**:
+top de papéis por séries líquidas + séries mais negociadas por volume (`/api/liquid`), sem recomendação.
 
 A aba Aprender já abre a ficha do verbete inline, em **accordion independente**
 (vários verbetes podem ficar abertos; ADR-033, relatório em

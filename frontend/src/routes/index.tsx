@@ -7,6 +7,7 @@ import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
 import { TickerSearch } from '../components/TickerSearch'
+import { LiquidityPanel } from '../components/LiquidityPanel'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 
 export const Route = createFileRoute('/')({
@@ -141,6 +142,8 @@ function Hoje() {
           </button>
         </p>
       )}
+
+      <LiquidityPanel rows={rows} />
 
       <section className="papers-section">
         <h2 className="block-title">

@@ -295,6 +295,29 @@ export interface ChainData {
   notes: string[]
 }
 
+export interface LiquidRow {
+  underlying: string
+  ticker: string
+  side: string
+  style: string | null
+  strike_brl: number
+  maturity: string
+  /** Volume financeiro do lake, já em reais — nunca reconstituído no frontend. */
+  volume_brl: number
+  trades: number
+  spread_brl: number | null
+  spread_pct: number | null
+  iv_pct: number | null
+  delta: number | null
+  is_liquid: boolean
+}
+
+export interface LiquidData {
+  session: string
+  rows: LiquidRow[]
+  notes: string[]
+}
+
 export interface SeriesPoint {
   date: string
   close_brl: number | null

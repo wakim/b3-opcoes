@@ -193,6 +193,27 @@ def chain_payload(
     )
 
 
+def liquid_payload(
+    service: QueryService,
+    date: Any = None,
+    limit: int | None = DEFAULT_MAX_ROWS,
+) -> dict[str, Any]:
+    """`GET /api/liquid`: séries líquidas por volume financeiro, sem métrica nova."""
+    detail = service.liquid_series(_as_date(date), limit=clamp_max_rows(limit))
+    data = {
+        "session": detail.as_of_session.isoformat(),
+        "rows": [jsonable(row) for row in detail.rows],
+        "notes": list(detail.notes),
+    }
+    return envelope(
+        data,
+        as_of_session=detail.as_of_session,
+        model_version=detail.model_version,
+        list_key="rows",
+        total=detail.total,
+    )
+
+
 def series_payload(
     service: QueryService,
     ticker: str,

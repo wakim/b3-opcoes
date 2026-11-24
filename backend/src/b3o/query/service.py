@@ -753,6 +753,42 @@ class ChainResult:
 
 
 @dataclass(frozen=True, slots=True)
+class LiquidSeriesRow:
+    """Uma série líquida da sessão, ordenada por volume financeiro (F5-E).
+
+    `volume_brl` vem do COTAHIST (`volume / 100`, já com FATCOT); nunca é
+    reconstituído. Preço/book/spread seguem o `chain`: bid/ask zero viram `None`
+    e o spread percentual usa o meio do book, não o fechamento usado na IV.
+    """
+
+    underlying: str
+    ticker: str
+    side: str
+    style: str | None
+    strike_brl: float
+    maturity: date
+    volume_brl: float
+    trades: int
+    spread_brl: float | None
+    spread_pct: float | None
+    iv_pct: float | None
+    delta: float | None
+    is_liquid: bool
+    flags: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class LiquidSeriesResult:
+    """Top de séries líquidas + total antes do corte (meta honesto)."""
+
+    as_of_session: date
+    model_version: int
+    rows: list[LiquidSeriesRow]
+    total: int
+    notes: list[str]
+
+
+@dataclass(frozen=True, slots=True)
 class SeriesPoint:
     """Um dia de uma série (F3.2): preço em R$/ação, IV em % a.a."""
 
@@ -1786,6 +1822,133 @@ class QueryService:
             as_of_session=session,
             model_version=self.derived_model_version() or MODEL_VERSION,
             rows=filtered[:limit],
+            total=total,
+            notes=notes,
+        )
+
+    def liquid_series(
+        self,
+        date: date | None = None,
+        limit: int = 20,
+    ) -> LiquidSeriesResult:
+        """Séries líquidas da sessão por volume financeiro DESC (F5-E v1.1).
+
+        A regra §6.9 é a flag `is_liquid` **gravada** em `metrics_series`; não há
+        recálculo nem métrica nova. Volume/trades/book vêm do COTAHIST da sessão,
+        e opção→papel é resolvido pelo ISIN do ativo-objeto (nunca pelo prefixo).
+        Desempate: `trades DESC`, `ticker ASC`. `total` é contado antes do corte.
+        """
+        session = self._session(date)
+        raw_paths = self._partitions(session.year)
+        if not raw_paths:
+            raise _missing_lake_failure(self.data_dir)
+        metric_paths = self._partitions_for("metrics_series", session.year)
+        if not metric_paths or not self._fetch_named(
+            "SELECT 1 FROM read_parquet($metrics) WHERE refdate = $day LIMIT 1",
+            {"metrics": [str(path) for path in metric_paths], "day": session},
+        ):
+            raise SourceFailure(
+                SourceError(
+                    code="metrics_missing",
+                    message=f"a sessão {session.isoformat()} não tem metrics_series",
+                    hint="rode `b3o metrics --date <sessão>` antes de consultar liquidez",
+                )
+            )
+        version_rows = self._fetch_named(
+            "SELECT max(model_version) FROM read_parquet($metrics)",
+            {"metrics": [str(path) for path in metric_paths]},
+        )
+        model_version = (
+            int(version_rows[0][0])
+            if version_rows and version_rows[0][0] is not None
+            else MODEL_VERSION
+        )
+        sql = (
+            "WITH spot AS ("
+            "  SELECT ticker, isin_underlying,"
+            "         row_number() OVER (PARTITION BY isin_underlying"
+            "           ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END) AS rn"
+            "  FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('010', '020')"
+            "    AND isin_underlying <> ''"
+            "), options AS ("
+            "  SELECT DISTINCT ticker, isin_underlying FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('070', '080')"
+            "    AND isin_underlying <> ''"
+            "), mapped AS ("
+            "  SELECT s.ticker AS underlying, o.ticker AS option_ticker"
+            "  FROM options o JOIN spot s"
+            "    ON s.isin_underlying = o.isin_underlying AND s.rn = 1"
+            "), bars AS ("
+            "  SELECT ticker, best_bid, best_ask, quote_factor, trades, volume,"
+            "         row_number() OVER (PARTITION BY ticker"
+            "           ORDER BY volume DESC, trades DESC) AS rn"
+            "  FROM read_parquet($raw)"
+            "  WHERE refdate = $day AND tpmerc IN ('070', '080')"
+            ")"
+            " SELECT p.underlying, m.ticker, m.side, m.style, m.strike, m.maturity,"
+            "        b.volume, b.trades, b.best_bid, b.best_ask, b.quote_factor,"
+            "        m.iv, m.delta, m.is_liquid, m.flags"
+            " FROM read_parquet($metrics) m"
+            " JOIN mapped p ON p.option_ticker = m.ticker"
+            " JOIN bars b ON b.ticker = m.ticker AND b.rn = 1"
+            " WHERE m.refdate = $day AND m.model_version = $model_version"
+            "   AND m.is_liquid"
+            " ORDER BY b.volume DESC, b.trades DESC, m.ticker ASC"
+        )
+        fetched = self._fetch_named(
+            sql,
+            {
+                "raw": [str(path) for path in raw_paths],
+                "metrics": [str(path) for path in metric_paths],
+                "day": session,
+                "model_version": model_version,
+            },
+        )
+        result: list[LiquidSeriesRow] = []
+        for row in fetched:
+            factor = int(row[10]) if row[10] else 1
+            bid = (
+                None
+                if row[8] is None or int(row[8]) <= 0
+                else float(row[8]) / factor / 100.0
+            )
+            ask = (
+                None
+                if row[9] is None or int(row[9]) <= 0
+                else float(row[9]) / factor / 100.0
+            )
+            spread_brl = None
+            spread_pct = None
+            if bid is not None and ask is not None and bid > 0 and ask > 0:
+                spread_brl = ask - bid
+                mid_book = (bid + ask) / 2.0
+                if mid_book > 0:
+                    spread_pct = (ask - bid) / mid_book * 100.0
+            result.append(
+                LiquidSeriesRow(
+                    underlying=str(row[0]),
+                    ticker=str(row[1]),
+                    side=str(row[2]),
+                    style=None if row[3] is None else str(row[3]),
+                    strike_brl=float(row[4]) / 100.0,
+                    maturity=row[5],
+                    volume_brl=int(row[6]) / 100.0,
+                    trades=int(row[7]),
+                    spread_brl=spread_brl,
+                    spread_pct=spread_pct,
+                    iv_pct=None if row[11] is None else float(row[11]),
+                    delta=None if row[12] is None else float(row[12]),
+                    is_liquid=bool(row[13]),
+                    flags=[str(flag) for flag in (row[14] or ())],
+                )
+            )
+        total = len(result)
+        notes = [] if result else ["nenhuma série líquida nesta sessão"]
+        return LiquidSeriesResult(
+            as_of_session=session,
+            model_version=model_version,
+            rows=result[: max(0, int(limit))],
             total=total,
             notes=notes,
         )

@@ -277,6 +277,13 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - **iOS pede ícone 180 e metadados próprios.** O manifest 192/512 não basta para o ícone da Tela de Início; `apple-touch-icon.png` é 180×180 e precisa de `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style` e `apple-mobile-web-app-title`. O gerador `frontend/scripts/make-icons.mjs` agora produz os três tamanhos; o ícone Apple entra no precache.
 - **HTTPS provado no host não é “instalado no celular”.** `tailscale status` pode mostrar só o desktop enquanto o aparelho não está conectado. A regra F5-D é explícita: sem confirmação do dono no aparelho, F5.9 fica pendente. Em 24/11/2026 o dono confirmou o **Android instalado e funcionando**; as capturas não foram anexadas, mas a confirmação explícita fechou o critério.
 
+## Armadilhas do F5-E (liquidez, medidas em 24/11/2026)
+
+- **`n_liquid_series` conta séries, não strikes distintos.** Em 23/11 o recorte tem **33** papéis `ok` com `n_liquid_series > 0`; a ordem do bloco é `n_liquid_series DESC`, `n_expiries DESC`, `n_series DESC`, `ticker ASC`: BBAS3 17/24, PETR4 12/28, VALE3 12/22, MGLU3 10/15, BOVA11 9/25, BBDC4 6/27, ITUB4/PRIO3/CXSE3 3, CSNA3 2. Não substituir por `n_liquid_strikes` do termo.
+- **`/api/liquid` filtra a flag gravada e usa volume do raw.** São **102** séries líquidas em 23/11. `volume_brl = raw.volume / 100` (centavos, FATCOT já aplicado); **não** dividir por `quote_factor` nem reconstituir por `qty × avg`. Já `best_bid`/`best_ask` seguem o `chain`: `/ quote_factor / 100`, com zero → `None`.
+- **Top por volume não é top por liquidez do papel.** A primeira série é **BBDCA148 (BBDC4)**, call europeia K 14,09/15-01-2027, **R$ 5.356.418,00**, **2.308 negócios**, spread 8,695652%, IV 31,199198%, Δ 0,479017. Conferida no Parquet e no `chain`/`series` pelo `liquid_smoke.py` (24/24).
+- **Linha de tabela interativa precisa vencer o padding global.** `.screen-table td` vem depois de `.liquidity-table td` na folha e deixava a linha em 41 px; o seletor correto é `.screen-table.liquidity-table td` (12 px + linha 20 + hairline = 45 px). Alvo ≥ 44 px é critério, não detalhe visual.
+
 ## Armazenamento
 
 - Parquet + DuckDB, particionado por `year`, escrita atômica (`tmp/` → `os.replace`).

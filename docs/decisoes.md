@@ -446,6 +446,19 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** a URL pronta é `https://desktop-vlp5tqv.tail5745cb.ts.net:8443`. O dono confirmou em 24/11/2026 que o **Android está instalado e funcionando**, incluindo o ciclo offline/online. As capturas não foram anexadas, mas a confirmação explícita fecha F5.9 e a aceitação de celular no `PLAN.md`.
 - **Revisar em:** confirmação da instalação no celular ou mudança do hostname/porta da tailnet.
 
+## ADR-038 — F5-E: liquidez como descoberta descritiva, não ranking preditivo
+
+- **Data:** 2026-11-24 · **Status:** provisória · **Custo de reverter:** baixo (uma consulta read-only e um bloco de UI)
+- **Contexto:** a busca de papel exige saber o ticker. O dono pediu um ponto de partida por liquidez no Hoje, sem transformar volume/IV/VRP em recomendação. O `screen` já tinha contagens de séries líquidas; o top de séries por volume ainda não existava.
+- **Decisão:**
+  1. O bloco **Liquidez** fica abaixo do aviso de pregão dominante e acima de “Com opções”. A aba **Papéis** ordena no cliente `n_liquid_series DESC`, `n_expiries DESC`, `n_series DESC`, `ticker ASC`, mostra top 10 e “Ver todos”. É apresentação dos campos do `screen`, não número novo.
+  2. `GET /api/liquid?date=&limit=` nasce na mesma `QueryService`, read-only. Filtra `metrics_series.is_liquid` gravado (§6.9), resolve opção→papel pelo ISIN e ordena por volume financeiro do COTAHIST DESC, `trades DESC`, `ticker ASC`. `volume_brl = volume / 100` (FATCOT já aplicado); bid/ask/spread seguem o `chain`.
+  3. A aba **Séries mais negociadas** consome o top 20 do endpoint e abre `/s/{ticker}/{maturity}`. `meta.total` é contado antes do corte; `limit` usa o teto canônico de 60 e o envelope mantém o teto de 200 KB.
+  4. Nenhuma métrica é gravada ou recalculada; `model_version` continua 2. Não há tool MCP nova nesta onda, preservando o catálogo/smoke de sete tools.
+- **Por quê:** líquidez responde “o que consigo negociar hoje?” sem alegar retorno ou vantagem. A ordem é declarada, reversível e auditável; o Python continua dono do número.
+- **Consequência:** a nota “ordenado por liquidez; não é recomendação” permanece visível. Nada de “melhores”, score, estrela, caro/barato ou acerto. Carteira/Diário continuam placeholders até F6.
+- **Revisar em:** se o dono quiser filtro por papel, contrato MCP ou ordenação por volume também no card de papéis.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

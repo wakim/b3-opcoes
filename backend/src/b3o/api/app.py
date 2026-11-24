@@ -81,7 +81,7 @@ def _api_error(status_code: int, content: dict[str, Any]) -> JSONResponse:
 
 _API_HINT = (
     "rotas: /api/health, /api/screen, /api/tickers, /api/glossary, "
-    "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, "
+    "/api/t/{ticker}, /api/t/{ticker}/chain, /api/t/{ticker}/events, /api/liquid, "
     "/api/s/{ticker}/{maturity} e POST /api/structure"
 )
 
@@ -341,6 +341,16 @@ def create_app() -> FastAPI:
     def api_events(ticker: str) -> dict[str, Any]:
         """Vencimentos, eventos de ajuste de strike e calendário de resultados."""
         return payloads.events_payload(_service(), ticker)
+
+    @app.get("/api/liquid")
+    def api_liquid(
+        date: str | None = None,
+        limit: int = DEFAULT_MAX_ROWS,
+    ) -> dict[str, Any]:
+        """Séries líquidas da sessão, ordenadas por volume financeiro (F5-E)."""
+        return payloads.liquid_payload(
+            _service(), date=_date(date), limit=limit
+        )
 
     @app.get("/api/s/{ticker}/{maturity}")
     def api_series(ticker: str, maturity: str, days: int = 60) -> dict[str, Any]:

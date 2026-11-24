@@ -25,3 +25,13 @@ export function sharePct(value: number | null | undefined): string {
 export function brl(value: number | null | undefined): string {
   return value == null ? '—' : `R$ ${fmt(value)}`
 }
+
+/** Volume financeiro compacto para tabela; só formata o valor que a API entregou. */
+export function brlCompact(value: number | null | undefined): string {
+  if (value == null) return '—'
+  const abs = Math.abs(value)
+  if (abs >= 1_000_000_000) return `R$ ${fmt(value / 1_000_000_000, 2)} bi`
+  if (abs >= 1_000_000) return `R$ ${fmt(value / 1_000_000, 2)} mi`
+  if (abs >= 1_000) return `R$ ${fmt(value / 1_000, 1)} mil`
+  return brl(value)
+}

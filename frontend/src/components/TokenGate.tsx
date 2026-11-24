@@ -55,12 +55,14 @@ export function TokenGate({
   compact = false,
   title,
   autoFocus = false,
+  description,
 }: {
   onUnlock?: () => void
   notice?: string | null
   compact?: boolean
   title?: string
   autoFocus?: boolean
+  description?: string
 }) {
   const id = useId()
   const [value, setValue] = useState('')
@@ -88,9 +90,10 @@ export function TokenGate({
         {title ?? (compact ? 'Token para fechar' : 'Liberar escritas')}
       </h2>
       <p className="chain-note">
-        {compact
-          ? 'O fechamento grava um evento no journal e exige o token de escrita.'
-          : 'A leitura é liberada na tailnet. O token libera apenas as escritas desta carteira.'}
+        {description ??
+          (compact
+            ? 'O fechamento grava um evento no journal e exige o token de escrita.'
+            : 'A leitura é liberada na tailnet. O token libera apenas as escritas desta carteira.')}
       </p>
       <form className="token-gate__form" onSubmit={submit}>
         <label className="builder__field token-gate__field" htmlFor={`${id}-token`}>

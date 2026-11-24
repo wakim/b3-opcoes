@@ -262,6 +262,80 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 ---
 
+## Decisão registrada
+
+**O que é** — um evento append-only que registra uma escolha do dono, inclusive uma escolha de não abrir posição. Ele guarda sessão, ativo-objeto, tipo, contexto e notas.
+
+**Erro comum** — achar que toda decisão precisa virar uma posição. “Não entrei” é uma decisão válida e deve ficar no diário para que a decisão posterior possa ser comparada com o que você sabia na hora.
+
+**No diário (F7)** — o tipo `no_entry` aparece como “Não entrei”; uma abertura de posição pela Carteira também espelha um evento de decisão vinculado.
+
+## Previsão estruturada
+
+**O que é** — uma afirmação avaliável com métrica, operador, valor, horizonte em sessões e data de avaliação. Texto livre nunca é convertido em previsão.
+
+**Erro comum** — escrever “acho que vai subir” nas notas e tratar isso como previsão. Sem métrica e operador não existe desfecho determinístico; a nota continua contexto, não dado de calibração.
+
+**No diário (F7)** — `spot >= 41,30 por 1 sessão` é avaliável; “espero alta” não é.
+
+## Horizonte em sessões
+
+**O que é** — quantidade de pregões entre a sessão da decisão e `evaluate_on`, usando o calendário B3, não dias corridos.
+
+**Erro comum** — contar sábado, domingo ou feriado como sessão. O backend valida se a data informada corresponde exatamente ao horizonte antes de gravar.
+
+**No diário (F7)** — horizonte `1` criado em 18/11/2026 tem `evaluate_on` em 19/11/2026.
+
+## Observado
+
+**O que é** — o valor da métrica no primeiro pregão posterior a `evaluate_on`, lido somente do dado EOD dessa sessão.
+
+**Erro comum** — usar o preço de agora ou uma sessão posterior mais conveniente. O lote usa o primeiro pregão seguinte mesmo que rode vários dias depois.
+
+**No diário (F7)** — `spot` vem do fechamento do ativo-objeto; IV/VRP/RR25 vêm de `metrics_underlying`.
+
+## Desfecho da previsão
+
+**O que é** — `pending`, `hit`, `miss` ou `void`, derivado do evento de avaliação mais recente. `hit`/`miss` comparam o observado com o limite usando `<`, `<=`, `>` ou `>=`.
+
+**Erro comum** — editar a previsão para marcar o resultado. A avaliação é outro evento append-only; a linha original continua imutável.
+
+**No diário (F7)** — fechar a posição não cancela a previsão; ela continua avaliável.
+
+## Sem dados (void)
+
+**O que é** — desfecho usado quando a métrica não existe ou está indisponível na sessão de avaliação. Fica separado de acerto e erro, sempre com motivo.
+
+**Erro comum** — transformar ausência em zero ou em erro. Isso fabricaria calibração: o mercado simplesmente não entregou aquele número.
+
+**No diário (F7)** — `metric_unavailable` indica métrica ausente; `observed` fica `null`.
+
+## Amostra (n)
+
+**O que é** — quantidade de previsões avaliadas no grupo, incluindo as que ficaram `void`.
+
+**Erro comum** — ler uma taxa sem o `n`. Uma taxa de 100% com uma única previsão não descreve um histórico.
+
+**No diário (F7)** — o relatório mostra `n` ao lado da taxa e separa `hit`, `miss` e `void`.
+
+## Calibração pessoal
+
+**O que é** — resumo das previsões estruturadas do dono por métrica e horizonte, com `n`, acertos, erros, `void` e taxa sobre `hit + miss`.
+
+**Erro comum** — comparar esse resultado com a taxa do backtest de classes de sinal. O portão F1b não passou (ADR-023/024); a calibração pessoal é uma medida diferente e não é base preditiva.
+
+**No diário (F7)** — nenhuma decisão é ranqueada e nenhuma entrada ou saída é recomendada.
+
+## Taxa de acerto pessoal
+
+**O que é** — `hit / (hit + miss) × 100` em um grupo de métrica + horizonte. Previsões `void` não entram no denominador.
+
+**Erro comum** — chamar a taxa de “lucratividade” ou usá-la como sinal. Ela mede apenas se a afirmação estruturada se confirmou, não o retorno financeiro da operação.
+
+**No diário (F7)** — sem `hit` e sem `miss`, a taxa é `null`; o painel mostra `—`, nunca 0%.
+
+---
+
 ## Taxa histórica do sinal
 
 > **Fora do produto (ADR-023/024).** O backtest das classes de sinal está registrado como **histórico do portão** (`docs/relatorios/2026-11-23-validacao-f1b.md`, `data/out/backtest.md`) e **não** é exposto no painel nem no MCP (`signal_backtest` fora do F3, ADR-027). O sinal de reversão do VRP **não passou** — as classes ficaram abaixo da base `none`; o texto abaixo é registro do que foi testado.

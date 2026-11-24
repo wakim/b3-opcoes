@@ -80,6 +80,10 @@ export default defineConfig({
             handler: 'NetworkOnly',
           },
           {
+            urlPattern: /\/api\/journal(?:\/|$)/,
+            handler: 'NetworkOnly',
+          },
+          {
             urlPattern: /\/api\//,
             handler: 'NetworkFirst',
             options: {

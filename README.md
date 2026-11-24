@@ -10,9 +10,9 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…039) |
-| Código | 🟢 **F0–F5 completos** — lake 2024–2026, `model_version=2`, painel descritivo, API/MCP, PWA offline instalado no Android, builder, busca, cobertura, liquidez e desktop legível. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F6 — Posições/Carteira** — F5 fechado com os pareceres F5-D/E/F em `docs/relatorios/` |
+| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…042) |
+| Código | 🟢 **F0–F5 completos**; **F6 e F7 implementados e validados tecnicamente, aceitação do dono pendente**. Lake 2024–2026, `model_version=2`, painel descritivo, API/MCP, PWA offline, Carteira e Diário/calibração. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F7 — Diário e calibração pessoal** — F6 aguarda reconciliação de 2 posições; F7 aguarda 30 dias de uso e ≥ 10 previsões avaliadas |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
@@ -43,7 +43,7 @@ O trabalho segue o [`PLAN.md`](PLAN.md), fase por fase. O caminho oficial de exe
 ```
 backend/     Python: pyproject.toml, uv.lock, config.yaml, src/b3o/, scripts/
 frontend/    Node/Vite — SPA servida estática pelo FastAPI (F5-A)
-data/        lake Parquet + journal (fora do git)
+data/        lake Parquet (fora do git); journal operacional no volume PostgreSQL
 docs/        spec, decisões, contratos, glossário, relatórios
 compose.yaml · Dockerfile · PLAN.md · AGENTS.md · README.md
 ```
@@ -76,6 +76,7 @@ podman compose run --rm prepare                          # baixa e deriva (1×/d
 podman compose run --rm test b3o health                  # estado do lake e da versão do cálculo
 podman compose run --rm test b3o screen --date 2026-11-19 # painel descritivo (sem classe de sinal)
 podman compose run --rm test b3o metrics --date 2026-11-19
+podman compose run --rm test b3o evaluate --date 2026-11-23       # avalia previsões pendentes do Diário
 podman compose run --rm test b3o struct --date 2026-11-19 `
   --underlying PETR4 --leg "option:PETRL44:short:100" --leg "stock:PETR4:long:100" --capital 5000
 podman compose up -d app                                 # HTTP + MCP (/mcp) em 127.0.0.1:8080
@@ -87,6 +88,8 @@ podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
 podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
   -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/structure_smoke.py
 podman compose run --rm -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/liquid_smoke.py
+podman compose run --rm test python scripts/positions_smoke.py       # schema PostgreSQL descartável
+podman compose run --rm test python scripts/journal_smoke.py         # schema PostgreSQL descartável
 ```
 
 Neste host, o b3o roda na **8083** e é publicado **somente na tailnet** pela Serve na
@@ -138,7 +141,9 @@ podman compose --profile dev up web-dev
 ```
 
 A SPA tem seis rotas file-based em `frontend/src/routes/`: Hoje, Carteira, Diário,
-Aprender e os drill-downs Ticker/Série. Carteira e Diário seguem placeholders explícitos ("F6").
+Aprender e os drill-downs Ticker/Série. Carteira registra posições; o Diário registra
+decisões sem posição, previsões estruturadas e calibração pessoal por métrica/horizonte.
+As escritas usam `X-App-Token`; as leituras ficam na tailnet.
 A Ticker traz o **builder de estrutura** inline (prêmio, breakevens, perda/ganho máximo, capital,
 gregas, payoff e cenários vêm do `POST /api/structure`; nada é calculado em TS) e o app é um
 **PWA** (`vite-plugin-pwa`): precache do shell, `NetworkFirst` em `/api`, banner offline com a

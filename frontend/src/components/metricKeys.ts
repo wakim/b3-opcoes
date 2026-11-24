@@ -15,6 +15,7 @@ export interface ModalTarget {
 const KEYS: Record<string, string> = {
   // Nível 1 — preço e prêmio
   spot_brl: 'preco-spot-fechamento',
+  spot: 'preco-spot-fechamento',
   close_brl: 'premio-bid-e-ask',
   mid_brl: 'premio-bid-e-ask',
   bid_brl: 'premio-bid-e-ask',
@@ -63,6 +64,15 @@ const KEYS: Record<string, string> = {
   scenarios: 'cenario-spot-iv-dias',
   volume: 'volume-e-open-interest',
   days_to_liquidate: 'dias-para-liquidar',
+
+  // Diário e calibração pessoal
+  decision_type: 'decisao-registrada',
+  horizon_sessions: 'horizonte-em-sessoes',
+  observed: 'observado',
+  prediction_status: 'desfecho-da-previsao',
+  sample_n: 'amostra-n',
+  void_count: 'sem-dados-void',
+  personal_hit_rate: 'taxa-de-acerto-pessoal',
 
   // Nível 3 — gregas e modelo
   theta_brl: 'theta',

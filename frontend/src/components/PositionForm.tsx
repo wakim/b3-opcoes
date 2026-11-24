@@ -285,8 +285,8 @@ export function PositionForm({
         setValidationError('informe o valor da previsão')
         return
       }
-      if (!Number.isSafeInteger(sessions) || sessions <= 0) {
-        setValidationError('o horizonte deve ser um inteiro positivo seguro de sessões')
+      if (!Number.isSafeInteger(sessions) || sessions <= 0 || sessions > 252) {
+        setValidationError('o horizonte deve ser um inteiro entre 1 e 252 sessões')
         return
       }
       if (!evaluateOn) {
@@ -499,14 +499,16 @@ export function PositionForm({
             <div className="position-form__grid position-form__prediction">
               <label className="builder__field">
                 <span className="builder__field-label">Métrica</span>
-                <input
+                <select
                   value={metric}
                   onChange={(event) => setMetric(event.target.value)}
-                  placeholder="vrp"
-                  maxLength={64}
-                  autoComplete="off"
-                  spellCheck={false}
-                />
+                  aria-label="Métrica da previsão"
+                >
+                  <option value="spot">Preço (spot / fechamento)</option>
+                  <option value="iv_atm_30d">IV ATM 30d</option>
+                  <option value="vrp">VRP</option>
+                  <option value="rr25">RR25</option>
+                </select>
               </label>
               <label className="builder__field">
                 <span className="builder__field-label">Operador</span>
@@ -537,7 +539,7 @@ export function PositionForm({
                   type="number"
                   inputMode="numeric"
                   min={1}
-                  max={Number.MAX_SAFE_INTEGER}
+                  max={252}
                   step={1}
                   value={horizon}
                   onChange={(event) => setHorizon(event.target.value)}

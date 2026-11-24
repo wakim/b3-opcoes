@@ -127,7 +127,7 @@ export function apiWrite<T>(path: string, body: unknown): Promise<Envelope<T>> {
     throw new ApiError(401, {
       code: 'app_token_required',
       message: 'token do aplicativo ausente',
-      hint: 'digite o token na Carteira; ele fica salvo apenas neste navegador',
+      hint: 'digite o token na Carteira ou no Diário; ele fica salvo apenas neste navegador',
     })
   }
   return request<T>(path, {
@@ -567,13 +567,19 @@ export interface PositionMark {
 }
 
 export interface PositionPrediction {
+  id?: string
   metric: string
   operator: '<' | '<=' | '>' | '>=' | string
   value: number
+  unit?: string
   horizon_sessions: number
   evaluate_on: string
   status: 'pending' | 'hit' | 'miss' | 'void' | string
   observed: number | null
+  evaluated_on?: string | null
+  void_reason?: string | null
+  source?: string | null
+  model_version?: string | null
 }
 
 export interface PositionDetail extends PositionSummary {
@@ -610,6 +616,177 @@ export interface PositionCreateRequest {
 
 export interface PositionCloseRequest {
   date?: string | null
+}
+
+// ---------------------------------------------------------------------------
+// F7 — Diário e calibração pessoal (docs/contratos/f7.md)
+// ---------------------------------------------------------------------------
+
+export type DecisionType = 'no_entry' | 'entry' | 'exit' | 'hold' | 'watch' | 'other'
+export type PredictionMetric = 'iv_atm_30d' | 'vrp' | 'rr25' | 'spot'
+
+export interface JournalPrediction extends PositionPrediction {
+  unit: string
+  evaluated_on: string | null
+  void_reason: string | null
+  source: string | null
+  model_version: string | null
+}
+
+export interface JournalDecision {
+  id: string
+  underlying: string
+  session: string
+  decision_type: DecisionType | string
+  context: string
+  notes: string
+  position_id: string | null
+  created_at: string
+  prediction: JournalPrediction | null
+}
+
+export interface JournalData {
+  decisions: JournalDecision[]
+}
+
+export interface JournalDetailData {
+  decision: JournalDecision
+}
+
+export interface JournalPredictionInput {
+  metric: PredictionMetric
+  operator: '<' | '<=' | '>' | '>='
+  value: number
+  horizon_sessions: number
+  evaluate_on: string
+}
+
+export interface JournalCreateRequest {
+  /** UUID4 estável no rascunho; token nunca entra aqui. */
+  client_decision_id?: string
+  underlying: string
+  date?: string | null
+  decision_type: DecisionType
+  context?: string
+  notes?: string | null
+  prediction?: JournalPredictionInput | null
+}
+
+export interface CalibrationCounts {
+  n: number
+  hit: number
+  miss: number
+  void: number
+  hit_rate_pct: number | null
+  void_reasons: Array<{ reason: string; count: number }>
+}
+
+export interface CalibrationGroup extends CalibrationCounts {
+  metric: string
+  unit: string
+  horizon_sessions: number
+}
+
+export interface CalibrationData {
+  groups: CalibrationGroup[]
+  totals: CalibrationCounts
+}
+
+/** Lê todas as páginas do Diário; um GET cacheado nunca vem depois da escrita. */
+export async function fetchJournalAll(signal?: AbortSignal): Promise<Envelope<JournalData>> {
+  const limit = 60
+  const byId = new Map<string, JournalDecision>()
+  let duplicate = false
+  let offset = 0
+  let first: Envelope<JournalData> | null = null
+  for (let page = 0; page < 1000; page += 1) {
+    const current = await apiGet<JournalData>(
+      `/api/journal?max_rows=${limit}&offset=${offset}`,
+      signal,
+    )
+    first ??= current
+    for (const decision of current.data.decisions) {
+      if (byId.has(decision.id)) duplicate = true
+      byId.set(decision.id, decision)
+    }
+    const next = current.meta?.next_offset
+    if (next == null || next <= offset) break
+    offset = next
+  }
+  if (!first) throw new Error('Diário vazio sem envelope')
+  const decisions = [...byId.values()]
+  const total = first.meta?.total ?? decisions.length
+  const inconsistent = duplicate || decisions.length !== total
+  return {
+    ...first,
+    data: { ...first.data, decisions },
+    meta: {
+      ...(first.meta ?? { total, returned: decisions.length, truncated: false }),
+      total,
+      returned: decisions.length,
+      truncated: decisions.length < total || inconsistent,
+      note: inconsistent
+        ? 'O diário mudou durante a paginação; a lista pode estar incompleta. Recarregue para tentar novamente.'
+        : first.meta?.note,
+      offset: 0,
+      next_offset: null,
+    },
+  }
+}
+
+export async function fetchJournalDecision(
+  decisionId: string,
+  signal?: AbortSignal,
+): Promise<Envelope<JournalDetailData>> {
+  return apiGet<JournalDetailData>(
+    `/api/journal/${encodeURIComponent(decisionId)}`,
+    signal,
+  )
+}
+
+export async function fetchJournalCalibrationAll(
+  signal?: AbortSignal,
+): Promise<Envelope<CalibrationData>> {
+  const limit = 60
+  const groups: CalibrationGroup[] = []
+  const seen = new Set<string>()
+  let duplicate = false
+  let offset = 0
+  let first: Envelope<CalibrationData> | null = null
+  for (let page = 0; page < 1000; page += 1) {
+    const current = await apiGet<CalibrationData>(
+      `/api/journal/calibration?max_rows=${limit}&offset=${offset}`,
+      signal,
+    )
+    first ??= current
+    for (const group of current.data.groups) {
+      const key = `${group.metric}:${group.horizon_sessions}`
+      if (seen.has(key)) duplicate = true
+      seen.add(key)
+      groups.push(group)
+    }
+    const next = current.meta?.next_offset
+    if (next == null || next <= offset) break
+    offset = next
+  }
+  if (!first) throw new Error('Calibração vazia sem envelope')
+  const total = first.meta?.total ?? groups.length
+  const inconsistent = duplicate || groups.length !== total
+  return {
+    ...first,
+    data: { ...first.data, groups },
+    meta: {
+      ...(first.meta ?? { total, returned: groups.length, truncated: false }),
+      total,
+      returned: groups.length,
+      truncated: groups.length < total || inconsistent,
+      note: inconsistent
+        ? 'A calibração mudou durante a paginação; o relatório pode estar incompleto. Recarregue para tentar novamente.'
+        : first.meta?.note,
+      offset: 0,
+      next_offset: null,
+    },
+  }
 }
 
 export interface TickerRow {

@@ -1852,6 +1852,76 @@
   margin-top: 4px;
 }
 
+.journal-section {
+  margin-top: 24px;
+}
+
+.journal-card {
+  min-width: 0;
+}
+
+.journal-card__context {
+  margin: 0;
+  padding: 8px 0 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.journal-outcome {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.journal-outcome__row {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 11.5px;
+}
+
+.journal-outcome__row > .num {
+  min-width: 0;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.journal-outcome__reason {
+  color: var(--text-2);
+}
+
+.journal-outcome .inline-link {
+  min-width: 44px;
+  justify-content: flex-end;
+}
+
+.journal-table {
+  min-width: 760px;
+}
+
+.journal-table th,
+.journal-table td {
+  vertical-align: top;
+}
+
+.journal-table td:last-child,
+.journal-table th:last-child {
+  min-width: 220px;
+  white-space: normal;
+  text-align: left;
+}
+
+.journal-table__n {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
 .position-section {
   margin-top: 24px;
 }
@@ -1969,7 +2039,12 @@
     gap: 4px;
   }
 
-  .position-card__row > .num {
+  .journal-outcome__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .journal-outcome__row > .num {
     text-align: right;
   }
 
@@ -1992,11 +2067,17 @@
   .position-card__meta,
   .position-card__row,
   .position-card__link,
+  .journal-outcome__row,
+  .journal-card__context,
   .position-flags,
   .position-flags-line,
   .token-gate--compact .block-title,
   .position-form__toggle {
     font-size: 12px;
+  }
+
+  .journal-table__n {
+    font-size: 11.5px;
   }
 
   .position-card__notes,

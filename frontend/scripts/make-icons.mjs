@@ -1,5 +1,6 @@
-// Gera os ícones do manifest (192/512) sem dependência: PNG RGBA montado à mão.
-// Monocromático grafite + agulha branco-gelo (docs/direcao.md), sem gradiente.
+// Gera os ícones do manifest (192/512) e o apple-touch-icon (180) sem dependência:
+// PNG RGBA montado à mão. Monocromático grafite + agulha branco-gelo
+// (docs/direcao.md), sem gradiente.
 import { deflateSync } from 'node:zlib'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -95,3 +96,6 @@ for (const size of [192, 512]) {
   writeFileSync(file, makeIcon(size))
   console.log(`escrito ${file} (${size}x${size})`)
 }
+const appleIcon = join(outDir, 'apple-touch-icon.png')
+writeFileSync(appleIcon, makeIcon(180))
+console.log(`escrito ${appleIcon} (180x180)`)

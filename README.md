@@ -10,9 +10,9 @@ Ferramenta pessoal de apoio à decisão em opções de ações da B3. Ingestão 
 
 | | |
 |---|---|
-| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…035) |
-| Código | 🟢 **F0–F4 completos + F5-A/B/C entregues** — lake 2024–2026 (722 sessões), `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` (health, screen, underlying, chain, series, events, structure_eval) e `b3o struct`. F5-A: SPA servida pelo FastAPI (dispatcher `/mcp` × estático), `/api/tickers`, `/api/glossary`. F5-B: Hoje/Ticker/Série com os 9 passes. F5-C: builder de estrutura inline, PWA offline e busca de papel. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
-| Fase atual | **F5-D (Tailscale + celular)** — F5-C fechado com parecer em `docs/relatorios/2026-11-23-revisao-f5c.md` |
+| Planejamento | ✅ completo — spec v0.6, direção visual, log de decisões (ADR-001…037) |
+| Código | 🟢 **F0–F4 completos + F5-A/B/C entregues; F5-D pronto no host** — lake 2024–2026, `model_version=2`, `b3o screen` descritivo, API FastAPI + MCP em `/mcp` e PWA. F5-C: builder inline, offline e busca. F5-D: HTTPS somente na tailnet na 8443, MCP por hostname do tailnet e ícone/metadados iOS. Falta a confirmação de instalação no celular. F1b: o sinal **não passou** (ADR-023); nada preditivo é construído. |
+| Fase atual | **F5-D — validação no celular** — URL `https://desktop-vlp5tqv.tail5745cb.ts.net:8443`; infraestrutura provada em `docs/relatorios/2026-11-24-revisao-f5d.md` |
 | Runtime | 🐳 tudo em container (`compose.yaml`); runner no host: `podman compose` |
 | Repositório | `git@github.com:wakim/b3-opcoes.git` (SSH) — push por pacote |
 
@@ -69,7 +69,7 @@ Duas portas, **uma** camada de consulta. Se as duas divergirem, a ferramenta per
 
 ## Como vai rodar
 
-Tudo em container. O host precisa de **Podman com `podman compose`** (aqui) ou Docker (`docker compose` funciona igual, o `compose.yaml` é padrão) e `git`. Nada de Python/Node instalados no host no caminho oficial.
+Tudo em container. O host precisa de **Podman com `podman compose`** (aqui) ou Docker (`docker compose` funciona igual, o `compose.yaml` é padrão) e `git`. Para publicar o PWA por HTTPS na tailnet, precisa também do **Tailscale**. Nada de Python/Node instalados no host no caminho oficial.
 
 ```powershell
 podman compose run --rm prepare                          # baixa e deriva (1×/dia)
@@ -86,8 +86,32 @@ podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
   -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/mcp_smoke.py
 podman compose run --rm -e B3_MCP_URL=http://host.containers.internal:8081/mcp `
   -e B3_HTTP_URL=http://host.containers.internal:8081 test python scripts/structure_smoke.py
-tailscale serve --bg --https=443 http://127.0.0.1:8080
 ```
+
+Neste host, o b3o roda na **8083** e é publicado **somente na tailnet** pela Serve na
+**8443**. A 443 já tem um Funnel público de outro projeto (`realestate`) e não deve ser
+sobrescrita. O `.env` local (ignorado pelo git) fica assim:
+
+```dotenv
+B3_APP_PORT=8083
+B3_MCP_ALLOWED_HOSTS=desktop-vlp5tqv.tail5745cb.ts.net,desktop-vlp5tqv.tail5745cb.ts.net:*
+```
+
+```powershell
+podman compose up -d app
+tailscale serve --bg --https=8443 http://127.0.0.1:8083
+tailscale serve status
+# URL: https://desktop-vlp5tqv.tail5745cb.ts.net:8443
+```
+
+**Não use `tailscale funnel` para o b3o:** a leitura não tem autenticação e o Funnel
+abriria o painel para a internet. No celular, ligue o Tailscale e abra a URL acima.
+No iPhone (Safari), use Compartilhar → “Adicionar à Tela de Início”; no Android
+(Chrome), use o menu → “Instalar app”/“Adicionar à tela inicial”. Abra pelo ícone,
+confira o carimbo da sessão e repita o teste offline: ative o modo avião, feche e
+reabra o app pelo ícone; o shell deve abrir com “sem rede — última sessão …” e o
+carimbo `offline`, sem `D-n`. Desligue o Tailscale do celular para confirmar que a
+URL não abre fora da tailnet.
 
 `b3o struct` (e `POST /api/structure` / tool `structure_eval`) **avalia a estrutura dada** —
 payoff, breakevens, prêmio líquido, perda/ganho máximo, capital comprometido, gregas e 45

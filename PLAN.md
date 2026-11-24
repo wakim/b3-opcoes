@@ -21,9 +21,9 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…035) |
+| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…037) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5-D (Tailscale + celular).** F5-C entregue: builder de estrutura inline na Ticker (F5.6, números só do `POST /api/structure`), PWA offline (F5.7, precache do shell + `NetworkFirst` em `/api`, banner e carimbo offline), cobertura campo↔glossário (`npm run coverage`, 15 campos/44 no mapa/31 verbetes) e busca de papel (B1) no topo de Hoje. Carimbo agora deriva de `age_sessions` (0 → `D-1`). F5-B mergeado (`a62c218`) e ADR-034/035 na `main`. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; F5.9 (instalar no celular) em aberto. **Prompt da próxima sessão em `docs/prompts/f5-d.md`.** Depois do F5-D, **F5-E**: bloco de liquidez no Hoje (top papéis por séries líquidas + top séries por volume), como ponto de partida descritivo — a busca sozinha não resolve a descoberta. **F5-F**: tipografia do desktop (base 15 px, rótulos ≥ 12 px), mobile intacto. |
+| Retomar em | **F5-D — confirmação no celular.** A infraestrutura HTTPS está pronta e provada: `tailscale serve` na **8443 (tailnet only)** aponta para o b3o na 8083 e coexiste com o Funnel da 443 do `realestate`; URL `https://desktop-vlp5tqv.tail5745cb.ts.net:8443`. MCP com allowlist por `B3_MCP_ALLOWED_HOSTS`, ícone Apple 180 e metadados iOS entregues; smokes 53/53 e 93/93 local/HTTPS, PWA e offline→online no host verdes. **Falta só o dono instalar no aparelho e enviar as capturas**; sem isso F5.9 e a aceitação de celular ficam pendentes. Prompt/relatório em `docs/prompts/f5-d.md` e `docs/relatorios/2026-11-24-revisao-f5d.md`. Depois da confirmação, seguir **F5-E** (liquidez no Hoje) e **F5-F** (tipografia desktop). |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -377,6 +377,29 @@ Worktree próprio; app provado em `B3_APP_PORT=8083`.
   de 58–59 px, 412 px sem overflow e navegação por teclado (Tab + Enter).
 
 **Não marcado aqui:** F5-D (Tailscale/celular), F5-E (liquidez no Hoje), Carteira/Diário reais (F6).
+
+### F5-D — sessão 4 de 4 (Tailscale + celular) — parcial
+
+Contrato em `docs/prompts/f5-d.md`; ADR-037; evidência em
+`docs/relatorios/2026-11-24-revisao-f5d.md`. App em `127.0.0.1:8083`; URL
+`https://desktop-vlp5tqv.tail5745cb.ts.net:8443`.
+
+- [x] **Exposição somente na tailnet:** `tailscale serve --https=8443` aponta para 8083 e coexiste
+  com o Funnel da 443 do `realestate`; a 443 não foi alterada. HTTPS 200 e `/api/health` local =
+  HTTPS (`2026-11-23`, `model_version 2`).
+- [x] **MCP no tailnet:** allowlist por `B3_MCP_ALLOWED_HOSTS` (hostname com e sem porta), defaults
+  locais preservados e Host não listado continuando **421**. `mcp_smoke` **53/53** e
+  `structure_smoke` **93/93**, local e HTTPS.
+- [x] **iOS:** `apple-touch-icon.png` 180×180, metadados iOS e precache; builds limpas idênticas,
+  lint/tipos/cobertura verdes.
+- [x] **Regressão no host:** Hoje 289/157/132, Ticker com 7 métricas/3 réguas/2 gráficos/28
+  vencimentos/6+22, 412 px sem overflow e 165 alvos ≥ 44 px; SW + `b3o-api`, offline com
+  shell/banner/carimbo e retorno online sem erros; `data/` inalterado.
+- [ ] **Instalação no aparelho físico:** ligar Tailscale, instalar o PWA, confirmar standalone,
+  ícone, carimbo, offline real e bloqueio fora da tailnet, com capturas do dono.
+
+**Não marcado:** F5.9 e a aceitação “instalado no celular”. F5-D inteiro só fecha com a confirmação
+física.
 
 ### F5-E — Hoje: liquidez como ponto de partida (pedido do dono, 23/11/2026)
 

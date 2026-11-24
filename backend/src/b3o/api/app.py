@@ -52,6 +52,26 @@ log = logging.getLogger(__name__)
 FRONTEND_DIR_ENV = "B3_FRONTEND_DIR"
 """Caminho do `dist` (default `/app/frontend/dist` na imagem). Fora do config.yaml."""
 
+
+def _mcp_allowed_hosts() -> list[str]:
+    """Hosts locais + os hosts do tailnet informados em `B3_MCP_ALLOWED_HOSTS`.
+
+    A lista é separada por vírgula; `host` e `host:*` podem ser informados para
+    cobrir o Host com e sem porta. Nenhum hostname de deploy fica no código.
+    """
+    hosts = [
+        "127.0.0.1",
+        "127.0.0.1:*",
+        "localhost",
+        "localhost:*",
+        "host.containers.internal",
+        "host.containers.internal:*",
+    ]
+    configured = os.environ.get("B3_MCP_ALLOWED_HOSTS", "")
+    hosts.extend(host.strip() for host in configured.split(",") if host.strip())
+    return list(dict.fromkeys(hosts))
+
+
 def _api_error(status_code: int, content: dict[str, Any]) -> JSONResponse:
     """Erro HTTP no envelope, com o mesmo `no-cache` das rotas `/api`."""
     return JSONResponse(
@@ -170,14 +190,7 @@ def create_app() -> FastAPI:
         streamable_http_path="/mcp",
         stateless_http=True,
         transport_security=TransportSecuritySettings(
-            allowed_hosts=[
-                "127.0.0.1",
-                "127.0.0.1:*",
-                "localhost",
-                "localhost:*",
-                "host.containers.internal",
-                "host.containers.internal:*",
-            ],
+            allowed_hosts=_mcp_allowed_hosts(),
         ),
     )
     spa = _SpaDispatcher(mcp_app, _frontend_dir())

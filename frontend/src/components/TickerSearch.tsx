@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { apiGet, type TickerData } from '../lib/api'
 import { ErrorState } from './State'
+import { Input } from './ui/input'
 
 export function TickerSearch() {
   const [query, setQuery] = useState('')
@@ -31,13 +32,13 @@ export function TickerSearch() {
   const total = search.data?.meta?.total ?? rows.length
 
   return (
-    <div className="ticker-search">
-      <label className="ticker-search__label lg:text-label" htmlFor="ticker-search">
+    <div className="mb-[16px] min-w-0 max-w-full">
+      <label className="mb-[4px] block text-[11px] text-[color:var(--text-2)] lg:text-label" htmlFor="ticker-search">
         Buscar papel
       </label>
-      <input
+      <Input
         id="ticker-search"
-        className="ticker-search__input lg:text-search"
+        className="rounded-[4px] border-border bg-card px-[12px] py-[10px] text-[14px] shadow-none dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-search"
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
@@ -51,26 +52,30 @@ export function TickerSearch() {
       />
 
       {debounced.length > 0 && (
-        <div className="ticker-search__results" aria-live="polite">
-          {search.isLoading && <p className="note lg:text-label">buscando…</p>}
+        <div className="mt-[6px]" aria-live="polite">
+          {search.isLoading && <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">buscando…</p>}
           {search.isError && <ErrorState error={search.error} title="Busca indisponível" />}
           {search.data && rows.length === 0 && (
-            <p className="note lg:text-label">nenhum papel para “{debounced}”</p>
+            <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">nenhum papel para “{debounced}”</p>
           )}
           {search.data && rows.length > 0 && (
             <>
-              <p className="note lg:text-label">
+              <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">
                 {rows.length < total
                   ? `mostrando ${rows.length} de ${total} papéis`
                   : `${total} ${total === 1 ? 'papel' : 'papéis'}`}
               </p>
-              <ul className="ticker-search__list">
-                {rows.map((row) => (
-                  <li key={row.ticker}>
-                    <Link className="ticker-search__row" to="/t/$ticker" params={{ ticker: row.ticker }}>
-                      <span className="ticker-search__code num lg:text-search">{row.ticker}</span>
-                      <span className="ticker-search__name lg:text-search">{row.corp_name}</span>
-                      <span className="ticker-search__meta quiet lg:text-search-meta">
+              <ul className="mb-0 mt-[4px] list-none overflow-hidden rounded-[6px] border border-border p-0">
+                {rows.map((row, index) => (
+                  <li key={row.ticker} className={index > 0 ? 'border-t border-border' : undefined}>
+                    <Link
+                      className="flex min-h-[44px] flex-wrap items-baseline gap-x-[10px] gap-y-[2px] bg-card px-[12px] py-[10px] transition-colors hover:bg-muted focus-visible:-outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                      to="/t/$ticker"
+                      params={{ ticker: row.ticker }}
+                    >
+                      <span className="font-mono font-medium tabular-nums text-primary lg:text-search">{row.ticker}</span>
+                      <span className="min-w-0 flex-[1_1_150px] overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-[color:var(--text-2)] lg:text-search">{row.corp_name}</span>
+                      <span className="basis-full text-[10.5px] text-muted-foreground lg:text-search-meta">
                         {row.in_universe ? 'no universo' : 'fora do universo'} ·{' '}
                         {row.has_options ? 'com opções' : 'sem opções'}
                       </span>

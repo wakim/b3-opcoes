@@ -8,43 +8,54 @@ import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
 import { TickerSearch } from '../components/TickerSearch'
 import { LiquidityPanel } from '../components/LiquidityPanel'
+import { Button } from '../components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 
 export const Route = createFileRoute('/')({
   component: Hoje,
 })
 
+const headClass = 'px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head'
+
 function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: boolean }) {
   if (rows.length === 0) {
-    return <p className="chart-empty lg:text-detail">nenhum papel nesta seção do recorte</p>
+    return <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhum papel nesta seção do recorte</p>
   }
   return (
     <div
-      className="table-wrap table-wrap--scroll"
+      className="table-wrap table-wrap--scroll min-w-0 max-w-full"
       role="region"
       aria-label={withOptions ? 'Papéis com opções' : 'Papéis sem opções'}
       tabIndex={0}
     >
-      <table className="screen-table lg:text-table lg:leading-table">
-        <thead>
-          <tr>
-            <th className="lg:text-table-head">Papel</th>
-            <th className="lg:text-table-head">Fechamento</th>
+      <Table contained={false} className="screen-table lg:text-table lg:leading-table">
+        <TableHeader>
+          <TableRow>
+            <TableHead scope="col" className={headClass}>Papel</TableHead>
+            <TableHead scope="col" className={`text-right ${headClass}`}>Fechamento</TableHead>
             {withOptions && (
               <>
-                <th className="lg:text-table-head">Volatilidade implícita 30d</th>
-                <th className="lg:text-table-head" title="VRP = volatilidade implícita − realizada">Prêmio de volatilidade</th>
-                <th className="lg:text-table-head">Séries líquidas</th>
-                <th className="lg:text-table-head">Vencimentos</th>
+                <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita 30d</TableHead>
+                <TableHead scope="col" title="VRP = volatilidade implícita − realizada" className={`text-right ${headClass}`}>Prêmio de volatilidade</TableHead>
+                <TableHead scope="col" className={`text-right ${headClass}`}>Séries líquidas</TableHead>
+                <TableHead scope="col" className={`text-right ${headClass}`}>Vencimentos</TableHead>
               </>
             )}
-            <th className="lg:text-table-head">Situação</th>
-          </tr>
-        </thead>
-        <tbody>
+            <TableHead scope="col" className={`text-right ${headClass}`}>Situação</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <tr key={row.underlying}>
-              <td>
+            <TableRow key={row.underlying}>
+              <TableCell className="px-[8px] py-[10px]">
                 {row.status === 'ok' ? (
                   <Link className="ticker-link lg:text-table" to="/t/$ticker" params={{ ticker: row.underlying }}>
                     {row.underlying}
@@ -52,32 +63,32 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
                 ) : (
                   row.underlying
                 )}
-              </td>
-              <td>{brl(row.spot_brl)}</td>
+              </TableCell>
+              <TableCell className="px-[8px] py-[10px]">{brl(row.spot_brl)}</TableCell>
               {withOptions && (
                 <>
-                  <td>{fmt(row.iv_atm_30d)}</td>
-                  <td>
+                  <TableCell className="px-[8px] py-[10px]">{fmt(row.iv_atm_30d)}</TableCell>
+                  <TableCell className="px-[8px] py-[10px]">
                     {fmt(row.vrp)}
                     {row.vrp != null && row.flags.includes('rv_shock_day') && (
                       <span
-                        className="shock-mark"
+                        className="ml-[3px] cursor-help text-muted-foreground"
                         title={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}
                         aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
                       >
                         †
                       </span>
                     )}
-                  </td>
-                  <td>{row.n_liquid_series}</td>
-                  <td>{row.n_expiries}</td>
+                  </TableCell>
+                  <TableCell className="px-[8px] py-[10px]">{row.n_liquid_series}</TableCell>
+                  <TableCell className="px-[8px] py-[10px]">{row.n_expiries}</TableCell>
                 </>
               )}
-              <td className="quiet">{row.exclusion ?? 'ok'}</td>
-            </tr>
+              <TableCell className="text-[color:var(--text-3)] px-[8px] py-[10px]">{row.exclusion ?? 'ok'}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }
@@ -99,8 +110,8 @@ function Hoje() {
 
   return (
     <>
-      <h1 className="screen-title lg:text-screen-title lg:leading-title">Hoje</h1>
-      <p className="lede lg:text-lede lg:leading-body">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
+      <h1 className="mb-[16px] mt-[4px] text-[28px] font-medium leading-normal tracking-[-0.02em] lg:text-screen-title lg:leading-title">Hoje</h1>
+      <p className="mb-[16px] text-[12.5px] text-[color:var(--text-2)] lg:text-lede lg:leading-body">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
 
       <TickerSearch />
 
@@ -125,7 +136,7 @@ function Hoje() {
       </MetricGrid>
 
       {summary.rv_shock_count > 0 && (
-        <p className="notice lg:text-label" role="status">
+        <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
           Em {summary.rv_shock_count} de {summary.ok} papéis com métrica, um único pregão responde
           por metade ou mais da oscilação dos últimos 30 pregões
           {summary.rv_shock_dates.length > 0 && (
@@ -133,28 +144,30 @@ function Hoje() {
           )}
           . Nesses papéis (marcados com †) a volatilidade realizada e o prêmio de volatilidade
           refletem esse dia: o número é real, mas não descreve o regime típico.{' '}
-          <button
+          <Button
             type="button"
-            className="inline-link lg:text-label"
+            variant="link"
+            size="sm"
+            className="h-[44px] justify-start rounded-none px-0 font-normal whitespace-normal text-foreground underline underline-offset-2 focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label"
             onClick={() => openMetric('rv_shock_share_pct', 'Pregão dominante na RV', `${summary.rv_shock_count} papéis`)}
           >
             O que é isso
-          </button>
+          </Button>
         </p>
       )}
 
       <LiquidityPanel rows={rows} />
 
-      <section className="papers-section">
-        <h2 className="block-title lg:text-block-title lg:leading-title">
-          Com opções <span className="block-count lg:text-label">{withOptions.length} papéis</span>
+      <section className="min-w-0 max-w-full">
+        <h2 className="mb-[8px] mt-[24px] text-[13px] font-medium lg:text-block-title lg:leading-title">
+          Com opções <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{withOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withOptions} withOptions />
       </section>
 
-      <section className="papers-section">
-        <h2 className="block-title lg:text-block-title lg:leading-title">
-          Sem opções <span className="block-count lg:text-label">{withoutOptions.length} papéis</span>
+      <section className="mt-[8px] min-w-0 max-w-full">
+        <h2 className="mb-[8px] mt-[24px] text-[13px] font-medium lg:text-block-title lg:leading-title">
+          Sem opções <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{withoutOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withoutOptions} withOptions={false} />
       </section>

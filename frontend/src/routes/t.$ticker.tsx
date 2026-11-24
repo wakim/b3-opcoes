@@ -11,6 +11,16 @@ import { Chain } from '../components/Chain'
 import { MetricModal } from '../components/MetricModal'
 import { StructureBuilder, type BuilderLeg } from '../components/StructureBuilder'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
+import { Button } from '../components/ui/button'
+import { NativeSelect } from '../components/ui/native-select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table'
 
 export const Route = createFileRoute('/t/$ticker')({
   component: TickerPage,
@@ -86,11 +96,11 @@ function TickerPage() {
 
   return (
     <>
-      <Link className="back lg:text-label" to="/">
+      <Link className="mb-[12px] inline-flex min-h-[44px] items-center font-mono text-[12px] text-[color:var(--text-2)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label" to="/">
         <span aria-hidden="true">‹</span> Hoje
       </Link>
-      <h1 className="screen-title lg:text-screen-title lg:leading-title">{ticker}</h1>
-      <p className="quiet-line lg:text-label">
+      <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{ticker}</h1>
+      <p className="mb-[16px] font-mono text-[11px] text-muted-foreground lg:text-label">
         {data.counts.term} vencimentos · {data.counts.smile}{' '}
         <abbr title="preços de exercício">strikes</abbr> · {data.counts.history} dias de histórico
       </p>
@@ -183,7 +193,7 @@ function TickerPage() {
       </MetricGrid>
 
       {summary?.flags.includes('rv_shock_day') && (
-        <p className="notice lg:text-label" role="status">
+        <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
           {sharePct(summary.rv_shock_share_pct)} de tudo o que {ticker} oscilou nos últimos 30
           pregões veio de um só dia ({dateBr(summary.rv_shock_date)}). A volatilidade realizada, o
           prêmio de volatilidade e os desvios-padrão do prêmio refletem esse dia: o número é real,
@@ -192,10 +202,10 @@ function TickerPage() {
       )}
 
       {data.notes.map((note) => (
-        <p className="note lg:text-label" key={note}>{note}</p>
+        <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label" key={note}>{note}</p>
       ))}
 
-      <h2 className="block-title lg:text-block-title lg:leading-title">Volatilidade implícita por vencimento</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita por vencimento</h2>
       {withIv.length >= 2 ? (
         <LineChart
           labels={termWindow.map((point) => point.maturity.slice(5))}
@@ -219,27 +229,27 @@ function TickerPage() {
           caption={`Volatilidade implícita em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''} · eixo x proporcional ao tempo`}
         />
       ) : (
-        <p className="chart-empty lg:text-detail">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
+        <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
       )}
       {withIv.length > 0 && (
-        <div className="term-table-block">
-          <p className="term-table__title lg:text-label">
-            Vencimentos com IV <span className="block-count lg:text-label">{withIv.length}</span>
+        <div className="mt-[8px]">
+          <p className="mt-[12px] mb-[4px] text-[11px] text-[color:var(--text-2)] lg:text-label">
+            Vencimentos com IV <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{withIv.length}</span>
           </p>
           <TermTable rows={withIv} />
-          <p className="note lg:text-label">
+          <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">
             IV é a do strike de |Δ| mais próximo de 0,5; Líquidas = séries líquidas no vencimento.
           </p>
         </div>
       )}
       {withoutIv.length > 0 && (
-        <details className="chart-data">
-          <summary className="lg:text-label">Ver os {withoutIv.length} vencimentos sem IV</summary>
-          <TermTable rows={withoutIv} />
+        <details className="mt-[6px]">
+          <summary className="flex min-h-[44px] cursor-pointer items-center text-[11.5px] text-[color:var(--text-2)] marker:text-muted-foreground lg:text-label">Ver os {withoutIv.length} vencimentos sem IV</summary>
+          <TermTable rows={withoutIv} className="mt-[4px] mb-[8px]" />
         </details>
       )}
 
-      <h2 className="block-title lg:text-block-title lg:leading-title">Volatilidade implícita vs realizada</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita vs realizada</h2>
       <LineChart
         compact
         labels={history.map((point) => point.date.slice(5))}
@@ -254,20 +264,22 @@ function TickerPage() {
         showPoints={false}
       />
 
-      <h2 className="block-title lg:text-block-title lg:leading-title">Vencimento</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Vencimento</h2>
       {term.length > 0 && (
-        <div className="maturity-picker" role="group" aria-label="Vencimento">
-          <button
+        <div className="mb-[8px] flex items-stretch gap-[6px]" role="group" aria-label="Vencimento">
+          <Button
             type="button"
-            className="maturity-picker__step lg:text-metric"
+            variant="ghost"
+            size="icon"
+            className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[18px] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
             aria-label="Vencimento anterior"
             disabled={maturityIndex <= 0}
             onClick={() => stepMaturity(-1)}
           >
             ‹
-          </button>
-          <select
-            className="maturity-picker__select lg:text-control"
+          </Button>
+          <NativeSelect
+            className="min-w-0 flex-1 border-border bg-card px-[10px] py-[8px] font-mono text-[12px] tabular-nums text-foreground dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control"
             aria-label="Escolher vencimento"
             value={activeMaturity ?? ''}
             onChange={(event) => setPickedMaturity(event.target.value)}
@@ -278,41 +290,47 @@ function TickerPage() {
                 {point.iv_atm == null ? ' · sem IV' : ` · IV ${fmt(point.iv_atm, 1)}`}
               </option>
             ))}
-          </select>
-          <button
+          </NativeSelect>
+          <Button
             type="button"
-            className="maturity-picker__step lg:text-metric"
+            variant="ghost"
+            size="icon"
+            className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[18px] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
             aria-label="Próximo vencimento"
             disabled={maturityIndex >= term.length - 1}
             onClick={() => stepMaturity(1)}
           >
             ›
-          </button>
+          </Button>
         </div>
       )}
 
-      <div className="block-head">
-        <h2 className="block-title lg:text-block-title lg:leading-title">Cadeia de opções</h2>
-        <div className="selector" role="group" aria-label="Filtro da cadeia">
-          <button
+      <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
+        <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Cadeia de opções</h2>
+        <div className="flex flex-wrap gap-[4px]" role="group" aria-label="Filtro da cadeia">
+          <Button
             type="button"
-            className={`${filter === 'strict' ? 'active' : ''} lg:text-control`.trim()}
+            variant="ghost"
+            size="sm"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             aria-pressed={filter === 'strict'}
             onClick={() => setFilter('strict')}
           >
             Líquidas
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={`${filter === 'all' ? 'active' : ''} lg:text-control`.trim()}
+            variant="ghost"
+            size="sm"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             aria-pressed={filter === 'all'}
             onClick={() => setFilter('all')}
           >
             Todas
-          </button>
+          </Button>
         </div>
       </div>
-      <p className="chain-note lg:text-label lg:leading-body">
+      <p className="mb-[8px] text-[11px] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
         Put = opção de venda · Call = opção de compra · Strike = preço de exercício · números em
         volatilidade implícita ao ano.
       </p>
@@ -321,7 +339,7 @@ function TickerPage() {
       {chain.data && (
         <>
           {chain.data.meta?.truncated && (
-            <p className="notice lg:text-label" role="status">
+            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
               A cadeia foi cortada em {chain.data.meta.returned} de {chain.data.meta.total} linhas.
             </p>
           )}
@@ -343,27 +361,27 @@ function TickerPage() {
 }
 
 /** Tabela curta dos vencimentos (IV do ATM e séries líquidas) — sem forward. */
-function TermTable({ rows }: { rows: Term[] }) {
+function TermTable({ rows, className }: { rows: Term[]; className?: string }) {
   return (
-    <div className="table-wrap">
-      <table className="screen-table term-table lg:text-table lg:leading-table">
-        <thead>
-          <tr>
-            <th className="lg:text-table-head">Vencimento</th>
-            <th className="lg:text-table-head" title="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</th>
-            <th className="lg:text-table-head" title="Séries líquidas no vencimento">Líquidas</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className={`overflow-x-auto rounded-[6px] border border-border${className ? ` ${className}` : ''}`}>
+      <Table contained={false} className="screen-table max-w-[420px] [&_:is(th,td):first-child]:static [&_:is(th,td):first-child]:z-auto [&_:is(th,td):first-child]:border-r-0 lg:text-table lg:leading-table">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Vencimento</TableHead>
+            <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" title="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</TableHead>
+            <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" title="Séries líquidas no vencimento">Líquidas</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((point) => (
-            <tr key={point.maturity}>
-              <td className="num">{dateBr(point.maturity)}</td>
-              <td>{fmt(point.iv_atm)}</td>
-              <td>{point.n_liquid_strikes}</td>
-            </tr>
+            <TableRow key={point.maturity}>
+              <TableCell className="px-[8px] py-[10px] font-mono tabular-nums">{dateBr(point.maturity)}</TableCell>
+              <TableCell className="px-[8px] py-[10px]">{fmt(point.iv_atm)}</TableCell>
+              <TableCell className="px-[8px] py-[10px]">{point.n_liquid_strikes}</TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

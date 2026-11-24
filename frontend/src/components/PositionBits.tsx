@@ -71,9 +71,9 @@ export function pnlTone(value: number | null): string | undefined {
 
 export function PositionFlags({ flags, emptyLabel = 'sem flags' }: { flags: string[]; emptyLabel?: string }) {
   const unique = [...new Set(flags)]
-  if (unique.length === 0) return <span className="quiet lg:text-label">{emptyLabel}</span>
+  if (unique.length === 0) return <span className="quiet min-w-0 lg:text-label">{emptyLabel}</span>
   return (
-    <span className="position-flags lg:text-label">
+    <span className="position-flags min-w-0 lg:text-label">
       {unique.map((flag) => (
         <span key={flag} title={flag}>
           {FLAG_LABELS[flag] ?? flag}

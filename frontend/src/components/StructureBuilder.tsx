@@ -12,6 +12,18 @@ import { brl, fmt } from '../lib/format'
 import { ErrorState } from './State'
 import { Metric, MetricGrid } from './Metric'
 import { PayoffChart } from './PayoffChart'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { NativeSelect } from './ui/native-select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from './ui/table'
+import { builderButton, builderField, builderPrimary, builderRemove } from '../lib/controls'
 
 export interface BuilderLeg extends StructureLegInput {
   /** Chave local da lista; não vai para a API. */
@@ -83,125 +95,129 @@ export function StructureBuilder({
     : false
 
   return (
-    <section className="builder" aria-labelledby="builder-title">
-      <div className="block-head">
-        <h2 className="block-title lg:text-block-title lg:leading-title" id="builder-title">
+    <section className="mt-[28px] border-t border-border pt-[4px]" aria-labelledby="builder-title">
+      <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
+        <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title" id="builder-title">
           Montar estrutura
         </h2>
-        <span className="block-count lg:text-label">
+        <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">
           {legs.length}/{MAX_LEGS} pernas
         </span>
       </div>
-      <p className="chain-note lg:text-label lg:leading-body">
+      <p className="mb-[8px] text-[11px] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
         Calculadora de payoff. 100 ações = 1 contrato; a quantidade é em ações e não é multiplicada
         por 100. Nada é gravado.
       </p>
 
       {legs.length === 0 ? (
-        <p className="chart-empty lg:text-detail">
+        <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">
           Expanda uma linha da cadeia e use <strong>Comprar</strong> ou <strong>Vender</strong>, ou
           adicione a ação abaixo.
         </p>
       ) : (
-        <ul className="builder__legs">
-          {legs.map((leg) => (
-            <li className="builder__leg" key={leg.id}>
-              <span className="builder__leg-id">
-                <span className="builder__leg-ticker num">{leg.ticker}</span>
-                <span className="quiet lg:text-label">
+        <ul className="mb-[8px] overflow-hidden rounded-[6px] border border-border">
+          {legs.map((leg, index) => (
+            <li className={`flex flex-wrap items-center gap-x-[12px] gap-y-[8px] bg-card px-[10px] py-[8px]${index > 0 ? ' border-t border-border' : ''}`} key={leg.id}>
+              <span className="flex min-w-[92px] flex-[1_1_120px] flex-col">
+                <span className="font-mono tabular-nums text-primary">{leg.ticker}</span>
+                <span className="text-muted-foreground lg:text-label">
                   {leg.kind === 'stock' ? 'ação' : 'opção'} · {SIDE_LABEL[leg.side]}
                 </span>
               </span>
-              <label className="builder__qty lg:text-label">
-                <span className="quiet lg:text-label">ações</span>
-                <input
+              <label className="inline-flex items-center gap-[6px] text-[11px] text-muted-foreground lg:text-label">
+                <span className="text-muted-foreground lg:text-label">ações</span>
+                <Input
                   type="number"
                   inputMode="numeric"
                   min={1}
                   step={1}
                   value={leg.quantity}
-                  className="lg:text-control"
+                  className={`w-[96px] min-w-[96px] max-w-[96px] ${builderField}`}
                   aria-label={`Quantidade de ações de ${leg.ticker}`}
                   onChange={(event) => setQuantity(leg.id, event.target.value)}
                 />
               </label>
-              <button
+              <Button
                 type="button"
-                className="builder__remove lg:text-label"
+                variant="link"
+                size="sm"
+                className={builderRemove}
                 aria-label={`Remover ${leg.ticker}`}
                 onClick={() => removeLeg(leg.id)}
               >
                 remover
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
 
-      <div className="builder__actions">
-        <div className="builder__stock" role="group" aria-label="Perna de ação">
-          <label className="builder__field">
-            <span className="builder__field-label lg:text-label">Perna de ação</span>
-            <select
-              className="lg:text-control"
+      <div className="mt-[8px] mb-[12px] grid gap-[12px] min-[720px]:grid-cols-[minmax(0,1fr)_auto] min-[720px]:items-end">
+        <div className="grid grid-cols-[minmax(0,1fr)_104px] items-end gap-[8px] min-[720px]:grid-cols-[156px_104px_auto]" role="group" aria-label="Perna de ação">
+          <label className="flex min-w-0 flex-col gap-[4px]">
+            <span className="text-[11px] text-muted-foreground lg:text-label">Perna de ação</span>
+            <NativeSelect
+              className={builderField}
               value={stockSide}
               aria-label="Lado da ação"
               onChange={(event) => setStockSide(event.target.value as LegSide)}
             >
               <option value="long">comprada</option>
               <option value="short">vendida</option>
-            </select>
+            </NativeSelect>
           </label>
-          <label className="builder__field">
-            <span className="builder__field-label lg:text-label">Ações</span>
-            <input
+          <label className="flex min-w-0 flex-col gap-[4px]">
+            <span className="text-[11px] text-muted-foreground lg:text-label">Ações</span>
+            <Input
               type="number"
               inputMode="numeric"
               min={1}
               step={1}
-              className="lg:text-control"
+              className={builderField}
               value={stockQuantity}
               aria-label="Quantidade de ações da ação"
               onChange={(event) => setStockQuantity(event.target.value)}
             />
           </label>
-          <button
+          <Button
             type="button"
-            className="builder__button builder__stock-add lg:text-control"
+            variant="outline"
+            className={`col-span-full w-full min-[720px]:col-auto min-[720px]:w-auto ${builderButton}`}
             onClick={addStock}
             disabled={legs.length >= MAX_LEGS}
           >
             Adicionar ação
-          </button>
+          </Button>
         </div>
-        <div className="builder__run">
-          <button
+        <div className="flex flex-wrap items-center gap-[8px] min-[720px]:justify-end">
+          <Button
             type="button"
-            className="builder__button builder__button--primary lg:text-control"
+            className={builderPrimary}
             onClick={() => calc.mutate()}
             disabled={legs.length === 0 || calc.isPending}
           >
             {calc.isPending ? 'calculando…' : `Calcular (${legs.length})`}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="builder__button lg:text-control"
+            variant="outline"
+            className={builderButton}
             onClick={() => setLegs([])}
             disabled={legs.length === 0}
           >
             Limpar
-          </button>
+          </Button>
         </div>
       </div>
 
       {legs.length >= MAX_LEGS && (
-        <p className="note lg:text-label">Limite de {MAX_LEGS} pernas atingido (o backend recusa mais).</p>
+        <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">Limite de {MAX_LEGS} pernas atingido (o backend recusa mais).</p>
       )}
 
       {calc.isError && <ErrorState error={calc.error} title="Estrutura não avaliada" />}
 
       {result && (
-        <div className="builder__result">
+        <div className="mt-[8px]">
           <MetricGrid>
             <Metric
               label="Prêmio líquido"
@@ -228,19 +244,19 @@ export function StructureBuilder({
             <Metric label="Vega agregado" value={brl(result.vega_brl)} />
           </MetricGrid>
 
-          <p className="note lg:text-label">
+          <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">
             {result.maturity ? `Vencimento ${result.maturity} · ` : ''}
             estrutura {result.structure_version} · sessão {calc.data?.as_of_session ?? '—'}
             {result.forward_brl != null && ` · forward ${brl(result.forward_brl)}`}
           </p>
 
           {result.capital_over && (
-            <p className="notice lg:text-label" role="status">
+            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
               O capital comprometido passa do capital informado.
             </p>
           )}
           {result.flags.length > 0 && (
-            <p className="note lg:text-label">flags: {result.flags.join(' · ')}</p>
+            <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">flags: {result.flags.join(' · ')}</p>
           )}
 
           <PayoffChart
@@ -250,7 +266,7 @@ export function StructureBuilder({
           />
 
           {scenariosUnavailable ? (
-            <p className="notice lg:text-label" role="status">
+            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
               Cenários indisponíveis
               {result.flags.includes('no_iv') && ' (série sem volatilidade implícita)'}
               {result.flags.includes('no_rates') && ' (curva de juros ausente)'}
@@ -274,45 +290,45 @@ function ScenariosTable({
 }) {
   const zeroDay = scenarios.filter((row) => row.days_forward === 0)
   if (zeroDay.length === 0) {
-    return <p className="note lg:text-label">sem cenários no dia 0</p>
+    return <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">sem cenários no dia 0</p>
   }
   const spots = [...new Set(zeroDay.map((row) => row.spot_brl))].sort((a, b) => a - b)
   const shifts = [...new Set(zeroDay.map((row) => row.iv_shift_pts))].sort((a, b) => a - b)
 
   return (
-    <div className="builder__scenarios">
-      <p className="builder__scenarios-title lg:text-label">Cenários no dia 0 (spot e choque de IV do backend)</p>
-      <div className="table-wrap">
-        <table className="screen-table lg:text-table lg:leading-table">
-          <thead>
-            <tr>
-              <th className="lg:text-table-head">Preço</th>
+    <div className="mt-[12px]">
+      <p className="mt-[8px] mb-[6px] text-[11px] text-muted-foreground lg:text-label">Cenários no dia 0 (spot e choque de IV do backend)</p>
+      <div className="overflow-x-auto rounded-[6px] border border-border">
+        <Table contained={false} className="screen-table lg:text-table lg:leading-table">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Preço</TableHead>
               {shifts.map((shift) => (
-                <th key={shift} className="lg:text-table-head">
+                <TableHead key={shift} className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">
                   IV {shift > 0 ? '+' : ''}
                   {fmt(shift, 0)}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {spots.map((spot) => (
-              <tr key={spot}>
-                <td>{brl(spot)}</td>
+              <TableRow key={spot}>
+                <TableCell className="px-[8px] py-[10px]">{brl(spot)}</TableCell>
                 {shifts.map((shift) => {
                   const row = zeroDay.find(
                     (item) => item.spot_brl === spot && item.iv_shift_pts === shift,
                   )
                   return (
-                    <td key={shift} className={row && row.pnl_brl < 0 ? 'quiet' : undefined}>
+                    <TableCell key={shift} className={row && row.pnl_brl < 0 ? 'px-[8px] py-[10px] text-muted-foreground' : 'px-[8px] py-[10px]'}>
                       {row ? brl(row.pnl_brl) : '—'}
-                    </td>
+                    </TableCell>
                   )
                 })}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </div>
   )

@@ -18,16 +18,17 @@ export interface MetricProps {
 
 export function Metric({ label, value, note, onOpen, emphasis = false, hint }: MetricProps) {
   const classes = [
-    'metric',
-    emphasis ? 'metric--emphasis' : '',
-    onOpen ? 'metric--tappable' : '',
+    'block min-h-[44px] bg-card px-[12px] py-[10px] text-left text-foreground',
+    onOpen
+      ? 'cursor-pointer transition-[background-color] duration-[120ms] ease-[ease] hover:bg-secondary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary'
+      : '',
   ].filter(Boolean).join(' ')
 
   const content = (
     <>
-      <span className="metric__label lg:text-label">{label}</span>
-      <span className={`metric__value lg:leading-title ${emphasis ? 'lg:text-hero' : 'lg:text-metric'}`}>{value}</span>
-      {note && <span className="metric__note lg:text-label">{note}</span>}
+      <span className={`mb-[4px] block text-[11px] text-[var(--text-2)] lg:text-label ${onOpen ? 'border-b border-dotted border-input' : ''}`}>{label}</span>
+      <span className={`block text-right font-mono tabular-nums text-foreground lg:leading-title ${emphasis ? 'text-[22px] lg:text-hero' : 'text-[16px] lg:text-metric'}`}>{value}</span>
+      {note && <span className="mt-[8px] block lg:text-label">{note}</span>}
     </>
   )
 
@@ -77,5 +78,9 @@ export function GlossaryMetric({
 }
 
 export function MetricGrid({ children }: { children: ReactNode }) {
-  return <div className="metric-grid">{children}</div>
+  return (
+    <div className="mb-[16px] grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[1px] overflow-hidden rounded-[6px] border border-border bg-border sm:grid-cols-[repeat(3,minmax(0,1fr))] [.position-card_&]:mb-[12px]">
+      {children}
+    </div>
+  )
 }

@@ -8,6 +8,9 @@ import { useMemo, useState } from 'react'
 import { brl, fmt } from '../lib/format'
 import type { ChainData, ChainRow } from '../lib/api'
 import type { OpenMetric } from './metricKeys'
+import { Button } from './ui/button'
+import { Input } from './ui/input'
+import { builderButton, builderField } from '../lib/controls'
 
 type Side = { put?: ChainRow; call?: ChainRow }
 type StrikePair = Side & { strike: number }
@@ -51,22 +54,22 @@ function DetailRow({
 }) {
   const content = (
     <>
-      <span className="chain-detail__key">{label}</span>
-      <span className="num">{value}</span>
+      <span className={field && onMetric ? 'border-b border-dotted border-input text-[color:var(--text-2)]' : 'text-[color:var(--text-2)]'}>{label}</span>
+      <span className="font-mono tabular-nums">{value}</span>
     </>
   )
   if (field && onMetric) {
     return (
       <button
         type="button"
-        className="chain-detail__row chain-detail__row--button lg:text-detail"
+        className="flex min-h-[44px] w-full cursor-pointer items-center justify-between gap-[8px] border-b border-border bg-transparent py-[3px] text-left text-[11px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-detail"
         onClick={() => onMetric(field, label, value)}
       >
         {content}
       </button>
     )
   }
-  return <div className="chain-detail__row lg:text-detail">{content}</div>
+  return <div className="flex min-h-[28px] w-full items-center justify-between gap-[8px] border-b border-border py-[3px] text-left text-[11px] text-foreground lg:text-detail">{content}</div>
 }
 
 function SideDetail({
@@ -83,9 +86,9 @@ function SideDetail({
   const [quantity, setQuantity] = useState('100')
   if (!row) {
     return (
-      <div className="chain-detail__side">
-        <div className="chain-detail__label lg:text-label">{title}</div>
-        <div className="chain-detail__empty lg:text-detail">sem série neste lado</div>
+      <div>
+        <div className="mb-[4px] text-[11px] text-[color:var(--text-2)] lg:text-label">{title}</div>
+        <div className="mt-[8px] text-[10.5px] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">sem série neste lado</div>
       </div>
     )
   }
@@ -95,9 +98,9 @@ function SideDetail({
   const parsed = Number.parseInt(quantity, 10)
   const canAdd = Number.isInteger(parsed) && parsed > 0
   return (
-    <div className="chain-detail__side">
-      <div className="chain-detail__label lg:text-label">
-        {title} <span className="chain-detail__ticker">{row.ticker}</span>
+    <div>
+      <div className="mb-[4px] text-[11px] text-[color:var(--text-2)] lg:text-label">
+        {title} <span className="font-mono text-muted-foreground">{row.ticker}</span>
       </div>
       <DetailRow label="Volatilidade implícita" value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
       <DetailRow
@@ -114,40 +117,44 @@ function SideDetail({
         onMetric={onMetric}
       />
       <DetailRow label="Ofertas (bid/ask)" value={book} field="bid_brl" onMetric={onMetric} />
-      <div className="chain-detail__flags lg:text-detail">
+      <div className="mt-[8px] text-[10.5px] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">
         {row.flags.length > 0 ? row.flags.join(' · ') : 'sem flags'}
       </div>
       {onAddLeg && (
-        <div className="chain-add">
-          <label className="builder__qty lg:text-label">
-            <span className="quiet">ações</span>
-            <input
+        <div className="mt-[10px] flex flex-wrap items-center gap-[8px] border-t border-border pt-[10px]">
+          <label className="inline-flex items-center gap-[6px] text-[11px] text-muted-foreground lg:text-label">
+            <span className="text-muted-foreground">ações</span>
+            <Input
               type="number"
               inputMode="numeric"
               min={1}
               step={1}
-              className="lg:text-control"
+              className={`w-[96px] min-w-[96px] max-w-[96px] ${builderField}`}
               value={quantity}
               aria-label={`Quantidade de ações para ${row.ticker}`}
               onChange={(event) => setQuantity(event.target.value)}
             />
           </label>
-          <button
+          <Button
             type="button"
-            className="builder__button lg:text-control"
+            variant="outline"
+            size="sm"
+            className={builderButton}
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'long', parsed)}
           >
             Comprar
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="builder__button lg:text-control"
+            variant="outline"
+            size="sm"
+            className={builderButton}
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'short', parsed)}
           >
             Vender
-          </button>
+          </Button>
         </div>
       )}
     </div>
@@ -170,39 +177,42 @@ export function Chain({
   const groups = useMemo(() => group(rows), [rows])
 
   if (groups.length === 0) {
-    return <p className="chain-empty lg:text-detail">nenhuma série neste recorte</p>
+    return <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhuma série neste recorte</p>
   }
 
   return (
-    <div className="chain">
+    <div>
       {groups.map((groupRow) => (
-        <section className="chain-group" key={groupRow.maturity}>
-          <header className="chain-group__head lg:text-label">
+        <section className="mb-[20px]" key={groupRow.maturity}>
+          <header className="flex justify-between gap-[8px] rounded-t-[4px] border border-b-0 border-border bg-muted px-[12px] py-[8px] font-mono text-[11px] text-[color:var(--text-2)] lg:text-label">
             <span>{groupRow.maturity}</span>
-            <span className="num">{groupRow.strikes.length} strikes</span>
+            <span className="font-mono tabular-nums">{groupRow.strikes.length} strikes</span>
           </header>
-          <div className="chain-head lg:text-label" aria-hidden="true">
+          <div
+            className="grid grid-cols-[1fr_1fr_1fr] gap-[8px] border border-b-0 border-border px-[12px] py-[8px] text-[11px] text-muted-foreground [&>span:last-child]:text-right [&>span:nth-child(2)]:text-center lg:text-label"
+            aria-hidden="true"
+          >
             <span>Put</span>
             <span>Preço de exercício</span>
             <span>Call</span>
           </div>
-          {groupRow.strikes.map((pair) => {
+          {groupRow.strikes.map((pair, index) => {
             const id = `${groupRow.maturity}:${pair.strike.toFixed(2)}`
             const expanded = open === id
             return (
-              <div className="chain-item" key={id}>
+              <div key={id}>
                 <button
                   type="button"
-                  className="chain-row lg:text-chain lg:leading-table"
+                  className={`grid min-h-[44px] w-full cursor-pointer grid-cols-[1fr_1fr_1fr] gap-[8px] border border-border bg-card px-[12px] py-[8px] text-left text-[12px] tabular-nums text-foreground transition-[background-color] duration-[120ms] ease-[ease] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary aria-expanded:bg-muted [&>span:last-child]:text-right [&>span:nth-child(2)]:text-center lg:text-chain lg:leading-table${index > 0 ? ' border-t-0' : ''}`}
                   aria-expanded={expanded}
                   onClick={() => setOpen(expanded ? null : id)}
                 >
-                  <span className="num">{fmt(pair.put?.iv_pct, 1)}</span>
-                  <span className="num chain-row__strike">{fmt(pair.strike)}</span>
-                  <span className="num">{fmt(pair.call?.iv_pct, 1)}</span>
+                  <span className="font-mono tabular-nums">{fmt(pair.put?.iv_pct, 1)}</span>
+                  <span className="font-mono font-medium tabular-nums">{fmt(pair.strike)}</span>
+                  <span className="font-mono tabular-nums">{fmt(pair.call?.iv_pct, 1)}</span>
                 </button>
                 {expanded && (
-                  <div className="chain-detail">
+                  <div className="grid grid-cols-2 gap-[12px] rounded-b-[6px] border border-t-0 border-border bg-card p-[12px]">
                     <SideDetail title="Put" row={pair.put} onMetric={onMetric} onAddLeg={onAddLeg} />
                     <SideDetail title="Call" row={pair.call} onMetric={onMetric} onAddLeg={onAddLeg} />
                   </div>

@@ -61,9 +61,11 @@ function AppShell() {
   const shownSession = offline ? knownSession : onlineSession
 
   return (
-    <div className="app">
-      <header className="appbar">
-        <span className="wordmark lg:text-block-title">Opções B3</span>
+    <div className="flex min-h-dvh flex-col overflow-x-clip">
+      <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-[12px] gap-y-[4px] border-b border-border bg-background px-[16px] py-[12px]">
+        <span className="shrink-0 text-[16px] font-medium tracking-normal lg:text-block-title">
+          Opções B3
+        </span>
         <Stamp
           session={shownSession}
           loading={health.isLoading && !offline}
@@ -71,19 +73,22 @@ function AppShell() {
           offline={offline}
         />
       </header>
-      <main>
+      <main className="mx-auto w-full max-w-[900px] flex-1 px-[16px] pb-[88px] pt-[16px]">
         <OfflineBanner offline={offline} session={knownSession} />
         {health.isError && !offline && (
           <ErrorState error={health.error} title="Saúde do lake indisponível" />
         )}
         <Outlet />
       </main>
-      <nav className="nav" aria-label="Navegação principal">
+      <nav
+        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-[repeat(4,1fr)] border-t border-border bg-card"
+        aria-label="Navegação principal"
+      >
         {NAV.map((item) => (
           <Link
             key={item.to}
             to={item.to}
-            className={`${pathname === item.to ? 'active' : ''} lg:text-label`.trim()}
+            className="flex min-h-[48px] flex-col items-center justify-center gap-[4px] text-[11px] text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:bg-secondary aria-[current=page]:text-primary lg:text-label"
             aria-current={pathname === item.to ? 'page' : undefined}
           >
             {item.label}

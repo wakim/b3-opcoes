@@ -44,7 +44,11 @@ function EntryDetail({ entryKey }: { entryKey: string }): ReactNode {
       {plain(detail.data.data.body_md)
         .split(/\n\s*\n/)
         .filter((paragraph) => paragraph.trim().length > 0)
-        .map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+        .map((paragraph, index) => (
+          <p key={index} className="mb-[12px] text-[var(--text-2)] last:mb-0 lg:text-body lg:leading-body">
+            {paragraph}
+          </p>
+        ))}
     </>
   )
 }
@@ -63,22 +67,22 @@ function EntryRow({
   return (
     <>
       <button
-        className="glossary-item lg:text-body lg:leading-body"
+        className="flex min-h-[44px] w-full justify-between gap-[10px] rounded-[4px] border border-border bg-card px-[14px] py-[12px] text-left text-foreground aria-[expanded=true]:rounded-b-none aria-[expanded=true]:bg-secondary lg:text-body lg:leading-body"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => onToggle(entry.key)}
       >
-        <span className="g-label">
+        <span className="inline-flex min-w-0 items-baseline gap-[10px]">
           <span>{entry.title}</span>
-          <span className="level lg:text-label">nível {entry.level}</span>
+          <span className="font-mono text-[11px] text-muted-foreground lg:text-label">nível {entry.level}</span>
         </span>
-        <span className="acc-sign lg:text-metric" aria-hidden="true">
+        <span className="shrink-0 font-mono text-[16px] leading-none text-muted-foreground lg:text-metric" aria-hidden="true">
           {open ? '−' : '+'}
         </span>
       </button>
       <div
         id={panelId}
-        className="glossary-panel lg:text-body lg:leading-body"
+        className="mt-[-6px] rounded-b-[4px] border-x border-b border-border bg-card p-[14px] lg:text-body lg:leading-body [&_.note]:m-0"
         role="region"
         aria-label={entry.title}
         hidden={!open}
@@ -111,12 +115,14 @@ function Aprender() {
 
   return (
     <>
-      <h1 className="screen-title lg:text-screen-title lg:leading-title">Aprender</h1>
+      <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">
+        Aprender
+      </h1>
       <p className="note lg:text-label">
         Toque num verbete para abrir a ficha. Vários podem ficar abertos.
       </p>
 
-      <div className="glossary-list">
+      <div className="flex flex-col gap-[6px]">
         {list.data.data.entries.map((entry) => (
           <EntryRow
             key={entry.key}

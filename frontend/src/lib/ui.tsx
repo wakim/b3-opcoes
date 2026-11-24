@@ -5,8 +5,8 @@ export function ErrorBox({ error }: { error: Error | null }): ReactNode {
   if (!error) return null
   const api = error instanceof ApiError ? error : null
   return (
-    <div className="error" role="alert">
-      <div className="code lg:text-label">{api?.code ?? 'erro'}</div>
+    <div className="mb-[12px] rounded-[4px] border border-destructive bg-[rgba(200,131,131,0.08)] px-[12px] py-[10px] text-foreground" role="alert">
+      <div className="font-mono text-[11px] text-destructive lg:text-label">{api?.code ?? 'erro'}</div>
       <div>{error.message}</div>
       {api?.hint && <div className="note lg:text-label">{api.hint}</div>}
     </div>

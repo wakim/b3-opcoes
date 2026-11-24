@@ -86,11 +86,11 @@ export function useConnectivity(): boolean {
 export function OfflineBanner({ offline, session }: { offline: boolean; session: string | null }) {
   if (!offline) return null
   return (
-    <p className="offline-banner lg:text-label" role="status">
+    <p className="lg:text-label" role="status">
       sem rede —{' '}
       {session ? (
         <>
-          última sessão <strong className="num">{session}</strong>
+          última sessão <strong className="num whitespace-nowrap">{session}</strong>
         </>
       ) : (
         'sessão indisponível'

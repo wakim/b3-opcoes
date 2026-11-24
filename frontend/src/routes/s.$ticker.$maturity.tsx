@@ -9,10 +9,24 @@ import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
 import { MetricModal } from '../components/MetricModal'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
+import { Button } from '../components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '../components/ui/table'
 
 export const Route = createFileRoute('/s/$ticker/$maturity')({
   component: SeriesPage,
 })
+
+const IDC = 'bg-card px-[12px] py-[10px]'
+const IDT = 'text-[11px] text-[color:var(--text-2)] lg:text-label'
+const IDD = 'mt-[4px] text-[12px] text-foreground [overflow-wrap:anywhere] lg:text-detail'
+const IDD_NUM = `${IDD} font-mono tabular-nums`
 
 function sideLabel(side: string): string {
   const code = side.trim().toUpperCase()
@@ -49,20 +63,20 @@ function SeriesPage() {
 
   return (
     <>
-      <Link className="back lg:text-label" to="/t/$ticker" params={{ ticker }}>
+      <Link className="mb-[12px] inline-flex min-h-[44px] items-center font-mono text-[12px] text-[color:var(--text-2)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label" to="/t/$ticker" params={{ ticker }}>
         <span aria-hidden="true">‹</span> {ticker}
       </Link>
-      <h1 className="screen-title lg:text-screen-title lg:leading-title">Série</h1>
+      <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">Série</h1>
 
-      <dl className="identity">
-        <div><dt className="lg:text-label">Contrato</dt><dd className="num lg:text-detail">{data.ticker}</dd></div>
-        <div><dt className="lg:text-label">Lado / estilo</dt><dd className="lg:text-detail">{sideLabel(data.side)} / {styleLabel(data.style)}</dd></div>
-        <div><dt className="lg:text-label">Preço de exercício</dt><dd className="num lg:text-detail">{brl(data.strike_brl)}</dd></div>
-        <div><dt className="lg:text-label">Vencimento</dt><dd className="num lg:text-detail">{data.maturity}</dd></div>
-        <div><dt className="lg:text-label">Perna</dt><dd className="num lg:text-detail">{data.leg_id}</dd></div>
+      <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-border bg-border">
+        <div className={IDC}><dt className={IDT}>Contrato</dt><dd className={IDD_NUM}>{data.ticker}</dd></div>
+        <div className={IDC}><dt className={IDT}>Lado / estilo</dt><dd className={IDD}>{sideLabel(data.side)} / {styleLabel(data.style)}</dd></div>
+        <div className={IDC}><dt className={IDT}>Preço de exercício</dt><dd className={IDD_NUM}>{brl(data.strike_brl)}</dd></div>
+        <div className={IDC}><dt className={IDT}>Vencimento</dt><dd className={IDD_NUM}>{data.maturity}</dd></div>
+        <div className={IDC}><dt className={IDT}>Perna</dt><dd className={IDD_NUM}>{data.leg_id}</dd></div>
       </dl>
 
-      <h2 className="block-title lg:text-block-title lg:leading-title">Último ponto · {data.last.date}</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Último ponto · {data.last.date}</h2>
       <MetricGrid>
         <Metric label="Data" value={data.last.date} />
         <GlossaryMetric
@@ -120,25 +134,29 @@ function SeriesPage() {
         />
       </MetricGrid>
 
-      <div className="block-head">
-        <h2 className="block-title lg:text-block-title lg:leading-title">Histórico</h2>
-        <div className="selector" role="group" aria-label="Série do gráfico">
-          <button
+      <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
+        <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Histórico</h2>
+        <div className="flex flex-wrap gap-[4px]" role="group" aria-label="Série do gráfico">
+          <Button
             type="button"
-            className={`${view === 'price' ? 'active' : ''} lg:text-control`.trim()}
+            variant="ghost"
+            size="sm"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             aria-pressed={view === 'price'}
             onClick={() => setView('price')}
           >
             Preço
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className={`${view === 'iv' ? 'active' : ''} lg:text-control`.trim()}
+            variant="ghost"
+            size="sm"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
             aria-pressed={view === 'iv'}
             onClick={() => setView('iv')}
           >
             Volatilidade
-          </button>
+          </Button>
         </div>
       </div>
       <LineChart
@@ -153,30 +171,30 @@ function SeriesPage() {
         ariaLabel={`Histórico de ${view === 'price' ? 'preço' : 'volatilidade implícita'} de ${data.ticker}`}
         showPoints={false}
       />
-      {data.flags.length > 0 && <p className="note lg:text-label">flags: {data.flags.join(' · ')}</p>}
+      {data.flags.length > 0 && <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">flags: {data.flags.join(' · ')}</p>}
 
-      <h2 className="block-title lg:text-block-title lg:leading-title">Últimos pregões</h2>
-      <div className="table-wrap">
-        <table className="screen-table lg:text-table lg:leading-table">
-          <thead>
-            <tr>
-              <th className="lg:text-table-head">Data</th>
-              <th className="lg:text-table-head">Fechamento</th>
-              <th className="lg:text-table-head">Volatilidade implícita</th>
-              <th className="lg:text-table-head">Delta</th>
-            </tr>
-          </thead>
-          <tbody>
+      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Últimos pregões</h2>
+      <div className="overflow-x-auto rounded-[6px] border border-border">
+        <Table contained={false} className="screen-table lg:text-table lg:leading-table">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Data</TableHead>
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">Fechamento</TableHead>
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">Volatilidade implícita</TableHead>
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">Delta</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {history.slice(-8).reverse().map((point) => (
-              <tr key={point.date}>
-                <td className="num">{point.date}</td>
-                <td>{brl(point.close_brl)}</td>
-                <td>{fmt(point.iv_pct)}</td>
-                <td>{fmt(point.delta, 3)}</td>
-              </tr>
+              <TableRow key={point.date}>
+                <TableCell className="px-[8px] py-[10px] font-mono tabular-nums">{point.date}</TableCell>
+                <TableCell className="px-[8px] py-[10px]">{brl(point.close_brl)}</TableCell>
+                <TableCell className="px-[8px] py-[10px]">{fmt(point.iv_pct)}</TableCell>
+                <TableCell className="px-[8px] py-[10px]">{fmt(point.delta, 3)}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
 
       <MetricModal target={modal} onClose={() => setModal(null)} />

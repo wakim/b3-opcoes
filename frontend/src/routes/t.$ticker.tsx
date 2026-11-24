@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { apiGet, type ChainData, type ChainRow, type Underlying } from '../lib/api'
+import { apiGet, type ChainData, type ChainRow, type Term, type Underlying } from '../lib/api'
 import { brl, dateBr, fmt, sharePct } from '../lib/format'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, MetricGrid } from '../components/Metric'
@@ -49,6 +49,14 @@ function TickerPage() {
     ?? overview.data?.data.smile_maturity
     ?? term[0]?.maturity
     ?? null
+  const maturityIndex = activeMaturity ? term.findIndex((point) => point.maturity === activeMaturity) : -1
+  const withIv = term.filter((point) => point.iv_atm != null)
+  const withoutIv = term.filter((point) => point.iv_atm == null)
+
+  function stepMaturity(delta: number) {
+    const next = term[maturityIndex + delta]
+    if (next) setPickedMaturity(next.maturity)
+  }
 
   const chain = useQuery({
     queryKey: ['chain', ticker, activeMaturity, filter],
@@ -71,7 +79,6 @@ function TickerPage() {
   const data = overview.data.data
   const summary = data.summary
   const history = data.history
-  const withIv = term.filter((point) => point.iv_atm != null)
   const firstWithIv = term.findIndex((point) => point.iv_atm != null)
   const lastWithIv = term.reduce((acc, point, index) => (point.iv_atm != null ? index : acc), -1)
   const termWindow = firstWithIv >= 0 ? term.slice(firstWithIv, lastWithIv + 1) : []
@@ -195,6 +202,7 @@ function TickerPage() {
           xValues={termWindow.map((point) => point.t)}
           xTickValues={term.map((point) => point.t)}
           dashedGap={0.12}
+          gapStyle="band"
           tipLabels={termWindow.map((point) => dateBr(point.maturity))}
           details={termWindow.map((point) =>
             `${point.n_liquid_strikes} ${point.n_liquid_strikes === 1 ? 'série líquida' : 'séries líquidas'}${
@@ -213,35 +221,21 @@ function TickerPage() {
       ) : (
         <p className="chart-empty">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
       )}
-      {term.length > 0 && (
-        <details className="chart-data">
-          <summary>Ver os {term.length} vencimentos e a volatilidade</summary>
-          <div className="table-wrap">
-            <table className="screen-table">
-              <thead>
-                <tr>
-                  <th>Vencimento</th>
-                  <th>Volatilidade implícita</th>
-                  <th>Séries líquidas</th>
-                  <th>Forward</th>
-                </tr>
-              </thead>
-              <tbody>
-                {term.map((point) => (
-                  <tr key={point.maturity}>
-                    <td className="num">{dateBr(point.maturity)}</td>
-                    <td>{fmt(point.iv_atm)}</td>
-                    <td>{point.n_liquid_strikes}</td>
-                    <td>{brl(point.forward_brl)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="note">
-            Volatilidade implícita é a do strike de |Δ| mais próximo de 0,5; “—” = vencimento sem
-            IV na sessão. Séries líquidas seguem a regra de liquidez no vencimento.
+      {withIv.length > 0 && (
+        <div className="term-table-block">
+          <p className="term-table__title">
+            Vencimentos com IV <span className="block-count">{withIv.length}</span>
           </p>
+          <TermTable rows={withIv} />
+          <p className="note">
+            IV é a do strike de |Δ| mais próximo de 0,5; Líquidas = séries líquidas no vencimento.
+          </p>
+        </div>
+      )}
+      {withoutIv.length > 0 && (
+        <details className="chart-data">
+          <summary>Ver os {withoutIv.length} vencimentos sem IV</summary>
+          <TermTable rows={withoutIv} />
         </details>
       )}
 
@@ -261,19 +255,41 @@ function TickerPage() {
       />
 
       <h2 className="block-title">Vencimento</h2>
-      <div className="selector selector--scroll" role="group" aria-label="Vencimento">
-        {term.map((point) => (
+      {term.length > 0 && (
+        <div className="maturity-picker" role="group" aria-label="Vencimento">
           <button
-            key={point.maturity}
             type="button"
-            className={activeMaturity === point.maturity ? 'active' : undefined}
-            aria-pressed={activeMaturity === point.maturity}
-            onClick={() => setPickedMaturity(point.maturity)}
+            className="maturity-picker__step"
+            aria-label="Vencimento anterior"
+            disabled={maturityIndex <= 0}
+            onClick={() => stepMaturity(-1)}
           >
-            {point.maturity.slice(5)}
+            ‹
           </button>
-        ))}
-      </div>
+          <select
+            className="maturity-picker__select"
+            aria-label="Escolher vencimento"
+            value={activeMaturity ?? ''}
+            onChange={(event) => setPickedMaturity(event.target.value)}
+          >
+            {term.map((point) => (
+              <option key={point.maturity} value={point.maturity}>
+                {dateBr(point.maturity)}
+                {point.iv_atm == null ? ' · sem IV' : ` · IV ${fmt(point.iv_atm, 1)}`}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="maturity-picker__step"
+            aria-label="Próximo vencimento"
+            disabled={maturityIndex >= term.length - 1}
+            onClick={() => stepMaturity(1)}
+          >
+            ›
+          </button>
+        </div>
+      )}
 
       <div className="block-head">
         <h2 className="block-title">Cadeia de opções</h2>
@@ -323,5 +339,31 @@ function TickerPage() {
 
       <MetricModal target={modal} onClose={() => setModal(null)} />
     </>
+  )
+}
+
+/** Tabela curta dos vencimentos (IV do ATM e séries líquidas) — sem forward. */
+function TermTable({ rows }: { rows: Term[] }) {
+  return (
+    <div className="table-wrap">
+      <table className="screen-table term-table">
+        <thead>
+          <tr>
+            <th>Vencimento</th>
+            <th title="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</th>
+            <th title="Séries líquidas no vencimento">Líquidas</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((point) => (
+            <tr key={point.maturity}>
+              <td className="num">{dateBr(point.maturity)}</td>
+              <td>{fmt(point.iv_atm)}</td>
+              <td>{point.n_liquid_strikes}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

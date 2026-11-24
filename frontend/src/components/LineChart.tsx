@@ -40,6 +40,8 @@ export interface LineChartProps {
   xTickValues?: number[]
   /** Liga observações com tracejado quando o salto em x passa deste limiar. */
   dashedGap?: number
+  /** `band` desenha uma faixa "sem IV" no vão e mantém a linha sólida; `dashed` quebra o traço. */
+  gapStyle?: 'dashed' | 'band'
   /** Rótulo completo de cada ponto (ex.: data com ano); o eixo segue curto. */
   tipLabels?: string[]
   /** Linha quieta extra no tooltip (ex.: séries líquidas e forward). */
@@ -61,6 +63,7 @@ export function LineChart({
   xValues,
   xTickValues = [],
   dashedGap,
+  gapStyle = 'dashed',
   tipLabels,
   details = [],
 }: LineChartProps) {
@@ -107,6 +110,7 @@ export function LineChart({
     const points = pointsOf(values)
     const solid: Point[][] = []
     const gap: Point[][] = []
+    const connectAll = gapStyle === 'band'
     let run: Point[] = []
     for (let k = 0; k < points.length; k += 1) {
       const point = points[k]
@@ -116,7 +120,11 @@ export function LineChart({
       }
       const prev = points[k - 1]
       const step = timeAxis ? xValues[point.i] - xValues[prev.i] : point.i - prev.i
-      const broken = dashedGap == null ? point.i !== prev.i + 1 : step > dashedGap
+      const broken = connectAll
+        ? false
+        : dashedGap == null
+          ? point.i !== prev.i + 1
+          : step > dashedGap
       if (broken) {
         if (run.length > 1) solid.push(run)
         if (dashedGap != null) gap.push([prev, point])
@@ -128,6 +136,20 @@ export function LineChart({
     if (run.length > 1) solid.push(run)
     return { solid, gap }
   }
+
+  /** Faixas "sem IV" entre observações distantes (só no estilo `band`). */
+  const bands = (() => {
+    if (dashedGap == null || gapStyle !== 'band') return []
+    const points = pointsOf(series[0]?.values ?? [])
+    const out: Array<{ x1: number; x2: number }> = []
+    for (let k = 1; k < points.length; k += 1) {
+      const prev = points[k - 1]
+      const point = points[k]
+      const step = timeAxis ? xValues[point.i] - xValues[prev.i] : point.i - prev.i
+      if (step > dashedGap) out.push({ x1: prev.x, x2: point.x })
+    }
+    return out
+  })()
 
   function pathOf(segment: Point[]): string {
     return segment
@@ -241,6 +263,20 @@ export function LineChart({
         <line className="chart__grid" x1={0} x2={W} y1={PAD} y2={PAD} />
         <line className="chart__grid chart__grid--mid" x1={0} x2={W} y1={PAD + inner / 2} y2={PAD + inner / 2} />
         <line className="chart__grid" x1={0} x2={W} y1={H - PAD} y2={H - PAD} />
+        {bands.map((band, index) => {
+          const width = band.x2 - band.x1
+          if (width < 2) return null
+          return (
+            <rect
+              key={`band-${index}`}
+              className="chart__band"
+              x={band.x1}
+              y={PAD}
+              width={width}
+              height={inner}
+            />
+          )
+        })}
         {xTickValues
           .filter((value) => value >= xMin && value <= xMax)
           .map((value) => (
@@ -317,6 +353,19 @@ export function LineChart({
           )
         })}
       </svg>
+      {bands.map((band, index) => {
+        const width = band.x2 - band.x1
+        if (width < 40) return null
+        return (
+          <span
+            key={`tag-${index}`}
+            className="chart__band-tag"
+            style={{ left: `${((band.x1 + band.x2) / 2 / W) * 100}%` }}
+          >
+            sem IV
+          </span>
+        )
+      })}
       <div className="chart__axis" aria-hidden="true">
         {axis.map((label) => (
           <span key={label}>{label}</span>
@@ -348,7 +397,12 @@ export function LineChart({
         {series.some((s) => s.hollow?.some(Boolean)) && (
           <span className="chart__legend-note">ponto vazado: ATM sem série líquida</span>
         )}
-        {dashedGap != null && <span className="chart__legend-note">traço tracejado: intervalo sem IV</span>}
+        {dashedGap != null && gapStyle === 'band' && (
+          <span className="chart__legend-note">faixa: intervalo sem IV</span>
+        )}
+        {dashedGap != null && gapStyle === 'dashed' && (
+          <span className="chart__legend-note">traço tracejado: intervalo sem IV</span>
+        )}
       </div>
       {caption && <p className="chart__caption">{caption}</p>}
     </div>

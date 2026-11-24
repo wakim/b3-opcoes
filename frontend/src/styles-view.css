@@ -79,6 +79,13 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  margin-top: 24px;
+}
+
+/* O título já traz margem; dentro do block-head ela empurrava o seletor para
+   cima e colava os botões no conteúdo anterior. */
+.block-head > .block-title {
+  margin-top: 0;
 }
 
 .block-count {
@@ -248,7 +255,8 @@
 /* Gráficos -------------------------------------------------------------- */
 .chart {
   position: relative;
-  max-width: 640px;
+  width: 100%;
+  max-width: none;
   margin-top: 8px;
 }
 
@@ -268,9 +276,10 @@
 }
 
 /* O compacto é menor por largura (e alinhado à esquerda), não por max-height:
-   max-height em SVG com width:100% faz letterbox e desalinha do gráfico principal. */
+   max-height em SVG com width:100% faz letterbox e desalinha do gráfico principal.
+   Com a largura total, o compacto também ocupa a coluna inteira. */
 .chart--compact {
-  max-width: 480px;
+  max-width: none;
 }
 
 .chart__grid {
@@ -377,6 +386,33 @@
   stroke: var(--text-3);
   stroke-width: 1;
   stroke-dasharray: 2 4;
+}
+
+.chart__band {
+  fill: rgba(233, 242, 249, 0.045);
+  stroke: none;
+}
+
+/* Rótulo da faixa em HTML (não escala com o viewBox): 9,5 px no desktop e no mobile. */
+.chart__band-tag {
+  position: absolute;
+  top: 28px;
+  transform: translateX(-50%);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Traços finos independentes da escala do SVG (o gráfico agora ocupa a coluna). */
+.chart__grid,
+.chart__line,
+.chart__mark,
+.chart__cross,
+.chart__tick {
+  vector-effect: non-scaling-stroke;
 }
 
 .chart__tip {
@@ -1070,20 +1106,77 @@
 }
 
 .builder__actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 12px;
   margin: 8px 0 12px;
 }
 
-.builder__stock,
+/* No mobile: lado + quantidade numa linha e "Adicionar ação" inteiro embaixo.
+   O botão de largura total é intencional — antes ele caía sozinho e parecia
+   quebrado. */
+.builder__stock {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 8px;
+  align-items: end;
+}
+
+.builder__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.builder__field-label {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.builder__field input,
+.builder__field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.builder__stock-add {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
 .builder__run {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+@media (min-width: 720px) {
+  .builder__actions {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+  }
+
+  .builder__stock {
+    grid-template-columns: 156px 104px auto;
+  }
+
+  .builder__stock-add {
+    grid-column: auto;
+    width: auto;
+  }
+
+  .builder__run {
+    justify-content: flex-end;
+  }
 }
 
 .builder__result {
@@ -1110,6 +1203,70 @@
   border-top: 1px solid var(--line);
 }
 
+/* Seletor de vencimento: um controle (anterior/seguinte + lista), não 28 chips. */
+.maturity-picker {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.maturity-picker__step {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.maturity-picker__step:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.maturity-picker__select {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabela curta dos vencimentos (3 colunas, sem forward). */
+.term-table-block {
+  margin-top: 8px;
+}
+
+.term-table__title {
+  margin: 12px 0 4px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.term-table {
+  width: 100%;
+  max-width: 420px;
+}
+
+.term-table th:first-child,
+.term-table td:first-child {
+  position: static;
+  z-index: auto;
+  border-right: 0;
+}
+
 /* Foco visível ---------------------------------------------------------- */
 .metric--tappable:focus-visible,
 .selector button:focus-visible,
@@ -1125,7 +1282,11 @@
 .builder__button:focus-visible,
 .builder__remove:focus-visible,
 .builder__qty input:focus-visible,
-.builder__qty select:focus-visible {
+.builder__qty select:focus-visible,
+.builder__field input:focus-visible,
+.builder__field select:focus-visible,
+.maturity-picker__step:focus-visible,
+.maturity-picker__select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }

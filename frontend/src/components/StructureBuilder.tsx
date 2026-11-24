@@ -138,9 +138,9 @@ export function StructureBuilder({
       )}
 
       <div className="builder__actions">
-        <div className="builder__stock">
-          <label className="builder__qty">
-            <span className="quiet">ação</span>
+        <div className="builder__stock" role="group" aria-label="Perna de ação">
+          <label className="builder__field">
+            <span className="builder__field-label">Perna de ação</span>
             <select
               value={stockSide}
               aria-label="Lado da ação"
@@ -150,8 +150,8 @@ export function StructureBuilder({
               <option value="short">vendida</option>
             </select>
           </label>
-          <label className="builder__qty">
-            <span className="quiet">ações</span>
+          <label className="builder__field">
+            <span className="builder__field-label">Ações</span>
             <input
               type="number"
               inputMode="numeric"
@@ -164,7 +164,7 @@ export function StructureBuilder({
           </label>
           <button
             type="button"
-            className="builder__button"
+            className="builder__button builder__stock-add"
             onClick={addStock}
             disabled={legs.length >= MAX_LEGS}
           >

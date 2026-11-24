@@ -73,11 +73,14 @@ function SideDetail({
   title,
   row,
   onMetric,
+  onAddLeg,
 }: {
   title: string
   row: ChainRow | undefined
   onMetric: OpenMetric
+  onAddLeg?: (row: ChainRow, side: 'long' | 'short', quantity: number) => void
 }) {
+  const [quantity, setQuantity] = useState('100')
   if (!row) {
     return (
       <div className="chain-detail__side">
@@ -89,6 +92,8 @@ function SideDetail({
   const book = row.bid_brl != null && row.ask_brl != null
     ? `${brl(row.bid_brl)} / ${brl(row.ask_brl)}`
     : 'sem oferta'
+  const parsed = Number.parseInt(quantity, 10)
+  const canAdd = Number.isInteger(parsed) && parsed > 0
   return (
     <div className="chain-detail__side">
       <div className="chain-detail__label">
@@ -112,6 +117,38 @@ function SideDetail({
       <div className="chain-detail__flags">
         {row.flags.length > 0 ? row.flags.join(' · ') : 'sem flags'}
       </div>
+      {onAddLeg && (
+        <div className="chain-add">
+          <label className="builder__qty">
+            <span className="quiet">ações</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={quantity}
+              aria-label={`Quantidade de ações para ${row.ticker}`}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="builder__button"
+            disabled={!canAdd}
+            onClick={() => onAddLeg(row, 'long', parsed)}
+          >
+            Comprar
+          </button>
+          <button
+            type="button"
+            className="builder__button"
+            disabled={!canAdd}
+            onClick={() => onAddLeg(row, 'short', parsed)}
+          >
+            Vender
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -120,10 +157,12 @@ export function Chain({
   data,
   maturity,
   onMetric,
+  onAddLeg,
 }: {
   data: ChainData
   maturity?: string | null
   onMetric: OpenMetric
+  onAddLeg?: (row: ChainRow, side: 'long' | 'short', quantity: number) => void
 }) {
   const [open, setOpen] = useState<string | null>(null)
   const rows = maturity ? data.rows.filter((row) => row.maturity === maturity) : data.rows
@@ -163,8 +202,8 @@ export function Chain({
                 </button>
                 {expanded && (
                   <div className="chain-detail">
-                    <SideDetail title="Put" row={pair.put} onMetric={onMetric} />
-                    <SideDetail title="Call" row={pair.call} onMetric={onMetric} />
+                    <SideDetail title="Put" row={pair.put} onMetric={onMetric} onAddLeg={onAddLeg} />
+                    <SideDetail title="Call" row={pair.call} onMetric={onMetric} onAddLeg={onAddLeg} />
                   </div>
                 )}
               </div>

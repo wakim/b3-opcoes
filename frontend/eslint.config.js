@@ -20,4 +20,11 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
     },
   },
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: { ...globals.node },
+    },
+  },
 )

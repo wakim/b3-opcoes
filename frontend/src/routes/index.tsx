@@ -6,6 +6,7 @@ import { brl, dateBr, fmt, sharePct } from '../lib/format'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
+import { TickerSearch } from '../components/TickerSearch'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 
 export const Route = createFileRoute('/')({
@@ -94,6 +95,8 @@ function Hoje() {
     <>
       <h1 className="screen-title">Hoje</h1>
       <p className="lede">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
+
+      <TickerSearch />
 
       <MetricGrid>
         <Metric label="Universo" value={summary.total} />

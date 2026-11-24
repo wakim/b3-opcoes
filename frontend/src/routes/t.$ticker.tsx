@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { apiGet, type ChainData, type Underlying } from '../lib/api'
+import { apiGet, type ChainData, type ChainRow, type Underlying } from '../lib/api'
 import { brl, dateBr, fmt, sharePct } from '../lib/format'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, MetricGrid } from '../components/Metric'
@@ -9,6 +9,7 @@ import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
 import { Chain } from '../components/Chain'
 import { MetricModal } from '../components/MetricModal'
+import { StructureBuilder, type BuilderLeg } from '../components/StructureBuilder'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 
 export const Route = createFileRoute('/t/$ticker')({
@@ -20,7 +21,20 @@ function TickerPage() {
   const [pickedMaturity, setPickedMaturity] = useState<string | null>(null)
   const [filter, setFilter] = useState<'strict' | 'all'>('strict')
   const [modal, setModal] = useState<ModalTarget | null>(null)
+  const [legs, setLegs] = useState<BuilderLeg[]>([])
+  const legId = useRef(0)
+  const nextId = () => {
+    legId.current += 1
+    return legId.current
+  }
   const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
+  const addLeg = (row: ChainRow, side: 'long' | 'short', quantity: number) => {
+    setLegs((prev) =>
+      prev.length >= 60
+        ? prev
+        : [...prev, { id: nextId(), kind: 'option', ticker: row.ticker, side, quantity }],
+    )
+  }
 
   const overview = useQuery({
     queryKey: ['underlying', ticker],
@@ -253,9 +267,17 @@ function TickerPage() {
               A cadeia foi cortada em {chain.data.meta.returned} de {chain.data.meta.total} linhas.
             </p>
           )}
-          <Chain data={chain.data.data} maturity={activeMaturity} onMetric={openMetric} />
+          <Chain data={chain.data.data} maturity={activeMaturity} onMetric={openMetric} onAddLeg={addLeg} />
         </>
       )}
+
+      <StructureBuilder
+        underlying={ticker}
+        date={overview.data.as_of_session}
+        legs={legs}
+        setLegs={setLegs}
+        nextId={nextId}
+      />
 
       <MetricModal target={modal} onClose={() => setModal(null)} />
     </>

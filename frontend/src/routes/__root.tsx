@@ -1,8 +1,16 @@
+import { useEffect, useState } from 'react'
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
 import { Link, Outlet, createRootRoute, useRouterState } from '@tanstack/react-router'
 import { apiGet, type Health } from '../lib/api'
 import { ErrorState } from '../components/State'
 import { Stamp } from '../components/Stamp'
+import {
+  OfflineBanner,
+  persistHealth,
+  readPersistedHealth,
+  useConnectivity,
+  type LastHealth,
+} from '../components/OfflineBanner'
 
 // Leitura de sessão: 60 s. Glossário/tickers passam staleTime de 1 h nas rotas.
 const queryClient = new QueryClient({
@@ -38,16 +46,36 @@ function AppShell() {
     queryKey: ['health'],
     queryFn: ({ signal }) => apiGet<Health>('/api/health', signal),
   })
-  const session = health.data?.data.last_session
+  const offline = useConnectivity()
+  const [last] = useState<LastHealth | null>(() => readPersistedHealth())
+
+  // Cada sucesso grava a sessão para o modo offline (persiste entre reloads).
+  useEffect(() => {
+    if (health.data) persistHealth(health.data.data)
+  }, [health.data])
+
+  const onlineSession = health.data?.data.last_session ?? null
+  const ageSessions =
+    typeof health.data?.data.age_sessions === 'number' ? health.data.data.age_sessions : null
+  const knownSession = onlineSession ?? last?.session ?? null
+  const shownSession = offline ? knownSession : onlineSession
 
   return (
     <div className="app">
       <header className="appbar">
         <span className="wordmark">Opções B3</span>
-        <Stamp session={session} loading={health.isLoading} />
+        <Stamp
+          session={shownSession}
+          loading={health.isLoading && !offline}
+          ageSessions={ageSessions}
+          offline={offline}
+        />
       </header>
       <main>
-        {health.isError && <ErrorState error={health.error} title="Saúde do lake indisponível" />}
+        <OfflineBanner offline={offline} session={knownSession} />
+        {health.isError && !offline && (
+          <ErrorState error={health.error} title="Saúde do lake indisponível" />
+        )}
         <Outlet />
       </main>
       <nav className="nav" aria-label="Navegação principal">

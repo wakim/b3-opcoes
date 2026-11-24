@@ -120,7 +120,8 @@ export function apiPost<T>(path: string, body: unknown): Promise<Envelope<T>> {
 export interface Health {
   last_session: string | null
   expected_last_session: string | null
-  age_sessions: unknown
+  /** Pregões de atraso contra `expected_last_session`; item de erro quando a fonte falha. */
+  age_sessions: number | { code?: string; message?: string } | null
   lake_sessions: unknown
   model_version: number
   ingest_model_version: number
@@ -378,13 +379,32 @@ export interface Structure {
   notes: string[]
 }
 
+/** Perna de entrada do builder (o backend resolve ticker → papel e vencimento pelo ISIN). */
+export type LegKind = 'option' | 'stock'
+export type LegSide = 'long' | 'short'
+
+export interface StructureLegInput {
+  kind: LegKind
+  ticker: string
+  side: LegSide
+  /** Número de ações; 1 contrato padrão = 100. Nunca multiplicado por 100 aqui. */
+  quantity: number
+}
+
+export interface StructureRequest {
+  underlying?: string
+  date?: string | null
+  legs: StructureLegInput[]
+  capital?: number
+  scenarios?: boolean
+}
+
 export interface TickerRow {
   ticker: string
   corp_name: string
   in_universe: boolean
   has_options: boolean
 }
-
 export interface TickerData {
   q: string
   rows: TickerRow[]

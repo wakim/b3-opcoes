@@ -523,21 +523,48 @@ paralelo.
 
 **Objetivo:** o painel e o agente saberem o que você já tem.
 **Estimativa:** 1,5 sessão · **Depende de:** F5
+**Status em 24/11/2026:** **implementação validada, aceitação pendente** da reconciliação manual com a corretora.
+Retomada/execução em `docs/prompts/f6-retomada.md`; evidências em `docs/relatorios/2026-11-24-f6.md`.
 
 | ID | Tarefa | Est. |
 |---|---|---|
-| F6.1 | `position`/`position_leg` + `POST /api/positions` e `/close` gravando no `journal.db` (previsão opcional) | 2 h |
+| F6.0 | PostgreSQL + SQLAlchemy + Alembic para o journal; uma migration inicial única, sem migrar SQLite vazio | 1 h |
+| F6.1 | `position`/`position_leg` + `POST /api/positions` e `/close` gravando no PostgreSQL (previsão opcional) | 2 h |
 | F6.2 | marcação EOD, P&L, gregas líquidas, breakevens | 2 h |
 | F6.3 | alertas determinísticos (spec §14.3) | 1 h |
-| F6.4 | tools `positions` e `position` no MCP | 30 min |
+| F6.4 | tool read-only `positions` no MCP, com paginação | 30 min |
 | F6.5 | tela Carteira + detalhe da posição com payoff | 2 h |
 | F6.6 | reconciliação com o extrato da corretora (manual, 2 posições) | 1 h |
 
+**Progresso registrado (não é conclusão)**
+- [x] dependências PostgreSQL/SQLAlchemy/Alembic adicionadas e `uv.lock` atualizado;
+- [x] migration inicial única `0001_f6_initial` criada com tabelas, índices e triggers append-only;
+- [x] `journal.py` reescrito para PostgreSQL/SQLAlchemy, com abertura/fechamento transacional;
+- [x] `QueryService` corrigido para consulta histórica, marca zero, vencido, strike vigente,
+  paginação, previsão, capital ilimitado e snapshot de fechamento;
+- [x] API recebeu paginação, idempotência e autenticação antes do corpo; MCP `positions` aceita `offset`/`max_rows`;
+- [x] frontend F6 implementado (TokenGate, formulário, lista, detalhe, payoff, fechamento e tooltip de perna);
+- [x] Compose terminado (`db`, volume `b3o-postgres`, remoção das referências SQLite);
+- [x] Dockerfile copiando `alembic.ini` e `migrations/`;
+- [x] smokes isolados em PostgreSQL/schema temporário, sem apagar banco oficial;
+- [x] achados da revisão de frontend/backend corrigidos e documentados;
+- [x] regressões da implementação PostgreSQL executadas;
+- [x] documentação final, relatório, commits e push.
+
+**Validações PostgreSQL:** ruff limpo; `positions_smoke` **49/49**; `mcp_smoke` **58/58**;
+`structure_smoke` **93/93**; frontend lint/typecheck/cobertura (**22 campos tocáveis · 55 no mapa · 36
+verbetes**) e duas builds limpas com `dist` idêntico. O navegador provou abertura/fechamento, 401/409,
+tooltip de perna e viewport 412 px sem overflow ou alvo < 44 px.
+
+**Estado do ambiente:** PostgreSQL 19.0 no volume `b3o-postgres`; migration inicial aplicada e schema
+oficial vazio. A app principal fica na 8083; UI e smokes usam schema descartável próprio. O container
+antigo da 8084 e o volume SQLite descartável foram removidos.
+
 **Aceitação F6**
 - [ ] P&L confere com a corretora em 2 posições
-- [ ] Δ/Θ/ν líquidos batem com a soma das pernas
-- [ ] "tese vs realidade" mostra previsão, observado e status quando houver previsão
-- [ ] agente, perguntado sobre um papel em que há posição, cita a exposição existente
+- [x] Δ/Θ/ν líquidos batem com a soma das pernas
+- [x] "tese vs realidade" mostra previsão, observado e status quando houver previsão
+- [x] agente, perguntado sobre um papel em que há posição, cita a exposição existente
 
 ---
 
@@ -548,7 +575,7 @@ paralelo.
 
 | ID | Tarefa | Est. |
 |---|---|---|
-| F7.1 | decisões sem posição (ex.: "não entrei") no mesmo `journal.db` + avaliação automática da previsão no batch | 1.5 h |
+| F7.1 | decisões sem posição (ex.: "não entrei") no mesmo PostgreSQL + avaliação automática da previsão no batch | 1.5 h |
 | F7.2 | formulário de registro no mobile | 1.5 h |
 | F7.3 | relatório de calibração: acerto das **previsões estruturadas** (§6.12) por métrica e horizonte, com `n`; sem classe de sinal nem taxa do F1b (ADR-023/024 — o sinal não passou e não é base de comparação) | 1.5 h |
 
@@ -559,10 +586,31 @@ paralelo.
 
 ---
 
+# F8 — Interface com shadcn + Tailwind
+
+**Objetivo:** substituir o CSS artesanal por componentes shadcn e utilitários Tailwind,
+preservando o contrato visual, os gráficos SVG e a responsividade já validados.
+**Estimativa:** 1,5 sessão · **Depende de:** F6 e F7
+
+| ID | Tarefa | Est. |
+|---|---|---|
+| F8.1 | Configurar shadcn no Vite/React e inventariar componentes/tokens reutilizáveis | 45 min |
+| F8.2 | Migrar Carteira/detalhe, modais, formulários, tabelas e estados para shadcn + Tailwind | 1 h |
+| F8.3 | Migrar as demais telas e remover o CSS artesanal redundante | 45 min |
+| F8.4 | Regressão visual/funcional em 412, 1280 e 1440 px; lint, typecheck, cobertura e builds | 30 min |
+
+**Aceitação F8**
+- [ ] componentes shadcn cobrem os padrões interativos sem perder acessibilidade ou foco
+- [ ] Tailwind é a camada principal de layout/espaçamento/tipografia; CSS global só para tokens e base
+- [ ] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px
+- [ ] duas builds limpas idênticas e navegador sem erros de console
+
+---
+
 ## Grafo de dependências
 
 ```
-F0 ──> F1 ──> F1b ──> F2 ──> F3 ──> F4 ──> F5 ──> F6 ──> F7
+F0 ──> F1 ──> F1b ──> F2 ──> F3 ──> F4 ──> F5 ──> F6 ──> F7 ──> F8
               portão
 ```
 

@@ -222,8 +222,11 @@ def verify_events(body: dict[str, Any]) -> None:
         json.dumps(next_earnings),
     )
     check(
-        len(data["maturities"]) == 25,
-        "events maturities = 25",
+        # `events` não recebe data: lista os vencimentos da **última** sessão do
+        # lake, então o número cresce quando o lake avança (28 em 23/11/2026,
+        # contra 25 em 19/11). O critério é nunca ficar abaixo da medição de 19/11.
+        len(data["maturities"]) >= 25,
+        "events maturities >= 25",
         str(len(data["maturities"])),
     )
     check(

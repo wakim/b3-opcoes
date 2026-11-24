@@ -23,7 +23,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 |---|---|
 | Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…035) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5-D (Tailscale + celular).** F5-C entregue: builder de estrutura inline na Ticker (F5.6, números só do `POST /api/structure`), PWA offline (F5.7, precache do shell + `NetworkFirst` em `/api`, banner e carimbo offline), cobertura campo↔glossário (`npm run coverage`, 15 campos/44 no mapa/31 verbetes) e busca de papel (B1) no topo de Hoje. Carimbo agora deriva de `age_sessions` (0 → `D-1`). F5-B mergeado (`a62c218`) e ADR-034/035 na `main`. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; F5.9 (instalar no celular) em aberto. **Prompt da próxima sessão em `docs/prompts/f5-d.md`.** |
+| Retomar em | **F5-D (Tailscale + celular).** F5-C entregue: builder de estrutura inline na Ticker (F5.6, números só do `POST /api/structure`), PWA offline (F5.7, precache do shell + `NetworkFirst` em `/api`, banner e carimbo offline), cobertura campo↔glossário (`npm run coverage`, 15 campos/44 no mapa/31 verbetes) e busca de papel (B1) no topo de Hoje. Carimbo agora deriva de `age_sessions` (0 → `D-1`). F5-B mergeado (`a62c218`) e ADR-034/035 na `main`. Pendências herdadas: porta 8080 ocupada (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas no próximo `prepare`; F5.9 (instalar no celular) em aberto. **Prompt da próxima sessão em `docs/prompts/f5-d.md`.** Depois do F5-D, **F5-E**: bloco de liquidez no Hoje (top papéis por séries líquidas + top séries por volume), como ponto de partida descritivo — a busca sozinha não resolve a descoberta. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -302,6 +302,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F5.7 | PWA com `vite-plugin-pwa`: manifest, precache do shell, `NetworkFirst` em `/api`, offline com carimbo | 2 h |
 | F5.8 | Dockerfile multi-stage (Node build → imagem final Python) — já existe desde o F0.1b; aqui entra o estágio `web` | 1.5 h |
 | F5.9 | `tailscale serve` + instalação no celular + teste de offline | 1 h |
+| F5.10 | Hoje: bloco de liquidez (papéis com série líquida + séries por volume) — ponto de partida, não recomendação | 2.5 h |
 
 ### F5-A — sessão 1 de 4 (infraestrutura + API + cliente tipado + wireframe)
 
@@ -374,7 +375,57 @@ Worktree próprio; app provado em `B3_APP_PORT=8083`.
   (`staleTime` 1 h, `q` vazio não dispara), prefixo-primeiro do servidor, `meta.total` honesto, linhas
   de 58–59 px, 412 px sem overflow e navegação por teclado (Tab + Enter).
 
-**Não marcado aqui:** F5-D (Tailscale/celular), Carteira/Diário reais (F6).
+**Não marcado aqui:** F5-D (Tailscale/celular), F5-E (liquidez no Hoje), Carteira/Diário reais (F6).
+
+### F5-E — Hoje: liquidez como ponto de partida (pedido do dono, 23/11/2026)
+
+**Objetivo:** responder “o que eu consigo negociar hoje?” sem depender de já saber o ticker. A busca
+sozinha não ajuda quando o dono não sabe o que procurar. Na Hoje, **antes da tabela dos 289**, um
+bloco **Liquidez** lista os papéis com mais séries líquidas e, para eles, as séries com mais volume.
+É **ponto de partida descritivo**, não recomendação: a ordem é liquidez, não retorno esperado, IV ou
+VRP; nada de “melhor/caro/barato/recomendado”. A lista não monta estrutura nem grava nada; o builder
+continua sendo a calculadora. (ADR-024: nada preditivo.)
+
+**v1 — papéis (sem backend novo, 1.5 h)**
+- Fonte: `/api/screen` já traz `n_liquid_series`, `n_expiries`, `n_series`, `iv_atm_30d`, `vrp`,
+  `spot_brl`, `rv_shock_*`. A ordenação no cliente é apresentação (não é número novo): `n_liquid_series`
+  DESC, `n_expiries` DESC, `n_series` DESC, `ticker` ASC. Se virar contrato de MCP, move para
+  `QueryService`.
+- Top **10** com `n_liquid_series > 0`; colunas: papel, fechamento, séries líquidas, vencimentos,
+  IV 30d e VRP (mesmos formatos e `†` do Hoje). Linha inteira leva a `/t/{ticker}` (44 px, teclado,
+  sem hover-only).
+- “Ver todos” expande os demais do mesmo recorte sem nova chamada; se ninguém tiver série líquida,
+  o bloco diz “nenhum papel com série líquida nesta sessão” (nunca zero silencioso).
+- Posição: abaixo do aviso de pregão dominante e acima de “Com opções”. O card “Com opções”
+  continua existindo; o bloco é o atalho de descoberta.
+- Nota quieta no bloco: “ordenado por liquidez; não é recomendação”. Nada de score, estrela ou
+  “melhores”.
+
+**v1.1 — séries (backend novo, 1 h)**
+- `GET /api/liquid?date=&limit=` na **mesma** `QueryService`, read-only: séries da sessão que passam
+  a regra §6.9, ordenadas por **volume financeiro** da sessão (R$) DESC, desempate `trades` DESC e
+  `ticker` ASC; top 20. Campos: papel, ticker, lado, estilo, strike, vencimento, volume, trades,
+  spread, IV, delta, `is_liquid`; `meta.total`/`truncated` honestos e teto de 60 linhas.
+- Não criar métrica nem subir `model_version`: é consulta. O volume é o do lake (não reconstituir).
+- UI: segunda lista/aba “Séries mais negociadas” (20 linhas), link para `/s/{ticker}/{maturity}`;
+  filtro local por papel se couber sem virar nova tela.
+- Prova: conferir 1 série à mão pelo volume (R$) e o `chain` correspondente; zero vocabulário
+  preditivo; `data/` sem escrita.
+
+**Aceitação F5-E**
+- [ ] bloco Liquidez no Hoje, top 10 + “ver todos”, ordem determinística; em 23/11 há **33** papéis com
+      `n_liquid_series > 0` (top: BBAS3 17/24; PETR4 e VALE3 12; MGLU3 10; BOVA11 9; BBDC4 6;
+      ITUB4/PRIO3/CXSE3 3; CSNA3 2 — desempate por vencimentos e ticker).
+- [ ] linha abre a Ticker; `†` quando `rv_shock_day`; IV/VRP formatados como no resto; 412 px sem
+      overflow e alvos ≥ 44 px.
+- [ ] v1.1 `/api/liquid` com top 20 por volume, `meta` honesto, 1 número conferido à mão; nenhum
+      `model_version` novo.
+- [ ] `npm run coverage` verde (novos campos tocáveis, se houver); `mcp_smoke` 53/53 e
+      `structure_smoke` 93/93; `data/` inalterado por GET; zero vocabulário preditivo.
+- [ ] nota “ordenado por liquidez; não é recomendação” visível; ADR-024 citado no relatório.
+
+**Estimativa:** 2,5 h · **Depende de:** F5-C (campos do `screen`). Pode vir antes ou depois do F5-D;
+não depende do Tailscale.
 
 **Aceitação F5**
 - [ ] instalado no celular pelo domínio `*.ts.net` (HTTPS)
@@ -384,6 +435,7 @@ Worktree próprio; app provado em `B3_APP_PORT=8083`.
 - [x] busca de papel e seletor de vencimento funcionando
 - [ ] nada depende de hover; alvo de toque ≥ 44 px
 - [x] teste de cobertura: campo da API ↔ chave do glossário
+- [ ] Hoje tem o bloco de liquidez (F5-E): papéis com série líquida + séries por volume, como ponto de partida
 
 ---
 

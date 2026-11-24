@@ -147,6 +147,9 @@ export interface ScreenSummary {
   rate_sources: string[]
   outside_universe: string[]
   earnings_coverage_start: string | null
+  /** Papéis `ok` com a flag `rv_shock_day` (ADR-035). */
+  rv_shock_count: number
+  rv_shock_dates: { date: string; count: number }[]
 }
 
 export interface ScreenRow {
@@ -179,6 +182,9 @@ export interface ScreenRow {
   earnings_next_kind: string | null
   earnings_before_expiry: boolean
   flags: string[]
+  /** Pregão que mais pesa na variância de 30 pregões; flag `rv_shock_day` a partir de 50%. */
+  rv_shock_date: string | null
+  rv_shock_share_pct: number | null
 }
 
 export interface ScreenData {

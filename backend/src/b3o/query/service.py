@@ -47,10 +47,17 @@ import duckdb
 
 from b3o.derive.calendar import trading_sessions
 from b3o.derive.conventions import SESSIONS_PER_YEAR, log_df_interp_or_none
+from b3o.derive.corporate_events import dividend_dates, event_factor_series, scale_factors
 from b3o.derive.dist import expected_move_1s
 from b3o.derive.forward import ParityQuote, forward_by_parity
 from b3o.derive.liquidity import DAYS_WINDOW, VOLUME_MIN_CENTS
-from b3o.derive.realized import DEFAULT_GAP_THRESHOLD, flag_unexplained
+from b3o.derive.realized import (
+    DEFAULT_GAP_THRESHOLD,
+    SHOCK_SHARE_MIN,
+    OhlcBar,
+    dominant_day,
+    flag_unexplained,
+)
 from b3o.derive.structure import StructureLeg, StructureResult, evaluate
 from b3o.fsutil import replace_file
 from b3o.ingest.errors import SourceError, SourceFailure
@@ -509,6 +516,16 @@ class UnderlyingMetricRow:
     model_version: int
 
 
+SHOCK_WINDOW_BARS = 30
+"""Janela do aviso de pregão dominante: a mesma da `rv30`, que entra no VRP."""
+
+SHOCK_LOOKBACK_EXTRA = 15
+"""Sessões a mais lidas para o papel que não negociou em todo pregão da janela."""
+
+FLAG_RV_SHOCK_DAY = "rv_shock_day"
+"""Um pregão responde por ≥ 50% da variância de 30 pregões (ADR-035)."""
+
+
 @dataclass(frozen=True, slots=True)
 class ScreenRow:
     """Uma linha do painel descritivo (F2d = contrato onda-h §2).
@@ -563,6 +580,16 @@ class ScreenRow:
     earnings_before_expiry: bool
     flags: list[str]
     """União das flags do papel, em ordem alfabética (não viram nota)."""
+    rv_shock_date: date | None = None
+    """Pregão que mais pesa na variância de 30 pregões (fechamento-a-fechamento)."""
+    rv_shock_share_pct: float | None = None
+    """Fração (0–100) da variância de 30 pregões vinda de `rv_shock_date`.
+
+    Calculada na leitura (não é métrica gravada; `model_version` não muda). A
+    partir de 50% a linha ganha a flag `rv_shock_day`: RV, VRP e z estão
+    dominados por um pregão — o número é real, mas a leitura precisa do contexto
+    (ADR-034/035).
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -1496,6 +1523,7 @@ class QueryService:
                     flags=list(metric.flags),
                 )
             )
+        rows = self._screen_with_shock(session, rows, isin_to_ticker)
         return ScreenBundle(
             session=session,
             model_version=model_version,
@@ -2579,6 +2607,86 @@ class QueryService:
             window[-1],
         )
         return {str(ticker): int(total) for ticker, total in rows}
+
+    def _screen_with_shock(
+        self,
+        session: date,
+        rows: list[ScreenRow],
+        isin_to_ticker: Mapping[str, str],
+    ) -> list[ScreenRow]:
+        """Preenche `rv_shock_*` e a flag `rv_shock_day` nas linhas `ok` (ADR-035).
+
+        Uma leitura só para o universo inteiro: barras `010` (com `020` no dia
+        sem lote padrão, como o `spot_bars`) das sessões do lake que cobrem as
+        últimas `SHOCK_WINDOW_BARS` barras de cada papel, casadas pelo ISIN.
+        Fator de escala e datas ex do B2 entram como na RV do pipeline.
+        """
+        ok_papers = {row.underlying for row in rows if row.status == "ok"}
+        if not ok_papers:
+            return rows
+        lake = [day for day in self.lake_calendar() if day <= session]
+        span = lake[-(SHOCK_WINDOW_BARS + SHOCK_LOOKBACK_EXTRA):]
+        paths = [
+            path
+            for year in range(span[0].year, span[-1].year + 1)
+            for path in self._partitions(year)
+        ]
+        fetched = self._fetch(
+            "WITH bars AS ("
+            "  SELECT refdate, isin_underlying, open, high, low, close,"
+            "         row_number() OVER (PARTITION BY refdate, isin_underlying"
+            "                            ORDER BY CASE WHEN tpmerc = '010' THEN 0 ELSE 1 END)"
+            "           AS rn"
+            "  FROM read_parquet(?)"
+            "  WHERE tpmerc IN ('010', '020') AND refdate BETWEEN ? AND ?"
+            "    AND isin_underlying <> ''"
+            ") SELECT refdate, isin_underlying, open, high, low, close FROM bars"
+            "  WHERE rn = 1 ORDER BY isin_underlying, refdate",
+            paths,
+            span[0],
+            span[-1],
+        )
+        by_paper: dict[str, list[tuple[date, int, int, int, int]]] = defaultdict(list)
+        for refdate, isin, open_, high, low, close in fetched:
+            paper = isin_to_ticker.get(str(isin))
+            if paper in ok_papers:
+                by_paper[paper].append((refdate, int(open_), int(high), int(low), int(close)))
+        events = self.strike_events()
+        factors_by_paper = scale_factors(events)
+        dividends_by_paper = dividend_dates(events)
+        result: list[ScreenRow] = []
+        for row in rows:
+            bars = by_paper.get(row.underlying)
+            if row.status != "ok" or not bars:
+                result.append(row)
+                continue
+            adj = event_factor_series(
+                [bar[0] for bar in bars], factors_by_paper.get(row.underlying, {})
+            )
+            ohlc = [
+                OhlcBar(refdate=d, open=o, high=h, low=lo, close=c, adj_factor=adj[d])
+                for d, o, h, lo, c in bars
+            ]
+            dominant = dominant_day(
+                ohlc,
+                SHOCK_WINDOW_BARS,
+                ex_div_dates=dividends_by_paper.get(row.underlying, frozenset()),
+            )
+            if dominant.share is None:
+                result.append(row)
+                continue
+            flags = list(row.flags)
+            if dominant.share >= SHOCK_SHARE_MIN and FLAG_RV_SHOCK_DAY not in flags:
+                flags = sorted([*flags, FLAG_RV_SHOCK_DAY])
+            result.append(
+                replace(
+                    row,
+                    rv_shock_date=dominant.refdate,
+                    rv_shock_share_pct=100.0 * dominant.share,
+                    flags=flags,
+                )
+            )
+        return result
 
     def _screen_spots(self, session: date) -> tuple[dict[str, int], dict[str, str]]:
         """`ticker -> close` e `isin -> ticker` do dia (`010` antes de `020`)."""

@@ -130,6 +130,14 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 **No painel** — `RV20 22,1 · RV60 24,7`: o papel está mais calmo nas últimas 4 semanas do que nos últimos 3 meses.
 
+## Pregão dominante na RV
+
+**O que é** — o pregão que mais pesa na oscilação dos últimos 30 pregões, e quanto da variância (de fechamento a fechamento) ele explica sozinho. Com 30 pregões "normais", o maior dia responde por uns 20%. A partir de metade, o painel avisa: a RV, o VRP e o z-score daquele papel estão contando a história de um dia.
+
+**Erro comum** — achar que o aviso quer dizer que o número está errado. Não está: o dia aconteceu (em 26/10/2026 o Ibovespa caiu 14%). O que muda é a leitura: uma RV de 200% puxada por um único choque não descreve o regime do papel, e um VRP muito negativo nessa situação não diz que a opção está "barata". O aviso some sozinho quando o dia sai da janela de 30 pregões.
+
+**No painel** — `26/10/2026 · 91% da variância`: nove décimos de tudo o que B3SA3 oscilou em 30 pregões vieram de um só pregão.
+
 ## VRP
 
 **O que é** — o prêmio de risco de volatilidade: `IV − RV`. Quanto o mercado cobra acima do que o papel costuma entregar.

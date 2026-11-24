@@ -271,6 +271,64 @@ def flag_unexplained(
     return sorted(flagged)
 
 
+SHOCK_SHARE_MIN = 0.5
+"""Fração da variância da janela vinda de **um** pregão a partir da qual o painel
+avisa (`rv_shock_day`). Com retornos normais i.i.d. em 29 pregões o maior dia
+responde, em média, por ~20%; metade é cauda extrema. É aviso de leitura, não
+limiar de sinal (ADR-035)."""
+
+SHOCK_MIN_RETURNS = 10
+"""Abaixo disto a "fração do maior dia" é ruído de amostra: sai `None`."""
+
+
+@dataclass(frozen=True, slots=True)
+class DominantDay:
+    """O pregão que mais pesa na variância realizada da janela."""
+
+    refdate: date | None
+    """Pregão do maior retorno² (fechamento-a-fechamento); `None` sem amostra."""
+    share: float | None
+    """`r²_max / Σr²` em fração (0–1), momento **não centrado**; `None` sem amostra."""
+    n: int
+    """Retornos usados (barras da janela − 1, menos datas ex de provento)."""
+
+
+def dominant_day(
+    ohlc: Sequence[OhlcBar],
+    window: int,
+    *,
+    ex_div_dates: Collection[date] = frozenset(),
+) -> DominantDay:
+    """Quanto da variância das **últimas** ``window`` barras vem de um só pregão.
+
+    Usa retornos **fechamento-a-fechamento** com o mesmo ``adj_factor`` de escala
+    da RV e sem as datas ex de provento (mesma exclusão do Yang-Zhang, sem puxar
+    barra para trás): a pergunta é "um movimento de preço domina a janela?", e
+    não depende de como o Yang-Zhang decompõe abertura e intradiário.
+    Momento não centrado (`Σr²`): a média diária é desprezível na janela e
+    centrar faria a fração depender do sinal dos outros dias.
+    Medido em 19/11/2026 (ADR-035): B3SA3 com 26/10 respondendo por ~0,9 da
+    variância de 30 pregões.
+    """
+    bars = _sorted_bars(ohlc)[-window:]
+    returns: list[tuple[date, float]] = []
+    for previous, current in zip(bars, bars[1:], strict=False):
+        if current.refdate in ex_div_dates:
+            continue
+        before = previous.close * previous.adj_factor
+        after = current.close * current.adj_factor
+        if before <= 0 or after <= 0:
+            continue
+        returns.append((current.refdate, math.log(after / before)))
+    if len(returns) < SHOCK_MIN_RETURNS:
+        return DominantDay(None, None, len(returns))
+    total = math.fsum(value * value for _, value in returns)
+    if total <= VARIANCE_EPSILON:
+        return DominantDay(None, None, len(returns))
+    day, value = max(returns, key=lambda item: item[1] * item[1])
+    return DominantDay(day, value * value / total, len(returns))
+
+
 def _sorted_bars(ohlc: Sequence[OhlcBar]) -> list[OhlcBar]:
     """Barras em ordem cronológica, uma por sessão (duplicata: a última vence)."""
     ordered = sorted(ohlc, key=lambda bar: bar.refdate)

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { fetchScreenAll, type ScreenRow } from '../lib/api'
-import { brl, fmt } from '../lib/format'
+import { brl, dateBr, fmt, sharePct } from '../lib/format'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
@@ -50,7 +50,18 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
               {withOptions && (
                 <>
                   <td>{fmt(row.iv_atm_30d)}</td>
-                  <td>{fmt(row.vrp)}</td>
+                  <td>
+                    {fmt(row.vrp)}
+                    {row.vrp != null && row.flags.includes('rv_shock_day') && (
+                      <span
+                        className="shock-mark"
+                        title={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}
+                        aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
+                      >
+                        †
+                      </span>
+                    )}
+                  </td>
                   <td>{row.n_liquid_series}</td>
                   <td>{row.n_expiries}</td>
                 </>
@@ -103,6 +114,25 @@ function Hoje() {
           onOpen={openMetric}
         />
       </MetricGrid>
+
+      {summary.rv_shock_count > 0 && (
+        <p className="notice" role="status">
+          Em {summary.rv_shock_count} de {summary.ok} papéis com métrica, um único pregão responde
+          por metade ou mais da oscilação dos últimos 30 pregões
+          {summary.rv_shock_dates.length > 0 && (
+            <> ({summary.rv_shock_dates.map((item) => `${dateBr(item.date)} em ${item.count}`).join(', ')})</>
+          )}
+          . Nesses papéis (marcados com †) a volatilidade realizada e o prêmio de volatilidade
+          refletem esse dia: o número é real, mas não descreve o regime típico.{' '}
+          <button
+            type="button"
+            className="inline-link"
+            onClick={() => openMetric('rv_shock_share_pct', 'Pregão dominante na RV', `${summary.rv_shock_count} papéis`)}
+          >
+            O que é isso
+          </button>
+        </p>
+      )}
 
       <section className="papers-section">
         <h2 className="block-title">

@@ -39,6 +39,8 @@ const KEYS: Record<string, string> = {
   rv20: 'volatilidade-realizada-rv',
   rv30: 'volatilidade-realizada-rv',
   rv60: 'volatilidade-realizada-rv',
+  rv_shock_share_pct: 'pregao-dominante-na-rv',
+  rv_shock_date: 'pregao-dominante-na-rv',
   vrp: 'vrp',
   vrp_z_252: 'z-score-do-vrp',
   rr25: 'skew-e-risk-reversal',

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { apiGet, type ChainData, type Underlying } from '../lib/api'
-import { brl, fmt } from '../lib/format'
+import { brl, dateBr, fmt, sharePct } from '../lib/format'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, MetricGrid } from '../components/Metric'
 import { Ruler } from '../components/Ruler'
@@ -148,7 +148,27 @@ function TickerPage() {
             />
           }
         />
+        <GlossaryMetric
+          field="rv_shock_share_pct"
+          label="Pregão dominante na realizada"
+          hint="O pregão que mais pesa na oscilação dos últimos 30 pregões e quanto da variância ele explica sozinho."
+          value={
+            summary?.rv_shock_date
+              ? `${dateBr(summary.rv_shock_date)} · ${sharePct(summary.rv_shock_share_pct)}`
+              : '—'
+          }
+          onOpen={openMetric}
+        />
       </MetricGrid>
+
+      {summary?.flags.includes('rv_shock_day') && (
+        <p className="notice" role="status">
+          {sharePct(summary.rv_shock_share_pct)} de tudo o que {ticker} oscilou nos últimos 30
+          pregões veio de um só dia ({dateBr(summary.rv_shock_date)}). A volatilidade realizada, o
+          prêmio de volatilidade e os desvios-padrão do prêmio refletem esse dia: o número é real,
+          mas não descreve o regime típico do papel.
+        </p>
+      )}
 
       {data.notes.map((note) => (
         <p className="note" key={note}>{note}</p>

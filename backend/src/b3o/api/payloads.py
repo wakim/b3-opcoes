@@ -83,6 +83,11 @@ def screen_payload(
                 if summary.earnings_coverage_start
                 else None
             ),
+            "rv_shock_count": summary.rv_shock_count,
+            "rv_shock_dates": [
+                {"date": day.isoformat(), "count": count}
+                for day, count in summary.rv_shock_dates
+            ],
         },
         "rows": rows,
     }

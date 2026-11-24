@@ -407,6 +407,19 @@ Critérios de desempate, nesta ordem:
 - **Consequência:** nenhuma fórmula, tabela ou `model_version` muda. Fica pendente, fora deste ADR: flag por linha no `screen` quando a janela de RV contém um dia extremo de mercado (e talvez a RV fechamento-a-fechamento ao lado), além de cobrir `rich`/`none` no recorte do relatório do backtest (hoje só `cheap`).
 - **Revisar em:** F5-B (como o painel mostra RV/VRP nas próximas sessões) e em qualquer estudo novo de sinal.
 
+## ADR-035 — Aviso de pregão dominante na RV (`rv_shock_day`), calculado na leitura
+
+- **Data:** 2026-11-23 · **Status:** provisória (pedido do dono depois do ADR-034) · **Custo de reverter:** baixo (leitura; nada gravado, `model_version` segue 2)
+- **Contexto:** depois de 26/10/2026, a RV/VRP/z de metade do universo contam a história de um único pregão (ADR-034), e a tela não dizia isso.
+- **Decisão:**
+  1. Função pura `derive.realized.dominant_day(ohlc, window, ex_div_dates)`: retornos **fechamento-a-fechamento** das últimas 30 barras (a janela da `rv30`, que entra no VRP), com o mesmo fator de escala e a mesma exclusão de data ex da RV; devolve o pregão de maior `r²` e a fração `r²_max / Σr²` (momento não centrado). Menos de 10 retornos → `None`.
+  2. `QueryService.screen_bundle` preenche `rv_shock_date` e `rv_shock_share_pct` (0–100) em toda linha `ok` (uma leitura só para o universo) e acrescenta a flag `rv_shock_day` quando a fração é ≥ **50%**. Com retornos normais i.i.d. em 29 pregões, o maior dia responde em média por ~20%; metade é cauda extrema. É **aviso de leitura**, não limiar de sinal, e não exclui nada.
+  3. O resumo do `screen` ganha `rv_shock_count` e `rv_shock_dates`. Como o `underlying` reusa a linha do `screen`, o Ticker herda os campos. Há verbete novo ("Pregão dominante na RV"). Na tela: aviso no Hoje, marca `†` no prêmio de volatilidade, métrica + aviso no Ticker. A fração é exibida com **piso** (49,97% não pode aparecer como "50%" sem a flag).
+  4. Fechamento-a-fechamento, e não Yang-Zhang: a pergunta é "um movimento de preço domina a janela?". A decomposição abertura/intradiário do Yang-Zhang é outra questão (aberturas a ~0,50 em 26/10, ADR-034).
+- **Medido em 19/11/2026:** **116 de 163** papéis `ok` sinalizados (115 por 26/10, 1 por 20/10). B3SA3 91,8% · BBAS3 88,0% · BOVA11 86,6% · MGLU3 82,3% · ITUB4 74,7% sinalizados; ABEV3 49,97% e PETR4 31,9% não; VALE3 14,8% (16/11). `screen_bundle` inteiro em 1,7 s.
+- **Consequência:** nenhuma métrica gravada muda. Até a próxima rodada do `prepare`, o aviso fica em quase todo o universo; ele some sozinho quando 26/10 sai da janela de 30 pregões (início de dezembro).
+- **Revisar em:** F5-C (se o aviso deve aparecer também na Série) e se o dono quiser estender o aviso à rv60/rank/z (janelas mais longas, que carregam o choque por mais tempo).
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

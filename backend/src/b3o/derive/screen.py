@@ -27,6 +27,9 @@ if TYPE_CHECKING:  # evita dependência de runtime de `derive` para `query`
     from b3o.query.service import ScreenRow
 
 OK = "ok"
+
+RV_SHOCK_FLAG = "rv_shock_day"
+"""Flag de leitura: um pregão responde por ≥ 50% da variância de 30 (ADR-035)."""
 EXCLUDED = "excluded"
 
 REASON_ORDER: tuple[str, ...] = (
@@ -72,6 +75,10 @@ class ScreenSummary:
     """Papéis com métrica na sessão e fora do corte de volume (não entram)."""
     earnings_coverage_start: date | None = None
     """Primeira data do calendário de resultados no lake (aviso quando a sessão é anterior)."""
+    rv_shock_count: int = 0
+    """Papéis `ok` com a flag `rv_shock_day` (um pregão ≥ 50% da variância de 30)."""
+    rv_shock_dates: tuple[tuple[date, int], ...] = ()
+    """`(pregão dominante, nº de papéis)` entre os sinalizados, do mais frequente."""
 
 
 def aggregate(
@@ -98,6 +105,7 @@ def aggregate(
     by_reason.update({reason: counts[reason] for reason in extras})
     iv_values = [row.iv_atm_30d for row in ok_rows if row.iv_atm_30d is not None]
     vrp_values = [row.vrp for row in ok_rows if row.vrp is not None]
+    shocked = [row for row in ok_rows if RV_SHOCK_FLAG in row.flags]
     return ScreenSummary(
         session=session,
         as_of=rows[0].as_of_session if rows else session,
@@ -115,6 +123,13 @@ def aggregate(
         ),
         outside_universe=tuple(sorted(set(outside_universe))),
         earnings_coverage_start=earnings_coverage_start,
+        rv_shock_count=len(shocked),
+        rv_shock_dates=tuple(
+            sorted(
+                Counter(row.rv_shock_date for row in shocked if row.rv_shock_date).items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ),
     )
 
 
@@ -312,6 +327,15 @@ def render_markdown(summary: ScreenSummary, rows: Sequence[ScreenRow]) -> str:
         f"(n={summary.vrp_count})\n",
         f"- **Fontes de taxa:** {_sources(summary.rate_sources)}\n",
     ]
+    if summary.rv_shock_count:
+        dates = ", ".join(
+            f"{day.isoformat()} ({count})" for day, count in summary.rv_shock_dates
+        )
+        parts.append(
+            f"- **RV dominada por um pregão:** {summary.rv_shock_count} papel(is) `ok` "
+            "têm ≥ 50% da variância de 30 pregões vinda de um só dia — RV, VRP e z "
+            f"desses papéis refletem esse dia (flag `rv_shock_day`). Pregões: {dates}\n"
+        )
     if summary.outside_universe:
         parts.append(
             f"- **Com métrica fora do universo (não entram neste recorte):** "
@@ -423,6 +447,7 @@ def _ficha(row: ScreenRow) -> list[str]:
         f"- **próximo resultado:** {_earnings(row)} · antes do vencimento: "
         f"{'sim' if row.earnings_before_expiry else 'não'}\n",
         f"- **fonte da taxa:** {row.rate_source or '—'}\n",
+        f"- **pregão dominante na RV 30:** {_shock(row)}\n",
         f"- **flags:** {', '.join(row.flags) if row.flags else '—'}\n",
         "\n",
     ]
@@ -431,6 +456,15 @@ def _ficha(row: ScreenRow) -> list[str]:
 # --------------------------------------------------------------------------- #
 # Formatação (só a serialização arredonda)
 # --------------------------------------------------------------------------- #
+
+
+def _shock(row: ScreenRow) -> str:
+    """`AAAA-MM-DD (NN% da variância)` do pregão dominante, ou `—`."""
+    if row.rv_shock_date is None or row.rv_shock_share_pct is None:
+        return "—"
+    # piso, não arredondamento: 49,97% não pode aparecer como "50%" sem a flag
+    share = str(int(row.rv_shock_share_pct))
+    return f"{row.rv_shock_date.isoformat()} ({share}% da variância)"
 
 
 def _number(value: float, digits: int) -> str:

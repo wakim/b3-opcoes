@@ -46,6 +46,27 @@
   min-height: 44px;
 }
 
+/* Aviso de pregão dominante (ADR-035): marca tipográfica, sem matiz. */
+.shock-mark {
+  margin-left: 3px;
+  color: var(--text-3);
+  cursor: help;
+}
+
+.inline-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
 .block-title {
   margin: 24px 0 8px;
   font-size: 13px;
@@ -736,6 +757,7 @@
 .chain-detail__row--button:focus-visible,
 .modal__close:focus-visible,
 .ticker-link:focus-visible,
+.inline-link:focus-visible,
 .nav a:focus-visible,
 .back:focus-visible {
   outline: 2px solid var(--accent);

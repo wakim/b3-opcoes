@@ -60,6 +60,25 @@
   gap: 8px;
 }
 
+.block-count {
+  margin-left: 8px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.papers-section + .papers-section {
+  margin-top: 8px;
+}
+
+.chain-note {
+  margin: 0 0 8px;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .notice {
   margin: 0 0 16px;
   padding-left: 10px;
@@ -530,7 +549,9 @@
 
 .screen-table {
   width: 100%;
-  border-collapse: collapse;
+  /* separate (não collapse) para o sticky da primeira coluna manter as hairlines */
+  border-collapse: separate;
+  border-spacing: 0;
   font-family: var(--mono);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
@@ -544,9 +565,20 @@
   white-space: nowrap;
 }
 
+/* Primeira coluna fixa: no mobile a tabela rola e o nome do papel continua à vista. */
 .screen-table th:first-child,
 .screen-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   text-align: left;
+  background: var(--surface);
+  border-right: 1px solid var(--line);
+}
+
+.screen-table thead th:first-child {
+  z-index: 2;
+  background: var(--surface-2);
 }
 
 .screen-table th {
@@ -586,30 +618,30 @@
   font-size: 11px;
 }
 
-/* Sheet de métrica ------------------------------------------------------ */
-.sheet-backdrop {
+/* Modal de métrica ------------------------------------------------------ */
+.modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 100;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  padding: 16px;
   background: rgba(4, 7, 10, 0.72);
 }
 
-.sheet {
+.modal {
   width: 100%;
   max-width: 520px;
-  max-height: 85dvh;
+  max-height: min(85dvh, 720px);
   overflow-y: auto;
   padding: 20px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.28);
+  border-radius: var(--r-sheet);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
 }
 
-.sheet__head {
+.modal__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -617,19 +649,26 @@
   margin-bottom: 16px;
 }
 
-.sheet__eyebrow {
+.modal__eyebrow {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--text-3);
 }
 
-.sheet__title {
+.modal__title {
   margin: 4px 0 0;
   font-size: 18px;
   font-weight: 500;
 }
 
-.sheet__close {
+.modal__source {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.modal__close {
+  flex: none;
   width: 44px;
   height: 44px;
   display: grid;
@@ -643,7 +682,7 @@
   cursor: pointer;
 }
 
-.sheet__value {
+.modal__value {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -655,36 +694,36 @@
   border-radius: var(--r-control);
 }
 
-.sheet__value-label {
+.modal__value-label {
   font-size: 11px;
   color: var(--text-2);
 }
 
-.sheet__value-number {
+.modal__value-number {
   font-family: var(--mono);
   font-size: 18px;
   font-variant-numeric: tabular-nums;
 }
 
-.sheet__block {
+.modal__block {
   margin-top: 16px;
 }
 
-.sheet__block-title {
+.modal__block-title {
   margin-bottom: 4px;
   font-size: 11px;
   color: var(--text-3);
 }
 
-.sheet__block-text {
+.modal__block-text {
   margin: 0;
   color: var(--text-2);
   font-size: 13.5px;
   line-height: 1.55;
 }
 
-.sheet__error,
-.sheet__note {
+.modal__error,
+.modal__note {
   margin: 8px 0;
   color: var(--text-3);
   font-size: 11px;
@@ -695,7 +734,7 @@
 .selector button:focus-visible,
 .chain-row:focus-visible,
 .chain-detail__row--button:focus-visible,
-.sheet__close:focus-visible,
+.modal__close:focus-visible,
 .ticker-link:focus-visible,
 .nav a:focus-visible,
 .back:focus-visible {

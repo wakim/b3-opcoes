@@ -7,23 +7,39 @@ import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
-import { MetricSheet } from '../components/MetricSheet'
-import type { OpenMetric, SheetTarget } from '../components/metricKeys'
+import { MetricModal } from '../components/MetricModal'
+import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 
 export const Route = createFileRoute('/s/$ticker/$maturity')({
   component: SeriesPage,
 })
 
+function sideLabel(side: string): string {
+  const code = side.trim().toUpperCase()
+  if (code.startsWith('C')) return 'Call'
+  if (code.startsWith('P')) return 'Put'
+  return side
+}
+
+function styleLabel(style: string | null): string {
+  if (!style) return '—'
+  const code = style.trim().toUpperCase()
+  if (code === 'E') return 'Europeia'
+  if (code === 'A') return 'Americana'
+  return style
+}
+
 function SeriesPage() {
   const { ticker, maturity } = Route.useParams()
   const [view, setView] = useState<'price' | 'iv'>('price')
-  const [sheet, setSheet] = useState<SheetTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setSheet({ field, label, value })
+  const [modal, setModal] = useState<ModalTarget | null>(null)
+  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
 
   const series = useQuery({
     queryKey: ['series', ticker, maturity],
     queryFn: ({ signal }) => apiGet<SeriesDetail>(`/api/s/${ticker}/${maturity}`, signal),
   })
+
   if (series.isLoading || !series.data) return <Loading />
   if (series.isError) return <ErrorState error={series.error} />
 
@@ -40,10 +56,10 @@ function SeriesPage() {
 
       <dl className="identity">
         <div><dt>Contrato</dt><dd className="num">{data.ticker}</dd></div>
-        <div><dt>Lado / estilo</dt><dd>{data.side} / {data.style ?? '—'}</dd></div>
-        <div><dt>Strike</dt><dd className="num">{brl(data.strike_brl)}</dd></div>
+        <div><dt>Lado / estilo</dt><dd>{sideLabel(data.side)} / {styleLabel(data.style)}</dd></div>
+        <div><dt>Preço de exercício</dt><dd className="num">{brl(data.strike_brl)}</dd></div>
         <div><dt>Vencimento</dt><dd className="num">{data.maturity}</dd></div>
-        <div><dt>Leg</dt><dd className="num">{data.leg_id}</dd></div>
+        <div><dt>Perna</dt><dd className="num">{data.leg_id}</dd></div>
       </dl>
 
       <h2 className="block-title">Último ponto · {data.last.date}</h2>
@@ -52,19 +68,22 @@ function SeriesPage() {
         <GlossaryMetric
           field="mid_brl"
           label="Preço"
+          hint="Preço usado na volatilidade implícita: o fechamento do negócio, não o meio do book."
           value={brl(data.last.mid_brl ?? data.last.close_brl)}
           onOpen={openMetric}
           emphasis
         />
         <GlossaryMetric
           field="iv_pct"
-          label="IV"
+          label="Volatilidade implícita"
+          hint="Volatilidade que o preço da opção está pedindo, ao ano."
           value={fmt(data.last.iv_pct)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="delta"
           label="Delta"
+          hint="Quanto o prêmio muda para cada R$ 1 de variação da ação."
           value={fmt(data.last.delta, 3)}
           onOpen={openMetric}
           note={
@@ -81,18 +100,21 @@ function SeriesPage() {
         <GlossaryMetric
           field="gamma"
           label="Gamma"
+          hint="Taxa de variação do delta."
           value={fmt(data.gamma, 4)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="theta_brl"
-          label="Theta"
+          label="Theta (por dia)"
+          hint="Quanto o prêmio perde por dia útil, só pela passagem do tempo."
           value={brl(data.theta_brl)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="vega_brl"
-          label="Vega"
+          label="Vega (por ponto de vol.)"
+          hint="Quanto o prêmio muda para cada 1 ponto de volatilidade implícita."
           value={brl(data.vega_brl)}
           onOpen={openMetric}
         />
@@ -115,7 +137,7 @@ function SeriesPage() {
             aria-pressed={view === 'iv'}
             onClick={() => setView('iv')}
           >
-            IV
+            Volatilidade
           </button>
         </div>
       </div>
@@ -123,12 +145,12 @@ function SeriesPage() {
         labels={labels}
         series={[
           {
-            label: view === 'price' ? 'Preço' : 'IV',
+            label: view === 'price' ? 'Preço' : 'Volatilidade implícita',
             values: history.map((point) => (view === 'price' ? point.close_brl : point.iv_pct)),
           },
         ]}
         formatValue={(v) => (view === 'price' ? brl(v) : fmt(v, 1))}
-        ariaLabel={`Histórico de ${view === 'price' ? 'preço' : 'IV'} de ${data.ticker}`}
+        ariaLabel={`Histórico de ${view === 'price' ? 'preço' : 'volatilidade implícita'} de ${data.ticker}`}
         showPoints={false}
       />
       {data.flags.length > 0 && <p className="note">flags: {data.flags.join(' · ')}</p>}
@@ -137,7 +159,12 @@ function SeriesPage() {
       <div className="table-wrap">
         <table className="screen-table">
           <thead>
-            <tr><th>Data</th><th>Fechamento</th><th>IV</th><th>Δ</th></tr>
+            <tr>
+              <th>Data</th>
+              <th>Fechamento</th>
+              <th>Volatilidade implícita</th>
+              <th>Delta</th>
+            </tr>
           </thead>
           <tbody>
             {history.slice(-8).reverse().map((point) => (
@@ -152,7 +179,7 @@ function SeriesPage() {
         </table>
       </div>
 
-      <MetricSheet target={sheet} onClose={() => setSheet(null)} />
+      <MetricModal target={modal} onClose={() => setModal(null)} />
     </>
   )
 }

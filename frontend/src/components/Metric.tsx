@@ -12,9 +12,11 @@ export interface MetricProps {
   note?: ReactNode
   onOpen?: () => void
   emphasis?: boolean
+  /** Tooltip do rótulo quando o nome completo não cabe (ex.: sigla). */
+  hint?: string
 }
 
-export function Metric({ label, value, note, onOpen, emphasis = false }: MetricProps) {
+export function Metric({ label, value, note, onOpen, emphasis = false, hint }: MetricProps) {
   const classes = [
     'metric',
     emphasis ? 'metric--emphasis' : '',
@@ -35,7 +37,7 @@ export function Metric({ label, value, note, onOpen, emphasis = false }: MetricP
         type="button"
         className={classes}
         onClick={onOpen}
-        title={`O que é ${label}`}
+        title={hint ?? `O que é ${label}`}
       >
         {content}
       </button>
@@ -52,6 +54,7 @@ export function GlossaryMetric({
   onOpen,
   note,
   emphasis,
+  hint,
 }: {
   field: string
   label: string
@@ -59,6 +62,7 @@ export function GlossaryMetric({
   onOpen: OpenMetric
   note?: ReactNode
   emphasis?: boolean
+  hint?: string
 }) {
   return (
     <Metric
@@ -66,6 +70,7 @@ export function GlossaryMetric({
       value={value}
       note={note}
       emphasis={emphasis}
+      hint={hint}
       onOpen={() => onOpen(field, label, value)}
     />
   )

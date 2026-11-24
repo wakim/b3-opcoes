@@ -6,7 +6,7 @@
  */
 export type OpenMetric = (field: string, label: string, value: string) => void
 
-export interface SheetTarget {
+export interface ModalTarget {
   field: string
   label: string
   value: string

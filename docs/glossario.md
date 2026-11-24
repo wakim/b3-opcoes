@@ -106,7 +106,7 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 ## IV ATM 30d
 
-**O que é** — a IV da opção no dinheiro, padronizada para 30 dias. É o "termômetro" do papel, comparável entre semanas e entre papéis diferentes.
+**O que é** — a volatilidade implícita (IV) da opção no dinheiro, padronizada para 30 dias. É o "termômetro" do papel, comparável entre semanas e entre papéis diferentes.
 
 **Erro comum** — comparar IV de vencimentos diferentes. A IV do vencimento mais próximo sobe e desce com o calendário, criando serra dente de serra. Por isso o painel **interpola** para 30 dias em vez de pegar o vencimento mais próximo.
 
@@ -116,7 +116,7 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 ## IV rank e percentil
 
-**O que é** — duas leituras diferentes de "onde a IV de hoje está" nos últimos 252 pregões. **IV rank** usa os extremos (mínimo e máximo do período): `(IV − mínimo) / (máximo − mínimo)`. **Percentil** conta os dias: "a IV de hoje é maior que X% dos dias". Podem divergir bastante quando há um pico isolado no período — o pico puxa o máximo e derruba o rank, mas mexe pouco no percentil.
+**O que é** — duas leituras diferentes de "onde a volatilidade implícita (IV) de hoje está" nos últimos 252 pregões. **IV rank** usa os extremos (mínimo e máximo do período): `(IV − mínimo) / (máximo − mínimo)`. **Percentil** conta os dias: "a IV de hoje é maior que X% dos dias". Podem divergir bastante quando há um pico isolado no período — o pico puxa o máximo e derruba o rank, mas mexe pouco no percentil.
 
 **Erro comum** — tratar como sinal. **IV rank é contexto, não gatilho.** Se o papel mudou de regime (entrou num ciclo de resultados piores, mudou de controlador), o "p85" pode ser o novo normal. Por isso o gatilho do funil é o z-score do VRP, e o rank fica só como leitura. O outro erro é trocar as duas: rank não é percentil.
 

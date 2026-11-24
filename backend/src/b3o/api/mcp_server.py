@@ -105,11 +105,19 @@ def health() -> dict[str, Any]:
 
 
 @mcp.tool(description=TOOL_SCREEN)
-def screen(date: str | None = None, max_rows: int = DEFAULT_MAX_ROWS) -> dict[str, Any]:
-    """Painel descritivo do universo líquido na sessão (`date` ISO, default última)."""
+def screen(
+    date: str | None = None,
+    max_rows: int = DEFAULT_MAX_ROWS,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Painel descritivo do universo líquido na sessão (`date` ISO, default última).
+
+    `offset` pagina o universo inteiro; `meta.next_offset` é `null` na última
+    página (mesmo contrato de `GET /api/screen`).
+    """
     return _safe(
         lambda: payloads.screen_payload(
-            get_service(), date=date, max_rows=max_rows
+            get_service(), date=date, max_rows=max_rows, offset=offset
         )
     )
 

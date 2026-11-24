@@ -94,21 +94,21 @@ function SideDetail({
       <div className="chain-detail__label">
         {title} <span className="chain-detail__ticker">{row.ticker}</span>
       </div>
-      <DetailRow label="IV" value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
+      <DetailRow label="Volatilidade implícita" value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
       <DetailRow
-        label="Spread"
+        label="Diferença bid/ask"
         value={`${brl(row.spread_brl)} · ${fmt(row.spread_pct, 1)}%`}
         field="spread_brl"
         onMetric={onMetric}
       />
-      <DetailRow label="Delta" value={fmt(row.delta, 3)} field="delta" onMetric={onMetric} />
+      <DetailRow label="Delta (por R$ 1)" value={fmt(row.delta, 3)} field="delta" onMetric={onMetric} />
       <DetailRow
         label="Preço"
         value={brl(row.mid_brl ?? row.close_brl)}
         field="mid_brl"
         onMetric={onMetric}
       />
-      <DetailRow label="Book" value={book} field="bid_brl" onMetric={onMetric} />
+      <DetailRow label="Ofertas (bid/ask)" value={book} field="bid_brl" onMetric={onMetric} />
       <div className="chain-detail__flags">
         {row.flags.length > 0 ? row.flags.join(' · ') : 'sem flags'}
       </div>
@@ -142,9 +142,9 @@ export function Chain({
             <span className="num">{groupRow.strikes.length} strikes</span>
           </header>
           <div className="chain-head" aria-hidden="true">
-            <span>Put IV</span>
-            <span>Strike</span>
-            <span>Call IV</span>
+            <span>Put</span>
+            <span>Preço de exercício</span>
+            <span>Call</span>
           </div>
           {groupRow.strikes.map((pair) => {
             const id = `${groupRow.maturity}:${pair.strike.toFixed(2)}`

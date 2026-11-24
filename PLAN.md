@@ -23,7 +23,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 |---|---|
 | Planejamento | spec v0.5, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…023) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F5-B (visual + telas de leitura).** F5-A entregue: scaffold + FastAPI servindo a SPA + rotas `tickers`/`glossary` + cliente tipado + wireframe funcional (parecer em `docs/relatorios/2026-11-23-revisao-f5a.md`). F4 fechado em `docs/relatorios/2026-11-23-revisao-f4.md`; prompt original em `docs/prompts/f5-a.md`; as sessões F5-B (visual/unslop), F5-C (builder + PWA offline) e F5-D (celular/Tailscale) estão no §10 dele. Pendências herdadas: porta 8080 do host ocupada por outro projeto (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas quando o `prepare` rodar de novo, `screen` sem paginação. Ajuste pontual do Aprender concluído antes do F5-B: a ficha do verbete abre em accordion independente (vários abertos, ADR-033; primeira passagem com bottom sheet foi revertida a pedido do dono); B2 fechada no `plain()`, B1 segue para F5-C. F5-B **não** foi marcado como feito. |
+| Retomar em | **F5-B (visual + telas de leitura).** F5-A entregue: scaffold + FastAPI servindo a SPA + rotas `tickers`/`glossary` + cliente tipado + wireframe funcional (parecer em `docs/relatorios/2026-11-23-revisao-f5a.md`). F4 fechado em `docs/relatorios/2026-11-23-revisao-f4.md`; prompt original em `docs/prompts/f5-a.md`; as sessões F5-B (visual/unslop), F5-C (builder + PWA offline) e F5-D (celular/Tailscale) estão no §10 dele. Pendências herdadas: porta 8080 do host ocupada por outro projeto (usar `B3_APP_PORT`), exclusão de índice/BDR do universo, reconciliação `ingest_state` × métricas quando o `prepare` rodar de novo; `screen` agora pagina por `offset` (F5-B) e o frontend busca todas as páginas. Ajuste pontual do Aprender concluído antes do F5-B: a ficha do verbete abre em accordion independente (vários abertos, ADR-033; primeira passagem com bottom sheet foi revertida a pedido do dono); B2 fechada no `plain()`, B1 segue para F5-C. F5-B **não** foi marcado como feito. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -295,7 +295,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | F5.0 | Scaffold `frontend/`: **Vite + React + TS + TanStack Router (file-based) + TanStack Query + Tailwind v4**; serviços `web` (build one-shot) e `web-dev` (Vite) no compose | 1.5 h |
 | F5.1 | FastAPI: `/api/health`, gzip, cache HTTP, `X-App-Token` nas escritas, estático de `frontend/dist` | 1.5 h |
 | F5.2 | rotas do backend (screen, tickers, ticker, chain, series, glossary, structure) | 2 h |
-| F5.3 | Router: 4 destinos + 2 drill-downs + sheet de métrica | 2 h |
+| F5.3 | Router: 4 destinos + 2 drill-downs + ficha de métrica (modal) | 2 h |
 | F5.4 | cliente tipado da API (`frontend/src/lib/api.ts`) + TanStack Query (cache, erro, offline) | 1.5 h |
 | F5.5 | componentes base (cartões, régua, cadeia put·strike·call, gráficos SVG) aplicando os 9 passes do unslop | 4 h |
 | F5.6 | builder de estrutura (toque nas pernas → prêmio e breakeven) | 1.5 h |
@@ -316,7 +316,7 @@ Contrato em `docs/prompts/f5-a.md`; ADR-029…032. Critérios provados com saíd
 - [x] Zero escrita em `data/` por GET; zero vocabulário preditivo novo; sem biblioteca de gráfico; sem SSR/servidor no frontend.
 - [x] ADRs 029–032 (stack/dispatcher/glossário/cliente), armadilhas no `AGENTS.md`, `README.md` com os comandos e push por pacote verde.
 
-**Não entregue aqui (escopo das próximas sessões):** 9 passes do unslop/desenho final, sheet de métrica e gráficos (F5-B); builder de estrutura, Carteira/Diário reais e PWA/offline (F5-C); Tailscale/instalação no celular (F5-D). Os placeholders de Carteira/Diário dizem "F6" explicitamente. A aba Aprender foi tratada à parte, na sessão F5-PreB (accordion independente, ADR-033).
+**Não entregue aqui (escopo das próximas sessões):** 9 passes do unslop/desenho final, ficha de métrica (modal) e gráficos (F5-B); builder de estrutura, Carteira/Diário reais e PWA/offline (F5-C); Tailscale/instalação no celular (F5-D). Os placeholders de Carteira/Diário dizem "F6" explicitamente. A aba Aprender foi tratada à parte, na sessão F5-PreB (accordion independente, ADR-033).
 
 ### F5-PreB — ajuste pontual do Aprender (antes do F5-B)
 
@@ -328,7 +328,7 @@ Contrato em `docs/prompts/f5-pre-b.md`; ADR-033; evidência em `docs/relatorios/
 - [x] `lint` + `typecheck` limpos; duas builds com hashes idênticos (`index-B8W31Zfi.css` / `index-smFPNgpz.js`); app reconstruído em 8081; `mcp_smoke` **53/53** e `structure_smoke` **93/93**; `model_version` **2**.
 - [x] nenhum arquivo congelado tocado; `data/` inalterado (201 arquivos). O bottom sheet da primeira passagem foi revertido a pedido do dono (ADR-033).
 
-**Não entregue aqui:** B1 (`/api/tickers` sem UI de busca) segue para F5-C; **F5-B continua em aberto** — unslop, régua, gráficos SVG e o `MetricSheet` de Hoje/Ticker/Série (componente distinto da ficha do Aprender).
+**Não entregue aqui:** B1 (`/api/tickers` sem UI de busca) segue para F5-C; **F5-B continua em aberto** — unslop, régua, gráficos SVG e o `MetricModal` de Hoje/Ticker/Série (componente distinto da ficha do Aprender).
 
 ### F5-B — sessão 2 de 4 (visual + telas de leitura) — parcial
 
@@ -337,12 +337,15 @@ Contrato em `docs/prompts/f5-b.md`; parecer com veredito e os 9 passes por tela 
 (8081 pertence ao container da sessão paralela).
 
 - [x] **F5.5** — componentes base: `Metric`/`MetricGrid`, `Ruler` (a agulha), `Chain` put·strike·call,
-  `LineChart` em SVG inline, `MetricSheet`, `ErrorState`/`Stamp` e `metricKeys.ts` (40 campos → 30
-  slugs conferidos um a um em `/api/glossary`). Nenhum import de `lib/ui.tsx`.
-- [x] **F5.3 — parte Hoje/Ticker/Série** — 9 passes aplicados na construção; zero erros de console,
-  carimbo nas 3 telas, 412 px com todos os alvos ≥ 44 px, ficha abrindo/fechando por botão, Escape e
-  backdrop; `npm run lint` + `tsc --noEmit` limpos, duas builds com hashes idênticos, smokes 53/53 e
-  93/93, nenhum arquivo da sessão paralela tocado e `data/` inalterada por GET.
+  `LineChart` em SVG inline, `MetricModal` (ficha em modal), `ErrorState`/`Stamp` e `metricKeys.ts`
+  (40 campos → 30 slugs conferidos um a um em `/api/glossary`). Nenhum import de `lib/ui.tsx`.
+- [x] **F5.3 — parte Hoje/Ticker/Série** — 9 passes aplicados na construção; rótulos expandidos
+  ("Volatilidade implícita", "Prêmio de volatilidade"), modal com foco/trap/Escape, tabela dividida
+  em Com opções (163) e Sem opções (126) com a primeira coluna sticky, `screen` paginado por
+  `offset` e o frontend buscando todas as páginas; zero erros de console, carimbo nas 3 telas,
+  412 px com todos os alvos ≥ 44 px; `npm run lint` + `tsc --noEmit` limpos, duas builds com hashes
+  idênticos, smokes 53/53 e 93/93, nenhum arquivo da sessão paralela tocado e `data/` inalterada por
+  GET.
 
 **Não marcado aqui:** F5.3 na parte do Aprender (F5-PreB), F5-B inteiro, smoke de cobertura
 campo↔glossário (F5-C), F5.6–F5.9.

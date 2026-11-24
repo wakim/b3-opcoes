@@ -1,31 +1,83 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { apiGet, type ScreenData } from '../lib/api'
+import { fetchScreenAll, type ScreenRow } from '../lib/api'
 import { brl, fmt } from '../lib/format'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
-import { MetricSheet } from '../components/MetricSheet'
-import type { OpenMetric, SheetTarget } from '../components/metricKeys'
+import { MetricModal } from '../components/MetricModal'
+import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 
 export const Route = createFileRoute('/')({
   component: Hoje,
 })
 
+function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: boolean }) {
+  if (rows.length === 0) {
+    return <p className="chart-empty">nenhum papel nesta seção do recorte</p>
+  }
+  return (
+    <div className="table-wrap">
+      <table className="screen-table">
+        <thead>
+          <tr>
+            <th>Papel</th>
+            <th>Fechamento</th>
+            {withOptions && (
+              <>
+                <th>Volatilidade implícita 30d</th>
+                <th title="VRP = volatilidade implícita − realizada">Prêmio de volatilidade</th>
+                <th>Séries líquidas</th>
+                <th>Vencimentos</th>
+              </>
+            )}
+            <th>Situação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.underlying}>
+              <td>
+                {row.status === 'ok' ? (
+                  <Link className="ticker-link" to="/t/$ticker" params={{ ticker: row.underlying }}>
+                    {row.underlying}
+                  </Link>
+                ) : (
+                  row.underlying
+                )}
+              </td>
+              <td>{brl(row.spot_brl)}</td>
+              {withOptions && (
+                <>
+                  <td>{fmt(row.iv_atm_30d)}</td>
+                  <td>{fmt(row.vrp)}</td>
+                  <td>{row.n_liquid_series}</td>
+                  <td>{row.n_expiries}</td>
+                </>
+              )}
+              <td className="quiet">{row.exclusion ?? 'ok'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function Hoje() {
-  const [sheet, setSheet] = useState<SheetTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setSheet({ field, label, value })
+  const [modal, setModal] = useState<ModalTarget | null>(null)
+  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
   const screen = useQuery({
-    queryKey: ['screen', 60],
-    queryFn: ({ signal }) => apiGet<ScreenData>('/api/screen?max_rows=60', signal),
+    queryKey: ['screen', 'all'],
+    queryFn: ({ signal }) => fetchScreenAll(signal),
   })
 
   if (screen.isLoading || !screen.data) return <Loading />
   if (screen.isError) return <ErrorState error={screen.error} />
 
-  const envelope = screen.data
-  const { summary, rows } = envelope.data
-  const meta = envelope.meta
+  const { summary, rows } = screen.data.data
+  const withOptions = rows.filter((row) => row.n_expiries > 0)
+  const withoutOptions = rows.filter((row) => row.n_expiries === 0)
 
   return (
     <>
@@ -38,63 +90,35 @@ function Hoje() {
         <Metric label="Excluídos" value={summary.excluded} />
         <GlossaryMetric
           field="iv_atm_30d"
-          label="IV mediana"
+          label="Volatilidade implícita mediana"
+          hint="Volatilidade implícita no dinheiro (ATM), padronizada para 30 dias."
           value={fmt(summary.iv_median)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="vrp"
-          label="VRP mediana"
+          label="Prêmio de volatilidade mediano"
+          hint="VRP = volatilidade implícita − realizada."
           value={fmt(summary.vrp_median)}
           onOpen={openMetric}
         />
       </MetricGrid>
 
-      {meta?.truncated && (
-        <p className="notice" role="status">
-          A API devolveu {meta.returned} de {meta.total} papéis — recorte alfabético.
-        </p>
-      )}
+      <section className="papers-section">
+        <h2 className="block-title">
+          Com opções <span className="block-count">{withOptions.length} papéis</span>
+        </h2>
+        <PapersTable rows={withOptions} withOptions />
+      </section>
 
-      <h2 className="block-title">Papéis</h2>
-      <div className="table-wrap">
-        <table className="screen-table">
-          <thead>
-            <tr>
-              <th>Papel</th>
-              <th>Fechamento</th>
-              <th>IV 30d</th>
-              <th>VRP</th>
-              <th>Séries líq.</th>
-              <th>Venc.</th>
-              <th>Situação</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.underlying}>
-                <td>
-                  {row.status === 'ok' ? (
-                    <Link className="ticker-link" to="/t/$ticker" params={{ ticker: row.underlying }}>
-                      {row.underlying}
-                    </Link>
-                  ) : (
-                    row.underlying
-                  )}
-                </td>
-                <td>{brl(row.spot_brl)}</td>
-                <td>{fmt(row.iv_atm_30d)}</td>
-                <td>{fmt(row.vrp)}</td>
-                <td>{row.n_liquid_series}</td>
-                <td>{row.n_expiries}</td>
-                <td className="quiet">{row.exclusion ?? 'ok'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <section className="papers-section">
+        <h2 className="block-title">
+          Sem opções <span className="block-count">{withoutOptions.length} papéis</span>
+        </h2>
+        <PapersTable rows={withoutOptions} withOptions={false} />
+      </section>
 
-      <MetricSheet target={sheet} onClose={() => setSheet(null)} />
+      <MetricModal target={modal} onClose={() => setModal(null)} />
     </>
   )
 }

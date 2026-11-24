@@ -17,9 +17,11 @@ sinal, taxa de acerto ou recomendação.
 4. **Falha explícita.** Erro = `{"error": {"code", "message", "hint"}}`; ausência = `null`
    + flag; nunca zero silencioso nem traceback no corpo.
 5. **Limites.** `max_rows` padrão **20**, teto **60** (o teto é do transporte; a
-   `QueryService` aceita mais). Resposta > **200 KB** trunca a lista principal, com
-   `meta.truncated = true`, `meta.total` e `meta.returned` coerentes; célula nunca é
-   cortada pela metade.
+   `QueryService` aceita mais). `screen` pagina com **`offset`**: cada resposta devolve no
+   máximo `max_rows` linhas e declara `meta.offset` + `meta.next_offset` (`null` na última
+   página), então o universo inteiro (289 em 19/11) é alcançável sem furar o teto. Resposta
+   > **200 KB** trunca a lista principal, com `meta.truncated = true`, `meta.total` e
+   `meta.returned` coerentes; célula nunca é cortada pela metade.
 6. **Fórmula congelada.** `metrics/`, `ingest/`, `store/` e `derive/` de cálculo não são
    tocados; `model_version` continua **2**. Os números vêm de `metrics_*` já gravados.
 7. **Container é o caminho oficial.** `uv lock` dentro do container (workaround do bind),
@@ -169,7 +171,7 @@ Events(ticker, as_of_session, model_version, maturities: list[date],
 | Rota | Payload |
 |---|---|
 | `GET /api/health` | `health` |
-| `GET /api/screen?date=&max_rows=` | `screen` |
+| `GET /api/screen?date=&max_rows=&offset=` | `screen` |
 | `GET /api/t/{ticker}?date=&sections=&expiry=&days=` | `underlying` |
 | `GET /api/t/{ticker}/chain?date=&expiry=&delta_min=&delta_max=&liquidity=&max_rows=` | `chain` |
 | `GET /api/s/{ticker}/{maturity}?days=` | `series` |
@@ -181,7 +183,8 @@ Nada de `signal_backtest` (ADR-027).
 ## 6. MCP
 
 Streamable HTTP em **`/mcp`**, mesma instância de `QueryService`. Tools: `health`, `screen`,
-`underlying`, `chain`, `series`, `events`. Cada descrição declara **"use quando"** e
+`underlying`, `chain`, `series`, `events`. `screen` aceita `offset` com o mesmo contrato do
+HTTP (`meta.offset`/`meta.next_offset`). Cada descrição declara **"use quando"** e
 **"não use para"**, sem vocabulário preditivo (sem `signal_class`, `premium`, `ranking`,
 `acerto`, `caro/barato`, `recomend`).
 

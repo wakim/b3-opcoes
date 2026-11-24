@@ -8,8 +8,8 @@ import { GlossaryMetric, MetricGrid } from '../components/Metric'
 import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
 import { Chain } from '../components/Chain'
-import { MetricSheet } from '../components/MetricSheet'
-import type { OpenMetric, SheetTarget } from '../components/metricKeys'
+import { MetricModal } from '../components/MetricModal'
+import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 
 export const Route = createFileRoute('/t/$ticker')({
   component: TickerPage,
@@ -19,8 +19,8 @@ function TickerPage() {
   const { ticker } = Route.useParams()
   const [pickedMaturity, setPickedMaturity] = useState<string | null>(null)
   const [filter, setFilter] = useState<'strict' | 'all'>('strict')
-  const [sheet, setSheet] = useState<SheetTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setSheet({ field, label, value })
+  const [modal, setModal] = useState<ModalTarget | null>(null)
+  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
 
   const overview = useQuery({
     queryKey: ['underlying', ticker],
@@ -70,32 +70,37 @@ function TickerPage() {
       </Link>
       <h1 className="screen-title">{ticker}</h1>
       <p className="quiet-line">
-        {data.counts.term} vencimentos · {data.counts.smile} strikes · {data.counts.history} dias de histórico
+        {data.counts.term} vencimentos · {data.counts.smile}{' '}
+        <abbr title="preços de exercício">strikes</abbr> · {data.counts.history} dias de histórico
       </p>
 
       <MetricGrid>
         <GlossaryMetric
           field="spot_brl"
           label="Fechamento"
+          hint="Último preço negociado da ação na sessão; o painel é sempre D-1."
           value={brl(summary?.spot_brl)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="iv_atm_30d"
-          label="IV ATM 30d"
+          label="Volatilidade implícita 30d"
+          hint="Volatilidade implícita no dinheiro (ATM), padronizada para 30 dias."
           value={fmt(summary?.iv_atm_30d)}
           onOpen={openMetric}
           emphasis
         />
         <GlossaryMetric
           field="vrp"
-          label="VRP"
+          label="Prêmio de volatilidade"
+          hint="VRP = volatilidade implícita − realizada."
           value={fmt(summary?.vrp)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="iv_rank_252"
-          label="IV rank"
+          label="Posição da volatilidade (12m)"
+          hint="Onde a volatilidade implícita de hoje está nos últimos 252 pregões (0 = mínimo, 100 = máximo)."
           value={fmt(summary?.iv_rank_252, 0)}
           onOpen={openMetric}
           note={
@@ -105,13 +110,14 @@ function TickerPage() {
               max={100}
               ticks={[0, 50, 100]}
               format={(v) => fmt(v, 0)}
-              describe="IV rank"
+              describe="Posição da volatilidade em 12 meses"
             />
           }
         />
         <GlossaryMetric
           field="vrp_z_252"
-          label="z-score do VRP"
+          label="Desvios-padrão do prêmio"
+          hint="Quantos desvios-padrão o prêmio de volatilidade de hoje está da própria média de 252 sessões."
           value={fmt(summary?.vrp_z_252)}
           onOpen={openMetric}
           note={
@@ -121,13 +127,14 @@ function TickerPage() {
               max={3}
               ticks={[-3, 0, 3]}
               format={(v) => fmt(v, 1)}
-              describe="z-score do VRP"
+              describe="Desvios-padrão do prêmio de volatilidade"
             />
           }
         />
         <GlossaryMetric
           field="days_to_liquidate"
           label="Dias para liquidar"
+          hint="Quantos pregões seriam necessários para desmontar a posição média da série ao ritmo atual."
           value={fmt(summary?.days_to_liquidate)}
           onOpen={openMetric}
           note={
@@ -147,30 +154,30 @@ function TickerPage() {
         <p className="note" key={note}>{note}</p>
       ))}
 
-      <h2 className="block-title">Estrutura a termo</h2>
+      <h2 className="block-title">Volatilidade implícita por vencimento</h2>
       {withIv.length >= 2 ? (
         <LineChart
           labels={termWindow.map((point) => point.maturity.slice(5))}
           series={[{
-            label: 'IV ATM',
+            label: 'Volatilidade implícita',
             values: termWindow.map((point) => point.iv_atm),
             hollow: termWindow.map((point) => point.n_liquid_strikes === 0),
           }]}
           formatValue={(v) => fmt(v, 1)}
-          ariaLabel={`Estrutura a termo de ${ticker}: IV por vencimento`}
-          caption={`IV em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''}`}
+          ariaLabel={`Volatilidade implícita por vencimento de ${ticker}`}
+          caption={`Volatilidade implícita em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''}`}
         />
       ) : (
-        <p className="chart-empty">IV indisponível nos vencimentos desta sessão</p>
+        <p className="chart-empty">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
       )}
 
-      <h2 className="block-title">IV vs realizada</h2>
+      <h2 className="block-title">Volatilidade implícita vs realizada</h2>
       <LineChart
         compact
         labels={history.map((point) => point.date.slice(5))}
         series={[
-          { label: 'IV 30d', values: history.map((point) => point.iv_atm_30d) },
-          { label: 'RV30', values: history.map((point) => point.rv30), dashed: true },
+          { label: 'Volatilidade implícita', values: history.map((point) => point.iv_atm_30d) },
+          { label: 'Realizada 30d', values: history.map((point) => point.rv30), dashed: true },
         ]}
         formatValue={(v) => fmt(v, 1)}
         ariaLabel={`Volatilidade implícita e realizada de ${ticker}`}
@@ -193,7 +200,7 @@ function TickerPage() {
       </div>
 
       <div className="block-head">
-        <h2 className="block-title">Cadeia</h2>
+        <h2 className="block-title">Cadeia de opções</h2>
         <div className="selector" role="group" aria-label="Filtro da cadeia">
           <button
             type="button"
@@ -213,6 +220,10 @@ function TickerPage() {
           </button>
         </div>
       </div>
+      <p className="chain-note">
+        Put = opção de venda · Call = opção de compra · Strike = preço de exercício · números em
+        volatilidade implícita ao ano.
+      </p>
       {chain.isLoading && <Loading label="carregando cadeia…" />}
       {chain.isError && <ErrorState error={chain.error} />}
       {chain.data && (
@@ -226,7 +237,7 @@ function TickerPage() {
         </>
       )}
 
-      <MetricSheet target={sheet} onClose={() => setSheet(null)} />
+      <MetricModal target={modal} onClose={() => setModal(null)} />
     </>
   )
 }

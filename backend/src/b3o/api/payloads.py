@@ -46,9 +46,16 @@ def screen_payload(
     service: QueryService,
     date: Any = None,
     max_rows: int | None = None,
+    offset: int = 0,
 ) -> dict[str, Any]:
-    """Painel descritivo da sessão: resumo + as N primeiras linhas (alfabéticas)."""
+    """Painel descritivo da sessão: resumo + uma página de linhas (alfabéticas).
+
+    `offset` pagina o universo inteiro (289 em 19/11) sem furar o teto de 60 do
+    transporte: cada chamada devolve no máximo `limit` linhas e declara
+    `meta.offset`/`meta.next_offset` (`null` na última página).
+    """
     limit = clamp_max_rows(max_rows)
+    start = max(0, int(offset))
     bundle = service.screen_bundle(_as_date(date))
     summary = aggregate(
         bundle.rows,
@@ -57,7 +64,7 @@ def screen_payload(
         outside_universe=bundle.outside_universe,
         earnings_coverage_start=bundle.earnings_coverage_start,
     )
-    rows = [jsonable(row) for row in bundle.rows[:limit]]
+    rows = [jsonable(row) for row in bundle.rows[start:start + limit]]
     data = {
         "session": bundle.session.isoformat(),
         "summary": {
@@ -79,13 +86,19 @@ def screen_payload(
         },
         "rows": rows,
     }
-    return envelope(
+    payload = envelope(
         data,
         as_of_session=bundle.session,
         model_version=bundle.model_version,
         list_key="rows",
         total=len(bundle.rows),
     )
+    meta = payload.get("meta")
+    if meta is not None:
+        meta["offset"] = start
+        next_offset = start + int(meta.get("returned", 0))
+        meta["next_offset"] = next_offset if next_offset < len(bundle.rows) else None
+    return payload
 
 
 def underlying_payload(

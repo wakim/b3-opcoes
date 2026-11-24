@@ -20,6 +20,9 @@ export interface Meta {
   total: number
   returned: number
   truncated: boolean
+  /** Página atual (0-based) e próximo deslocamento; `null` na última página. */
+  offset?: number
+  next_offset?: number | null
   lists?: Record<string, { total: number; returned: number; truncated: boolean }>
   note?: string
 }
@@ -182,6 +185,38 @@ export interface ScreenData {
   session: string
   summary: ScreenSummary
   rows: ScreenRow[]
+}
+
+/** Busca todas as páginas de `/api/screen` (60 por vez) e devolve o universo inteiro.
+ *
+ * A API mantém o teto de 60 linhas por resposta; `meta.total` diz o tamanho do
+ * universo e cada página traz `meta.next_offset`. A primeira chamada é
+ * sequencial (para conhecer o total); as demais vão em paralelo.
+ */
+export async function fetchScreenAll(signal?: AbortSignal): Promise<Envelope<ScreenData>> {
+  const limit = 60
+  const first = await apiGet<ScreenData>(`/api/screen?max_rows=${limit}&offset=0`, signal)
+  const total = first.meta?.total ?? first.data.rows.length
+  const offsets: number[] = []
+  for (let offset = limit; offset < total; offset += limit) offsets.push(offset)
+  const pages = await Promise.all(
+    offsets.map((offset) =>
+      apiGet<ScreenData>(`/api/screen?max_rows=${limit}&offset=${offset}`, signal),
+    ),
+  )
+  const rows = [...first.data.rows, ...pages.flatMap((page) => page.data.rows)]
+  return {
+    ...first,
+    data: { ...first.data, rows },
+    meta: {
+      ...(first.meta ?? { total, returned: rows.length, truncated: false }),
+      total,
+      returned: rows.length,
+      truncated: rows.length < total,
+      offset: 0,
+      next_offset: null,
+    },
+  }
 }
 
 export interface Term {

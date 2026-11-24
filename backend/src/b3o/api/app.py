@@ -260,10 +260,14 @@ def create_app() -> FastAPI:
 
     @app.get("/api/screen")
     def api_screen(
-        date: str | None = None, max_rows: int = DEFAULT_MAX_ROWS
+        date: str | None = None,
+        max_rows: int = DEFAULT_MAX_ROWS,
+        offset: int = 0,
     ) -> dict[str, Any]:
-        """Painel descritivo da sessão (resumo + N primeiras linhas alfabéticas)."""
-        return payloads.screen_payload(_service(), date=_date(date), max_rows=max_rows)
+        """Painel descritivo da sessão (resumo + uma página alfabética via `offset`)."""
+        return payloads.screen_payload(
+            _service(), date=_date(date), max_rows=max_rows, offset=offset
+        )
 
     @app.get("/api/tickers")
     def api_tickers(q: str = "", max_rows: int = DEFAULT_MAX_ROWS) -> dict[str, Any]:

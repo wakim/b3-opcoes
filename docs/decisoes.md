@@ -539,6 +539,28 @@ Critérios de desempate, nesta ordem:
   implementação. `model_version` continua 2.
 - **Revisar em:** aceitação de uso real ou se o dono quiser múltiplos usuários.
 
+## ADR-044 — F8: migração shadcn/Tailwind em paralelo com F6/F7 pendentes
+
+- **Data:** 2026-11-24 · **Status:** ratificada pelo dono · **Custo de reverter:** médio (migração de UI)
+- **Contexto:** o PLAN declara F8 dependente de F6 e F7, mas as duas fases estão tecnicamente
+  implementadas e aguardam aceitação de uso real: duas reconciliações de corretora e 30 sessões de
+  diário com 10 previsões. Em 24/11/2026 o dono autorizou explicitamente migrar F8.2/F8.3 em paralelo,
+  sem esperar essa aceitação longitudinal.
+- **Decisão:**
+  1. F8.2/F8.3 podem avançar agora como exceção à dependência do PLAN. F6 e F7 continuam
+     **implementação validada, aceitação pendente**; nenhum checkbox de uso é marcado.
+  2. A migração é somente de interface: primitives shadcn + utilitários Tailwind. Contratos HTTP,
+     cálculos, dados, gráficos SVG, `model_version`, journal e regras offline/`NetworkOnly` não mudam.
+  3. Preservar acessibilidade e comportamento já validado: foco, trap, Escape, retorno de foco,
+     estados busy, 401/409, rascunho, alvos ≥ 44 px e viewports 412/1280/1440.
+  4. Entregar em pacotes separados (F8.2 e F8.3), com regressão técnica e navegador real antes de
+     marcar qualquer aceitação F8.
+- **Por quê:** separa a dívida visual da aceitação longitudinal do produto e permite melhorar a
+  interface sem fabricar uso real nem reabrir o sinal F1b.
+- **Consequência:** o PLAN registra a exceção e o progresso real. F8 só será aceita quando seus quatro
+  critérios próprios passarem; F6/F7 permanecem independentes.
+- **Revisar em:** conclusão de F8.2/F8.3 ou quando F6/F7 forem aceitas.
+
 ## ADR-007 — Validador: fatal é estrutural; linha torta se pula e se conta
 
 - **Data:** 2026-11-22 · **Status:** provisória · **Custo de reverter:** baixo

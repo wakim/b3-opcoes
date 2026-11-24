@@ -21,9 +21,9 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…039) |
+| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…042) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **F6 — Posições/Carteira.** F5 concluído: Android instalado, HTTPS tailnet, builder/PWA offline, busca, cobertura, bloco Liquidez + `/api/liquid` e tipografia desktop (base 15 px; mobile com diferença zero). |
+| Retomar em | **F7 — Diário e calibração pessoal.** F6 segue com aceitação pendente da reconciliação manual; F7 tem implementação validada e aguarda uso real. F8 não foi iniciada. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -572,7 +572,9 @@ antigo da 8084 e o volume SQLite descartável foram removidos.
 
 **Objetivo:** medir se **as suas decisões** acertam (o sinal já foi medido no F1b).
 **Estimativa:** 1 sessão · **Depende de:** F6
-**Status em 24/11/2026:** pronto para retomar em `docs/prompts/f7-retomada.md`; implementação não iniciada.
+**Status em 24/11/2026:** **implementação validada, aceitação pendente** de 30 dias de diário sem lacuna e
+≥ 10 previsões avaliadas automaticamente. Contrato em `docs/contratos/f7.md`; evidências em
+`docs/relatorios/2026-11-24-f7.md`.
 
 | ID | Tarefa | Est. |
 |---|---|---|
@@ -580,10 +582,17 @@ antigo da 8084 e o volume SQLite descartável foram removidos.
 | F7.2 | formulário de registro no mobile | 1.5 h |
 | F7.3 | relatório de calibração: acerto das **previsões estruturadas** (§6.12) por métrica e horizonte, com `n`; sem classe de sinal nem taxa do F1b (ADR-023/024 — o sinal não passou e não é base de comparação) | 1.5 h |
 
+**Progresso registrado (não é aceitação do dono)**
+- [x] migration F7 `0002` + `0003`, decisão/previsão/avaliação append-only, índices únicos e triggers;
+- [x] `POST/GET /api/journal`, detalhe, calibração paginada e autenticação antes do corpo;
+- [x] lote `b3o evaluate`, integrado ao `prepare`/`prepare-watch`, primeiro pregão posterior e `void` explícito;
+- [x] formulário/lista/calibração mobile-first, rascunho, 401/409 e `NetworkOnly`;
+- [x] smokes e regressões técnicos, cobertura campo↔glossário, builds idênticas e navegador sem erros.
+
 **Aceitação F7**
 - [ ] 30 dias de diário sem lacuna
 - [ ] ≥ 10 previsões avaliadas automaticamente
-- [ ] relatório mostra o acerto pessoal por métrica/horizonte com `n` e o que ficou `void`, sem comparar com classe de sinal (ADR-024)
+- [x] relatório mostra o acerto pessoal por métrica/horizonte com `n` e o que ficou `void`, sem comparar com classe de sinal (ADR-024)
 
 ---
 

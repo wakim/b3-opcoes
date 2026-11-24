@@ -8,6 +8,7 @@ import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'rea
 import { useQuery } from '@tanstack/react-query'
 import { apiGet, type GlossaryDetail } from '../lib/api'
 import { glossaryKey, type ModalTarget } from './metricKeys'
+import { InlineMd } from './InlineMd'
 
 /** `**O que é** — texto` → `texto`, parando no próximo rótulo em negrito. */
 function section(md: string, name: string): string {
@@ -21,7 +22,9 @@ function Block({ title, text }: { title: string; text: string }) {
   return (
     <div className="modal__block">
       <div className="modal__block-title">{title}</div>
-      <p className="modal__block-text">{text}</p>
+      <p className="modal__block-text">
+        <InlineMd text={text} />
+      </p>
     </div>
   )
 }

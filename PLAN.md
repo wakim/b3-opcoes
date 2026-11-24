@@ -572,6 +572,7 @@ antigo da 8084 e o volume SQLite descartável foram removidos.
 
 **Objetivo:** medir se **as suas decisões** acertam (o sinal já foi medido no F1b).
 **Estimativa:** 1 sessão · **Depende de:** F6
+**Status em 24/11/2026:** pronto para retomar em `docs/prompts/f7-retomada.md`; implementação não iniciada.
 
 | ID | Tarefa | Est. |
 |---|---|---|

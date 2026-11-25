@@ -546,7 +546,8 @@ export function PositionForm({
               <Checkbox
                 className={focusToggle}
                 checked={predictionEnabled}
-                onChange={(event) => setPredictionEnabled(event.target.checked)}
+                onCheckedChange={(checked) => setPredictionEnabled(checked === true)}
+                disabled={create.isPending}
               />
               <span>Registrar previsão estruturada</span>
             </label>

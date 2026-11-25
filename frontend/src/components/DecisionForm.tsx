@@ -361,7 +361,8 @@ export function DecisionForm({
               <Checkbox
                 className={focusToggle}
                 checked={predictionEnabled}
-                onChange={(event) => setPredictionEnabled(event.target.checked)}
+                onCheckedChange={(checked) => setPredictionEnabled(checked === true)}
+                disabled={create.isPending}
               />
               <span>Adicionar previsão avaliável</span>
             </label>

@@ -4,7 +4,7 @@
 **Branch:** `f8-shadcn-migration`  
 **Base:** `main` em `a796afa`  
 **Worktree:** `C:\Users\wakim\.local\share\opencode\worktree\54cf8a\b3o-shadcn-migration`  
-**Status:** F8.5.0, F8.5.1, F8.5.2 e F8.5.3 concluídas e revisadas; F8.5.4–F8.5.5 pendentes
+**Status:** F8.5.0, F8.5.1, F8.5.2, F8.5.3 e F8.5.4 concluídas e revisadas; F8.5.5 pendente
 
 ---
 
@@ -133,6 +133,18 @@ Diagnóstico do FAIL inicial, sem afrouxar critério: a remoção do `title` apa
 - `npm run check`, build, cobertura (**26 campos tocáveis · 63 no mapa · 45 verbetes**) e `git diff --check` verdes. Lago estável: sessão `2026-11-24`, `model_version=2`, 724 sessões; 191 arquivos com hashes idênticos à F8.5.2 (`data/out/f85-lake-phase3-after.json`).
 - Artefatos: `data/out/f85-phase3-baseline/`, `data/out/f85-phase3-candidate/comparison.json`, `data/out/f85-phase3-tables.json` e `data/out/f85-phase3-supplemental/`.
 - Revisão independente final: **PASS**.
+
+### F8.5.4 — pilotos comportamentais
+
+- `Select` Radix **não foi adotado**. O piloto em `DecisionForm / Tipo de decisão` falhou o critério visual rigoroso; `Select` e `DecisionForm` foram restaurados ao HEAD antes do Checkbox. O `NativeSelect` permanece nos formulários e no seletor de vencimento. Evidência da decisão: `data/out/f85-phase4-select-native-decision.json` e `data/out/f85-phase4-diario-focus-arrow-final/result.json`.
+- `Checkbox` Radix **adotado** com `Root asChild` sobre o input nativo. O input visível recebe `checked` explicitamente porque o Radix só injeta `aria-checked` no trigger; sem isso, retomar um rascunho com `predictionEnabled=true` divergia do estado do React. Os dois formulários usam `onCheckedChange` e `disabled={create.isPending}`.
+- Prova do Checkbox: **PASS**, 61 checks em 412/1280/1440 × Carteira/Diário, cobrindo retomada de rascunho, clique no label, Espaço, nome acessível, alvo ≥ 44 px, `disabled`, bloqueio de clique e zero pageerror (`data/out/f85-phase4-checkbox-final/result.json`). A revisão inicial reprovou o patch sem a sincronização de `checked`; a correção foi revisada e aprovada antes do Accordion.
+- `Accordion` Radix **adotado** no Aprender em `type="multiple"`. `Item className="contents"` preserva o flex original; `Header` contém o `Trigger` sem introduzir heading; `forceMount + hidden={!open}` mantém o painel fechado no DOM; `EntryDetail` continua montado só quando aberto, com uma `useQuery` por verbete e `staleTime` de 1 h. `aria-labelledby` injetado foi neutralizado para preservar `aria-label={entry.title}`; ids estáveis mantêm `aria-controls`.
+- Accordion em navegador real: **PASS** para Enter, Tab, Espaço, dois painéis abertos, foco preservado e console limpo (`data/out/f85-accordion-browser-keyboard.json`). Enter também ativou o ToggleGroup sem perder o foco (`data/out/f85-browser-keyboard.json`). O script CDP bruto usa Espaço porque a síntese de Enter do Edge headless não gera o clique nativo; Enter foi provado no navegador real.
+- Interações funcionais: **PASS**, 62 checks em cada uma das larguras 412/1280/1440 (`data/out/f85-phase4-interactions-final/`, `data/out/f85-phase4-interactions-1280/` e `data/out/f85-phase4-interactions-1440/`). Inclui Accordion múltiplo, Tab entre triggers, toque, nomes acessíveis, layout `0 px`/`6 px`, Checkbox/disabled, Tooltip, ToggleGroup, modais, erros e zero pageerror. `details.select_primitive` é `native`.
+- Tabelas: **PASS**, 36 checks nas três larguras, com sticky, sem duplo scroll, Enter navegando e alvos ≥ 44 px (`data/out/f85-phase4-tables-final.json`).
+- `npm run check`, build da app 8093 e `git diff --check` verdes. Esta fase foi validada funcionalmente, sem captura ou comparação contra baseline, conforme orientação do dono.
+- Revisão independente final: **PASS**, sem blockers.
 
 ## Fases
 

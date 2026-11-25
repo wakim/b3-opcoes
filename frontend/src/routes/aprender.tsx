@@ -9,6 +9,13 @@ import {
 } from '../lib/api'
 import { ErrorBox, Loading } from '../lib/ui'
 import { note } from '../lib/classes'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionHeader,
+  AccordionItem,
+  AccordionTrigger,
+} from '../components/ui/accordion'
 
 const HOUR = 3_600_000
 
@@ -58,39 +65,41 @@ function EntryDetail({ entryKey }: { entryKey: string }): ReactNode {
 function EntryRow({
   entry,
   open,
-  onToggle,
 }: {
   entry: GlossaryEntry
   open: boolean
-  onToggle: (key: string) => void
 }): ReactNode {
   const panelId = useId()
   return (
-    <>
-      <button
-        className="flex min-h-[44px] w-full justify-between gap-[10px] rounded-[4px] border border-border bg-card px-[14px] py-[12px] text-left text-foreground aria-[expanded=true]:rounded-b-none aria-[expanded=true]:bg-secondary lg:text-body lg:leading-body"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => onToggle(entry.key)}
-      >
-        <span className="inline-flex min-w-0 items-baseline gap-[10px]">
-          <span>{entry.title}</span>
-          <span className="font-mono text-[11px] text-muted-foreground lg:text-label">nível {entry.level}</span>
-        </span>
-        <span className="shrink-0 font-mono text-[16px] leading-none text-muted-foreground lg:text-metric" aria-hidden="true">
-          {open ? '−' : '+'}
-        </span>
-      </button>
-      <div
+    <AccordionItem value={entry.key} className="contents">
+      <AccordionHeader asChild>
+        <div className="flex">
+          <AccordionTrigger
+            className="flex min-h-[44px] w-full justify-between gap-[10px] rounded-[4px] border border-border bg-card px-[14px] py-[12px] text-left text-foreground aria-[expanded=true]:rounded-b-none aria-[expanded=true]:bg-secondary lg:text-body lg:leading-body"
+            aria-controls={panelId}
+          >
+            <span className="inline-flex min-w-0 items-baseline gap-[10px]">
+              <span>{entry.title}</span>
+              <span className="font-mono text-[11px] text-muted-foreground lg:text-label">nível {entry.level}</span>
+            </span>
+            <span className="shrink-0 font-mono text-[16px] leading-none text-muted-foreground lg:text-metric" aria-hidden="true">
+              {open ? '−' : '+'}
+            </span>
+          </AccordionTrigger>
+        </div>
+      </AccordionHeader>
+      <AccordionContent
         id={panelId}
         className="mt-[-6px] rounded-b-[4px] border-x border-b border-border bg-card p-[14px] lg:text-body lg:leading-body [&_[data-note]]:m-0"
         role="region"
         aria-label={entry.title}
+        aria-labelledby={undefined}
+        forceMount
         hidden={!open}
       >
         {open && <EntryDetail entryKey={entry.key} />}
-      </div>
-    </>
+      </AccordionContent>
+    </AccordionItem>
   )
 }
 
@@ -105,15 +114,6 @@ function Aprender() {
   if (list.isError) return <ErrorBox error={list.error} />
   if (list.isLoading || !list.data) return <Loading />
 
-  function toggle(key: string) {
-    setOpen((previous) => {
-      const next = new Set(previous)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
   return (
     <>
       <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">
@@ -123,16 +123,16 @@ function Aprender() {
         Toque num verbete para abrir a ficha. Vários podem ficar abertos.
       </p>
 
-      <div className="flex flex-col gap-[6px]">
+      <Accordion
+        type="multiple"
+        value={[...open]}
+        onValueChange={(values) => setOpen(new Set(values))}
+        className="flex flex-col gap-[6px]"
+      >
         {list.data.data.entries.map((entry) => (
-          <EntryRow
-            key={entry.key}
-            entry={entry}
-            open={open.has(entry.key)}
-            onToggle={toggle}
-          />
+          <EntryRow key={entry.key} entry={entry} open={open.has(entry.key)} />
         ))}
-      </div>
+      </Accordion>
     </>
   )
 }

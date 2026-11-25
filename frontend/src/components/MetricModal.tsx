@@ -59,6 +59,7 @@ export function MetricModal({
       description={source && source !== target?.label ? `glossário: ${source}` : undefined}
       onClose={onClose}
       initialFocus="close"
+      size="wide"
     >
       {target && (
         <div className="grid gap-4">

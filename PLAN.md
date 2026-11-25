@@ -656,6 +656,7 @@ Plano executado em `docs/planejamento-migracao-shadcn.md`, sem reabrir F6/F7/F9 
 **Pedido do dono (24/11/2026):** permitir escolher uma linguagem mais expert ou mais leiga. No modo
 leigo, os termos devem ser menos abreviados e ter mais explicações/tooltips.
 **Status:** planejado, ainda não iniciado. Não reabre F6/F7 nem altera a aceitação de uso real.
+**Prompt de execução:** `docs/prompts/f9.md` (orquestração com subagentes Hy4 flash Free).
 
 **Objetivo:** mudar apenas a camada de apresentação do PWA, mantendo os mesmos números, unidades,
 ordens, rotas e contratos da API.

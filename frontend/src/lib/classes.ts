@@ -11,7 +11,8 @@ export const focusInset =
 export const focusOutset =
   'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[2px] focus-visible:outline-primary'
 
-/** `.note` — margem 8/0, 11 px, cinza 3. */
+/** `.note` — margem 8/0, 11 px, cinza 3. `data-note` permite ao Aprender
+ * zerar a margem por estrutura sem depender do nome da classe. */
 export const noteBase = 'text-[11px] text-muted-foreground'
 export const note = `mx-0 my-[8px] ${noteBase}`
 

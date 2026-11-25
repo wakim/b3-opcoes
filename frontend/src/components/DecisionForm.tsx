@@ -291,7 +291,7 @@ export function DecisionForm({
           className="contents m-0 min-w-0 border-none p-0"
           disabled={create.isPending}
         >
-          <legend className={`${visuallyHidden} border-none`}>Dados da decisão</legend>
+          <legend className={visuallyHidden}>Dados da decisão</legend>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
             <label className={field}>
               <span className={`${fieldLabel} lg:text-label`}>Ativo-objeto</span>

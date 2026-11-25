@@ -10,7 +10,6 @@ import type { ChainData, ChainRow } from '../lib/api'
 import type { OpenMetric } from './metricKeys'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
-import { builderButton, builderField } from '../lib/controls'
 
 type Side = { put?: ChainRow; call?: ChainRow }
 type StrikePair = Side & { strike: number }
@@ -129,7 +128,8 @@ function SideDetail({
               inputMode="numeric"
               min={1}
               step={1}
-              className={`w-[96px] min-w-[96px] max-w-[96px] ${builderField}`}
+              variant="builder"
+              className="w-[96px] min-w-[96px] max-w-[96px]"
               value={quantity}
               aria-label={`Quantidade de ações para ${row.ticker}`}
               onChange={(event) => setQuantity(event.target.value)}
@@ -139,7 +139,7 @@ function SideDetail({
             type="button"
             variant="outline"
             size="sm"
-            className={builderButton}
+            builder="button"
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'long', parsed)}
           >
@@ -149,7 +149,7 @@ function SideDetail({
             type="button"
             variant="outline"
             size="sm"
-            className={builderButton}
+            builder="button"
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'short', parsed)}
           >

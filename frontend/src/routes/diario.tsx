@@ -35,12 +35,12 @@ import { DecisionForm } from '../components/DecisionForm'
 import { Dialog } from '../components/Dialog'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
+import { ScreenTable } from '../components/ScreenTable'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 import { ErrorState, Loading } from '../components/State'
 import { TokenGate, useAppToken } from '../components/TokenGate'
 import { Button } from '../components/ui/button'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -347,14 +347,16 @@ function CalibrationReport({
       {data.groups.length === 0 ? (
         <p className={`${note} lg:text-label`}>Ainda não há previsão avaliada. O relatório não inventa taxa sem n.</p>
       ) : (
-        <div
-          className="table-wrap table-wrap--scroll"
-          role="region"
-          aria-label="Calibração por métrica e horizonte"
-          tabIndex={0}
+        <ScreenTable
+          wrapperClassName="table-wrap table-wrap--scroll"
+          wrapperProps={{
+            role: 'region',
+            'aria-label': 'Calibração por métrica e horizonte',
+            tabIndex: 0,
+          }}
+          className="min-w-[760px]"
         >
-          <Table contained={false} className="screen-table min-w-[760px] lg:text-table lg:leading-table">
-            <TableHeader>
+          <TableHeader>
               <TableRow>
                 <TableHead scope="col" className="font-normal lg:text-table-head">Métrica</TableHead>
                 <TableHead scope="col" className="font-normal lg:text-table-head">Horizonte</TableHead>
@@ -408,8 +410,7 @@ function CalibrationReport({
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </div>
+        </ScreenTable>
       )}
     </>
   )

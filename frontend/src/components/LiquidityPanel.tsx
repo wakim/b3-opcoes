@@ -5,10 +5,10 @@ import { apiGet, type LiquidData, type ScreenRow } from '../lib/api'
 import { brl, brlCompact, dateBr, fmt, sharePct } from '../lib/format'
 import { ErrorState, Loading } from './State'
 import { InfoTip } from './InfoTip'
+import { ScreenTable } from './ScreenTable'
 import { Button } from './ui/button'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -108,15 +108,17 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
           <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhum papel com série líquida nesta sessão</p>
         ) : (
           <>
-            <div
-              className="table-wrap table-wrap--scroll min-w-0 max-w-full"
-              id="liquidity-papers"
-              role="region"
-              aria-label="Papéis com mais séries líquidas"
-              tabIndex={0}
+            <ScreenTable
+              wrapperClassName="table-wrap table-wrap--scroll min-w-0 max-w-full"
+              wrapperProps={{
+                id: 'liquidity-papers',
+                role: 'region',
+                'aria-label': 'Papéis com mais séries líquidas',
+                tabIndex: 0,
+              }}
+              className="liquidity-table"
             >
-              <Table contained={false} className="screen-table liquidity-table lg:text-table lg:leading-table">
-                <TableHeader>
+              <TableHeader>
                   <TableRow>
                     <TableHead scope="col" className={headClass}>Papel</TableHead>
                     <TableHead scope="col" className={`text-right ${headClass}`}>Fechamento</TableHead>
@@ -161,8 +163,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     </TableRow>
                   ))}
                 </TableBody>
-              </Table>
-            </div>
+            </ScreenTable>
             {ranked.length > 10 && (
               <Button
                 type="button"
@@ -193,14 +194,16 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
               Mostrando {liquid.data.meta.returned} de {liquid.data.meta.total} séries por volume.
             </p>
           )}
-          <div
-            className="table-wrap table-wrap--scroll min-w-0 max-w-full"
-            role="region"
-            aria-label="Séries líquidas mais negociadas"
-            tabIndex={0}
+          <ScreenTable
+            wrapperClassName="table-wrap table-wrap--scroll min-w-0 max-w-full"
+            wrapperProps={{
+              role: 'region',
+              'aria-label': 'Séries líquidas mais negociadas',
+              tabIndex: 0,
+            }}
+            className="liquidity-table liquidity-table--series"
           >
-            <Table contained={false} className="screen-table liquidity-table liquidity-table--series lg:text-table lg:leading-table">
-              <TableHeader>
+            <TableHeader>
                 <TableRow>
                   <TableHead scope="col" className={headClass}>Série</TableHead>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Papel</TableHead>
@@ -245,8 +248,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
-          </div>
+          </ScreenTable>
         </>
       )}
     </section>

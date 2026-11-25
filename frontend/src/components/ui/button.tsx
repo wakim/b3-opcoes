@@ -2,6 +2,12 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 import { Slot } from 'radix-ui'
+import { focusInset } from "@/lib/classes"
+
+const builderFocus = `focus-visible:ring-0 ${focusInset}`
+const builderButton = `h-[44px] rounded-[4px] border border-input bg-card px-[12px] py-[8px] text-[12px] font-normal whitespace-normal text-[color:var(--text-2)] shadow-none hover:bg-muted hover:text-foreground disabled:opacity-45 dark:border-input dark:bg-card dark:hover:bg-muted ${builderFocus} lg:text-control`
+const builderPrimary = `h-[44px] rounded-[4px] border border-primary bg-primary px-[12px] py-[8px] text-[12px] font-normal whitespace-normal text-primary-foreground shadow-none hover:bg-primary disabled:opacity-45 ${builderFocus} lg:text-control`
+const builderRemove = `h-[44px] rounded-none px-[4px] py-[8px] text-[11px] font-normal text-muted-foreground underline ${builderFocus} lg:text-label`
 
 const buttonVariants = cva(
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-md lg:text-body font-medium whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -29,10 +35,17 @@ const buttonVariants = cva(
         "icon-sm": "size-8",
         "icon-lg": "size-10",
       },
+      builder: {
+        none: "",
+        button: builderButton,
+        primary: builderPrimary,
+        remove: builderRemove,
+      },
     },
     defaultVariants: {
       variant: "default",
       size: "default",
+      builder: "none",
     },
   }
 )
@@ -42,6 +55,7 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  builder = "none",
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
@@ -54,7 +68,7 @@ function Button({
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(buttonVariants({ variant, size, builder, className }))}
       {...props}
     />
   )

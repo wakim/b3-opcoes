@@ -645,7 +645,7 @@ Plano executado em `docs/planejamento-migracao-shadcn.md`, sem reabrir F6/F7/F9 
 - [x] **F8.5.0 — baseline e guardas:** referência `a796afa`, lago `2026-11-24`/`model_version=2`/724 sessões e 48 estados aceitos.
 - [x] **F8.5.1 — fundação Radix:** imports unificados em `radix-ui`, dependências individuais removidas e 48 estados sem regressão.
 - [x] **F8.5.2 — Tooltip, ToggleGroup e Alert:** teclado/toque/foco/Escape, aparência e envelope de erro preservados; comparação determinística 48/48 **PASS**, interações **PASS** (Accordion múltiplo fica para F8.5.4), suplemento **PASS**, cobertura 26/63/45 e lago com 191 hashes idênticos. Revisão independente: **PASS**.
-- [ ] **F8.5.3 — tabelas e variantes dos controles:** pendente.
+- [x] **F8.5.3 — tabelas e variantes dos controles:** 48 estados, 24 checks de tabela e suplemento F6/F7 PASS; zero diferença de geometria/fonte/cor, lago idêntico e revisão independente **PASS**.
 - [ ] **F8.5.4 — pilotos comportamentais:** pendente.
 - [ ] **F8.5.5 — validação e fechamento:** pendente.
 

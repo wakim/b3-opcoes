@@ -12,18 +12,17 @@ import { brl, fmt } from '../lib/format'
 import { ErrorState } from './State'
 import { Metric, MetricGrid } from './Metric'
 import { PayoffChart } from './PayoffChart'
+import { ScreenTable } from './ScreenTable'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from './ui/table'
-import { builderButton, builderField, builderPrimary, builderRemove } from '../lib/controls'
 
 export interface BuilderLeg extends StructureLegInput {
   /** Chave local da lista; não vai para a API. */
@@ -132,7 +131,8 @@ export function StructureBuilder({
                   min={1}
                   step={1}
                   value={leg.quantity}
-                  className={`w-[96px] min-w-[96px] max-w-[96px] ${builderField}`}
+                  variant="builder"
+                  className="w-[96px] min-w-[96px] max-w-[96px]"
                   aria-label={`Quantidade de ações de ${leg.ticker}`}
                   onChange={(event) => setQuantity(leg.id, event.target.value)}
                 />
@@ -141,7 +141,7 @@ export function StructureBuilder({
                 type="button"
                 variant="link"
                 size="sm"
-                className={builderRemove}
+                builder="remove"
                 aria-label={`Remover ${leg.ticker}`}
                 onClick={() => removeLeg(leg.id)}
               >
@@ -157,7 +157,7 @@ export function StructureBuilder({
           <label className="flex min-w-0 flex-col gap-[4px]">
             <span className="text-[11px] text-muted-foreground lg:text-label">Perna de ação</span>
             <NativeSelect
-              className={builderField}
+              variant="builder"
               value={stockSide}
               aria-label="Lado da ação"
               onChange={(event) => setStockSide(event.target.value as LegSide)}
@@ -173,7 +173,7 @@ export function StructureBuilder({
               inputMode="numeric"
               min={1}
               step={1}
-              className={builderField}
+              variant="builder"
               value={stockQuantity}
               aria-label="Quantidade de ações da ação"
               onChange={(event) => setStockQuantity(event.target.value)}
@@ -182,7 +182,8 @@ export function StructureBuilder({
           <Button
             type="button"
             variant="outline"
-            className={`col-span-full w-full min-[720px]:col-auto min-[720px]:w-auto ${builderButton}`}
+            builder="button"
+            className="col-span-full w-full min-[720px]:col-auto min-[720px]:w-auto"
             onClick={addStock}
             disabled={legs.length >= MAX_LEGS}
           >
@@ -192,7 +193,7 @@ export function StructureBuilder({
         <div className="flex flex-wrap items-center gap-[8px] min-[720px]:justify-end">
           <Button
             type="button"
-            className={builderPrimary}
+            builder="primary"
             onClick={() => calc.mutate()}
             disabled={legs.length === 0 || calc.isPending}
           >
@@ -201,7 +202,7 @@ export function StructureBuilder({
           <Button
             type="button"
             variant="outline"
-            className={builderButton}
+            builder="button"
             onClick={() => setLegs([])}
             disabled={legs.length === 0}
           >
@@ -298,9 +299,8 @@ function ScenariosTable({
   return (
     <div className="mt-[12px]">
       <p className="mt-[8px] mb-[6px] text-[11px] text-muted-foreground lg:text-label">Cenários no dia 0 (spot e choque de IV do backend)</p>
-      <div className="overflow-x-auto rounded-[6px] border border-border">
-        <Table contained={false} className="screen-table lg:text-table lg:leading-table">
-          <TableHeader>
+      <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
+        <TableHeader>
             <TableRow>
               <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Preço</TableHead>
               {shifts.map((shift) => (
@@ -327,9 +327,8 @@ function ScenariosTable({
                 })}
               </TableRow>
             ))}
-          </TableBody>
-        </Table>
-      </div>
+        </TableBody>
+      </ScreenTable>
     </div>
   )
 }

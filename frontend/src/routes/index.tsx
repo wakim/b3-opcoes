@@ -10,9 +10,9 @@ import { MetricModal } from '../components/MetricModal'
 import { TickerSearch } from '../components/TickerSearch'
 import { LiquidityPanel } from '../components/LiquidityPanel'
 import { InfoTip } from '../components/InfoTip'
+import { ScreenTable } from '../components/ScreenTable'
 import { Button } from '../components/ui/button'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -32,14 +32,15 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
     return <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhum papel nesta seção do recorte</p>
   }
   return (
-    <div
-      className="table-wrap table-wrap--scroll min-w-0 max-w-full"
-      role="region"
-      aria-label={withOptions ? 'Papéis com opções' : 'Papéis sem opções'}
-      tabIndex={0}
+    <ScreenTable
+      wrapperClassName="table-wrap table-wrap--scroll min-w-0 max-w-full"
+      wrapperProps={{
+        role: 'region',
+        'aria-label': withOptions ? 'Papéis com opções' : 'Papéis sem opções',
+        tabIndex: 0,
+      }}
     >
-      <Table contained={false} className="screen-table lg:text-table lg:leading-table">
-        <TableHeader>
+      <TableHeader>
           <TableRow>
             <TableHead scope="col" className={headClass}>Papel</TableHead>
             <TableHead scope="col" className={`text-right ${headClass}`}>Fechamento</TableHead>
@@ -95,8 +96,7 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
             </TableRow>
           ))}
         </TableBody>
-      </Table>
-    </div>
+    </ScreenTable>
   )
 }
 

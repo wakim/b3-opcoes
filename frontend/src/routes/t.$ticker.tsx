@@ -11,12 +11,12 @@ import { Chain } from '../components/Chain'
 import { MetricModal } from '../components/MetricModal'
 import { InfoTip } from '../components/InfoTip'
 import { StructureBuilder, type BuilderLeg } from '../components/StructureBuilder'
+import { ScreenTable } from '../components/ScreenTable'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 import { Button } from '../components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import { NativeSelect } from '../components/ui/native-select'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -363,9 +363,12 @@ function TickerPage() {
 /** Tabela curta dos vencimentos (IV do ATM e séries líquidas) — sem forward. */
 function TermTable({ rows, className }: { rows: Term[]; className?: string }) {
   return (
-    <div className={`overflow-x-auto rounded-[6px] border border-border${className ? ` ${className}` : ''}`}>
-      <Table contained={false} className="screen-table max-w-[420px] [&_:is(th,td):first-child]:static [&_:is(th,td):first-child]:z-auto [&_:is(th,td):first-child]:border-r-0 lg:text-table lg:leading-table">
-        <TableHeader>
+    <ScreenTable
+      wrapperClassName={`overflow-x-auto rounded-[6px] border border-border${className ? ` ${className}` : ''}`}
+      stickyFirst={false}
+      className="max-w-[420px]"
+    >
+      <TableHeader>
           <TableRow>
             <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Vencimento</TableHead>
             <InfoTip text="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">
@@ -385,7 +388,6 @@ function TermTable({ rows, className }: { rows: Term[]; className?: string }) {
             </TableRow>
           ))}
         </TableBody>
-      </Table>
-    </div>
+    </ScreenTable>
   )
 }

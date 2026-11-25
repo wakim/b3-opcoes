@@ -26,11 +26,11 @@ import {
 } from '../components/PositionBits'
 import { ErrorState, Loading } from '../components/State'
 import { HelpTip } from '../components/HelpTip'
+import { ScreenTable } from '../components/ScreenTable'
 import { TokenGate, useAppToken } from '../components/TokenGate'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -274,14 +274,16 @@ function PositionDetailPage() {
             text="Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade. Uma coberta, por exemplo, tem duas pernas: a ação comprada e a call vendida."
           />
         </h2>
-        <div
-          className={`table-wrap ${focusInset}`}
-          role="region"
-          tabIndex={0}
-          aria-label="Tabela horizontal das pernas registradas"
+        <ScreenTable
+          wrapperClassName={`table-wrap ${focusInset}`}
+          wrapperProps={{
+            role: 'region',
+            tabIndex: 0,
+            'aria-label': 'Tabela horizontal das pernas registradas',
+          }}
+          className="min-w-[760px]"
         >
-          <Table contained={false} className="screen-table min-w-[760px] lg:text-table lg:leading-table">
-            <TableHeader>
+          <TableHeader>
               <TableRow>
                 <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
                 <TableHead className="font-normal lg:text-table-head">Tipo</TableHead>
@@ -309,20 +311,21 @@ function PositionDetailPage() {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </div>
+        </ScreenTable>
       </section>
 
       <section className="mt-[24px]" aria-labelledby="position-marks-title">
         <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-marks-title">Marcação da sessão</h2>
-        <div
-          className={`table-wrap ${focusInset}`}
-          role="region"
-          tabIndex={0}
-          aria-label="Tabela horizontal da marcação da sessão"
+        <ScreenTable
+          wrapperClassName={`table-wrap ${focusInset}`}
+          wrapperProps={{
+            role: 'region',
+            tabIndex: 0,
+            'aria-label': 'Tabela horizontal da marcação da sessão',
+          }}
+          className="min-w-[980px]"
         >
-          <Table contained={false} className="screen-table min-w-[980px] lg:text-table lg:leading-table">
-            <TableHeader>
+          <TableHeader>
               <TableRow>
                 <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
                 <TableHead className="font-normal lg:text-table-head">Marca</TableHead>
@@ -358,8 +361,7 @@ function PositionDetailPage() {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </div>
+        </ScreenTable>
       </section>
 
       <section className="mt-[24px]" aria-labelledby="position-thesis-title">

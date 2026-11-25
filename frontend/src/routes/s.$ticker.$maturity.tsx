@@ -8,10 +8,10 @@ import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
 import { MetricModal } from '../components/MetricModal'
+import { ScreenTable } from '../components/ScreenTable'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import {
-  Table,
   TableBody,
   TableCell,
   TableHead,
@@ -172,9 +172,8 @@ function SeriesPage() {
       {data.flags.length > 0 && <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">flags: {data.flags.join(' · ')}</p>}
 
       <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Últimos pregões</h2>
-      <div className="overflow-x-auto rounded-[6px] border border-border">
-        <Table contained={false} className="screen-table lg:text-table lg:leading-table">
-          <TableHeader>
+      <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
+        <TableHeader>
             <TableRow>
               <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Data</TableHead>
               <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">Fechamento</TableHead>
@@ -191,9 +190,8 @@ function SeriesPage() {
                 <TableCell className="px-[8px] py-[10px]">{fmt(point.delta, 3)}</TableCell>
               </TableRow>
             ))}
-          </TableBody>
-        </Table>
-      </div>
+        </TableBody>
+      </ScreenTable>
 
       <MetricModal target={modal} onClose={() => setModal(null)} />
     </>

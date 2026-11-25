@@ -4,7 +4,7 @@
 **Branch:** `f8-shadcn-migration`  
 **Base:** `main` em `a796afa`  
 **Worktree:** `C:\Users\wakim\.local\share\opencode\worktree\54cf8a\b3o-shadcn-migration`  
-**Status:** F8.5.0, F8.5.1 e F8.5.2 concluídas e revisadas; F8.5.3–F8.5.5 pendentes
+**Status:** F8.5.0, F8.5.1, F8.5.2 e F8.5.3 concluídas e revisadas; F8.5.4–F8.5.5 pendentes
 
 ---
 
@@ -121,6 +121,18 @@ Achados do baseline a corrigir nas fases seguintes, sem reabrir a F8:
 - Revisão independente final: **PASS**.
 
 Diagnóstico do FAIL inicial, sem afrouxar critério: a remoção do `title` apagou o sublinhado pontilhado do `<abbr>`; Carteira 1440 herdou um draft de `sessionStorage`; e os inputs mediram estados transitórios de `:focus-visible`. A correção real foi só o sublinhado. A captura passou a limpar drafts, normalizar ponteiro, usar clique real e rodar sem retomada, eliminando os artefatos.
+
+### F8.5.3 — Tabelas e variantes dos controles
+
+- `ScreenTable` centralizou as nove tabelas em sete arquivos, sempre com `contained={false}`, `screen-table lg:text-table lg:leading-table` e um único wrapper de scroll. `wrapperProps` preserva `id`, `role`, `tabIndex` e `aria-label`; `stickyFirst={false}` ficou restrito ao `TermTable`.
+- `lib/controls.ts` foi removido. `Button` ganhou o eixo CVA aditivo `builder="button" | "primary" | "remove" | "none"`; `Input` ganhou `variant="builder"`; `NativeSelect` reutiliza `builderFieldClass`. Chain e StructureBuilder mantêm `variant`, `size`, `disabled`, handlers e geometria originais.
+- Comparação determinística baseline × candidato: **PASS**, 48 estados em 412/1280/1440, zero diferença de key style, seletor, interativo, foco, tabela ou texto; três ruídos de rasterização de 1/2/4 pixels com `maxChannelDiff=1`. O `error-state` preserva apenas os 404 deliberados.
+- Checagem específica de tabelas: **PASS**, 24 checks em 412/1440 (`data/out/f85-phase3-tables.json`): três regiões de Hoje, sticky, sem `table-container` interno, Liquidez ≥ 44 px, `role=link`/Enter, TermTable sem parada extra e sticky desligado, Série/cenários sem parada extra e sticky ligado.
+- Suplemento das três tabelas sem dado no journal oficial: **PASS** (`data/out/f85-phase3-supplemental/result.json`). Exemplos canônicos de F6/F7 interceptados no navegador, sem escrita: duas tabelas de Carteira e calibração do Diário em 412/1280/1440; zero diferença de DOM/computed style, seis screenshots idênticos, Tab entre as regiões sticky e alvos ≥ 44 px.
+- O FAIL inicial do verificador específico era falso negativo do script, reproduzido idêntico no baseline: esperava duas regiões em Hoje (há três), media linhas passivas como alvo de 44 px e exigia `line-height: 20px` também no desktop (o aceite F8 usa 19,6 px). Só o artefato local foi corrigido; nenhum critério foi afrouxado.
+- `npm run check`, build, cobertura (**26 campos tocáveis · 63 no mapa · 45 verbetes**) e `git diff --check` verdes. Lago estável: sessão `2026-11-24`, `model_version=2`, 724 sessões; 191 arquivos com hashes idênticos à F8.5.2 (`data/out/f85-lake-phase3-after.json`).
+- Artefatos: `data/out/f85-phase3-baseline/`, `data/out/f85-phase3-candidate/comparison.json`, `data/out/f85-phase3-tables.json` e `data/out/f85-phase3-supplemental/`.
+- Revisão independente final: **PASS**.
 
 ## Fases
 

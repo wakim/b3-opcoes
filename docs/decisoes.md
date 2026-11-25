@@ -638,3 +638,34 @@ Em qualquer outro caso: adote o default, registre, siga.
   3. A porta padrão do host no compose passa de 8080 para **8083**: a 8080 deste host é o alvo do **Funnel público** (443) do `realestate`. Sem o `.env`, o b3o subiria na 8080 e, com o outro projeto parado, ficaria na internet com escrita aberta.
 - **Risco aceito:** qualquer coisa que alcance a porta do `app` (aparelho na tailnet, processo local) grava no journal append-only, sem desfazer. Nunca apontar `tailscale funnel` para o b3o enquanto esta ADR valer.
 - **Revisar em:** novo usuário/aparelho na tailnet, deploy público ou identidade pelo cabeçalho `Tailscale-User-Login`.
+
+## ADR-046 — F8: o que fica em CSS global depois da migração Tailwind
+
+- **Data:** 2026-11-24 · **Status:** ratificada pelo dono em 25/11/2026, após avaliação manual da app 8092 · **Custo de reverter:** baixo (CSS de exceção isolado)
+- **Contexto:** o critério F8 pedia "CSS global só para tokens e base". Depois da F8.3, `styles-view.css` ainda tinha 1.097 linhas (cartões de posição, formulários, Diário, TokenGate e utilitários compartilhados `.note`/`.quiet`/`.num`/`.block-*`). A migração final levou tudo o que é layout, espaço, tipografia e cor de componente para utilitários; uma parte não é razoável em utilitário sem virar CSS escrito dentro de `className`.
+- **Decisão:**
+  1. `styles.css` (110 linhas) = `@import "tailwindcss"`, tokens `@theme`, variáveis da paleta e `@layer base` só com seletores de elemento (`*`, `html/body`, `a`, `button`, `main`). Nenhuma classe de componente.
+  2. `styles-view.css` (390 linhas, `@layer components`) guarda **somente** as exceções, cada uma com motivo:
+     - gráficos SVG `.chart*` — `stroke`, `stroke-dasharray`, `vector-effect: non-scaling-stroke`, `fill`, tooltip ancorado com media query própria;
+     - régua/agulha `.ruler*` — o triângulo da agulha é `::after` com bordas;
+     - tabelas `.table-wrap`, `.table-wrap--scroll`, `.screen-table` — primeira coluna e cabeçalho sticky sobre `border-collapse: separate`, com `z-index` cruzado (cabeçalho 2, canto 4, corpo 1);
+     - `.liquidity-table` — hover e foco em `tbody tr`/`td` descendentes;
+     - `.position-flags` — separador `" · "` em `::after` entre irmãos.
+  3. Classes compartilhadas viraram constantes em `frontend/src/lib/classes.ts`, com o valor **efetivo** do legado (as duas folhas somadas, a última vencendo); contexto que zera margem usa a variante `*Base`. Variantes `lg:` continuam no elemento.
+  4. Dependência implícita por seletor (`[.position-card_&]:mb-[12px]` no `MetricGrid`) virou prop explícita (`inCard`).
+- **Por quê:** essas regras dependem de seletor estrutural, pseudo-elemento ou propriedade SVG; escrevê-las como `[&_tbody_tr:hover_td]:…` esconderia o mesmo CSS num atributo mais difícil de ler e revisar.
+- **Consequência:** o critério F8 passa a ler "Tailwind é a camada principal de layout/espaçamento/tipografia; CSS global só para tokens, base e as exceções da ADR-046". Classe nova em `styles-view.css` precisa caber numa dessas categorias. A equivalência foi sustentada pela regressão técnica da F8.3 e pela avaliação manual do dono na 8092, aprovada em 25/11/2026; o fecho não exigiu nem executou nova comparação pixel a pixel. A referência canônica da migração continua sendo `57f5f84` (relatório F8).
+- **Revisar em:** se o Tailwind ganhar utilitário para `vector-effect`/sticky cruzado, ou se um novo gráfico entrar.
+
+## ADR-047 — F0–F8 construídos; F6/F7 aceitam só no uso real
+
+- **Data:** 2026-11-24 · **Status:** ratificada pelo dono e reconciliada com a aceitação da F8 em 25/11/2026 · **Custo de reverter:** nenhum (é estado, não mudança)
+- **Contexto:** F0–F5 e F8 estão aceitas; F6 e F7 têm implementação validada (smokes, navegador, migrations, lote de avaliação), mas os critérios restantes exigem uso: P&L conferido com a corretora em 2 posições reais (F6) e 30 sessões de pregão consecutivas com decisão real + ≥ 10 previsões avaliadas automaticamente (F7). O dono ainda não opera opções. A F9 é um novo pedido de apresentação, continua planejada e não faz parte deste fecho.
+- **Decisão:**
+  1. A construção de **F0–F8 está concluída**. Nenhuma funcionalidade nova, fórmula, contrato, dado ou `model_version` (segue 2) muda para "fechar" F6/F7. A F9 permanece planejada, sem checklist de aceitação marcado.
+  2. F6 e F7 ficam no estado **"implementação validada, aceitação no uso real"**. A contagem começa quando o dono registrar a primeira posição/decisão no journal oficial (8083).
+  3. O que conta como aceitação **não muda**: F6 = P&L batendo com o extrato da corretora em 2 posições; F7 = 30 sessões de pregão consecutivas com decisão real, sem lacuna, e ≥ 10 previsões distintas avaliadas pelo lote. Smokes e schemas descartáveis não contam.
+  4. Defeito encontrado durante o uso entra como correção pontual (com o mesmo rito de validação), não reabre a construção.
+- **Por quê:** separar "pronto para usar" de "provado no uso" evita marcar checkbox com dado fabricado e evita inventar trabalho de construção enquanto a prova depende do calendário.
+- **Consequência:** `PLAN.md` → "Retomar em" = começar a usar F6/F7 (decisão diária no Diário + 2 posições reais para reconciliar), com a F9 preservada como trabalho planejado. Revisão das ADRs provisórias na pauta "30 dias de uso".
+- **Revisar em:** primeira posição real aberta, ou 30 sessões depois da primeira decisão.

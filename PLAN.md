@@ -21,9 +21,9 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…045) |
-| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
-| Retomar em | **Aceitação F6/F7 (uso real) e o restante da F8.** F8.1–F8.4 entregues (`1230b69`, `54e7489`, ADR-044); a aceitação F8 está em 2 de 4: falta reduzir o CSS global a tokens/base (`styles-view.css` com 1.097 linhas) e reexercitar o offline. F6 segue com aceitação pendente da reconciliação manual; F7 aguarda 30 sessões de uso real. A app da 8083 ainda roda a imagem anterior à ADR-045/F8.3 (rebuild do `app`). |
+| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…047) |
+| Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. **F5 entregue e aceito**: PWA (Hoje, Ticker, Série, Aprender, builder de estrutura, liquidez) servido pelo FastAPI, instalado no celular via `tailscale serve` 8443 (só tailnet) e offline pelo service worker. **F6 implementado e validado** (ADR-041/045): journal PostgreSQL append-only, carteira com marcação EOD, P&L, gregas, alertas e payoff; aceitação no uso real (ADR-047). **F7 implementado e validado** (ADR-042): Diário de decisões com previsão estruturada, avaliação automática no lote EOD e calibração pessoal; aceitação no uso real (ADR-047). **F8 entregue e aceita** (ADR-043/044/046/047): interface em shadcn + Tailwind, CSS global reduzido a tokens, base e as exceções da ADR-046; avaliação manual do dono aprovada em 25/11/2026. |
+| Retomar em | **F8 aceita; começar a usar F6/F7 (ADR-047).** (1) **Diário todo pregão**: uma decisão real por sessão na app da 8083/8443 (inclusive "não entrei"), com previsão estruturada quando houver tese — a aceitação F7 conta 30 sessões consecutivas e ≥ 10 previsões avaliadas pelo lote. (2) **Duas posições reais** registradas na Carteira na data da execução, e o P&L conferido com o extrato da corretora (F6.6). A F9 continua planejada, fora deste fecho; defeito achado no uso vira correção pontual. |
 | Novo pedido | **F9 — níveis de linguagem Expert/Leigo**, pedido do dono em 24/11/2026. Planejado, ainda não iniciado; é apresentação, não altera dado, cálculo ou a aceitação de uso de F6/F7. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
@@ -524,6 +524,7 @@ paralelo.
 
 **Objetivo:** o painel e o agente saberem o que você já tem.
 **Estimativa:** 1,5 sessão · **Depende de:** F5
+**Status (ADR-047, 24/11/2026):** **implementação validada, aceitação no uso real** — começa quando o dono abrir a primeira posição real; o critério não muda.
 **Status em 24/11/2026:** **implementação validada, aceitação pendente** da reconciliação manual com a corretora. Reverificação no HEAD `239685c` repetiu as regressões e confirmou o journal oficial vazio; o dono ainda não tem as duas posições reais e o extrato necessários. A regressão encontrou e corrigiu um defeito de cache do service worker no commit `9d1f961`.
 Retomada/execução em `docs/prompts/f6-retomada.md`; evidências em `docs/relatorios/2026-11-24-f6.md`.
 
@@ -573,6 +574,7 @@ antigo da 8084 e o volume SQLite descartável foram removidos.
 
 **Objetivo:** medir se **as suas decisões** acertam (o sinal já foi medido no F1b).
 **Estimativa:** 1 sessão · **Depende de:** F6
+**Status (ADR-047, 24/11/2026):** **implementação validada, aceitação no uso real** — a janela de 30 sessões começa na primeira decisão real; o critério não muda.
 **Status em 24/11/2026:** **implementação validada, aceitação pendente**. Reverificação no HEAD
 `239685c` com o journal oficial e o lago real (sessão 2026-11-23, 723 sessões, `model_version=2`):
 **0/30 sessões de diário** e **0/10 previsões avaliadas**; faltam
@@ -619,9 +621,10 @@ preservando o contrato visual, os gráficos SVG e a responsividade já validados
 - [x] revisão tipográfica desktop aprovada e aplicada por tokens `@theme` + utilitários `lg:` (ADR-043);
 - [x] F8.2 migrar Carteira/detalhe, modais, formulários, tabelas e estados — commit `1230b69`;
 - [x] F8.3 migrar as demais telas e remover CSS artesanal redundante — commit `54e7489` (146 regras sem referência removidas);
-- [x] F8.4 regressão visual/funcional em 412, 1280 e 1440 px — comparação de computed style e foco contra a imagem de `701d89e`, zero diferença de geometria/fonte/cor.
+- [x] fecho Tailwind — commits `cd61e4e` e `3e2c3b5`, 18 arquivos migrados, `styles.css` 110 linhas, `styles-view.css` 390 e classes compartilhadas em `frontend/src/lib/classes.ts` (ADR-046);
+- [x] F8.4 regressão visual/funcional em 412, 1280 e 1440 px — avaliação manual do dono aprovada em 25/11/2026 na app 8092, sem problemas registrados por rota/estado; referência canônica da migração `57f5f84`. O fecho não rodou nova comparação pixel a pixel (relatório F8).
 
-F6 e F7 continuam pendentes de aceitação real; a autorização paralela está registrada na ADR-044.
+F6 e F7 continuam pendentes de aceitação real (ADR-047); a autorização paralela está registrada na ADR-044. O fecho da F8 não inicia nem altera essa contagem.
 
 **Aceitação da revisão tipográfica (ADR-043)**
 - [x] 1280 e 1440 px: corpo 16, título 36, bloco 16, lede 15, rótulos 13, métrica 20, herói 28, tabela 14/13, cadeia 14/13, gráfico 12, busca 14/12,5, builder 13/14 e modal 16/22; sem overflow/truncamento fora das regiões de tabela.
@@ -631,9 +634,9 @@ F6 e F7 continuam pendentes de aceitação real; a autorização paralela está 
 
 **Aceitação F8**
 - [x] componentes shadcn cobrem os padrões interativos sem perder acessibilidade ou foco (F8.2: diálogos/formulários; F8.3: ordem e contorno de foco idênticos ao legado)
-- [ ] Tailwind é a camada principal de layout/espaçamento/tipografia; CSS global só para tokens e base — **não atingido**: `styles-view.css` ainda tem 1.097 linhas (gráficos, régua, tabelas sticky, cartões de posição, `.note`/`.quiet`/`.num`, `.block-*`)
-- [ ] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px — gráfico/alvo/número sem regressão; offline não reexercitado; `mcp_smoke` 60/60 após ajuste à ADR-045
-- [x] duas builds limpas idênticas e navegador sem erros de console
+- [x] Tailwind é a camada principal de layout/espaçamento/tipografia; CSS global só para tokens, base e as exceções da ADR-046: `styles.css` 110 linhas e `styles-view.css` 390 linhas (`.chart*`, `.ruler*`, `.table-wrap`/`--scroll`, `.screen-table`, `.liquidity-table`, `.position-flags`); classes compartilhadas em `frontend/src/lib/classes.ts`
+- [x] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px — avaliação manual aprovada; offline reexercitado página + service worker (`b3o-f8-offline-final/result.json`: navegação e `/api/screen` do cache; sonda `/api/health?probe=1`, `/api/positions` e `/api/journal` com `network_error`; nenhum deles em `caches`); alvos < 44 px = 0 em 412/1280/1440; console 0; `mcp_smoke` 60/60 após ajuste à ADR-045
+- [x] duas builds limpas idênticas e navegador sem erros de console — 10 arquivos idênticos; `npm run check` e cobertura 26/63/45 verdes; `structure_smoke` 93/93; `liquid_smoke` 23/24 idêntico na referência `57f5f84` por fixture fixa em 23/11 contra `/api/s` na última sessão (limite registrado no relatório)
 
 ---
 

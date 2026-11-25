@@ -26,6 +26,24 @@ import { PositionForm } from '../components/PositionForm'
 import { ErrorState, Loading } from '../components/State'
 import { TokenGate, useAppToken } from '../components/TokenGate'
 import { Button } from '../components/ui/button'
+import {
+  blockCount,
+  blockHead,
+  blockTitleBase,
+  notice,
+  noteBase,
+  num,
+  quiet,
+  quietLine,
+  screenTitle,
+} from '../lib/classes'
+
+const portfolioHead = 'flex flex-wrap items-start justify-between gap-[12px] max-sm:block'
+const actionsRow = 'flex flex-wrap items-center gap-[12px] max-sm:mt-[12px]'
+const positionCard =
+  'rounded-[6px] border border-border bg-card p-[16px] max-sm:p-[12px]'
+const positionRow =
+  'grid grid-cols-[minmax(112px,0.4fr)_minmax(0,1fr)] gap-[12px] border-t border-t-border py-[12px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[4px]'
 
 export const Route = createFileRoute('/carteira')({
   component: Carteira,
@@ -83,13 +101,13 @@ function Carteira() {
 
   return (
     <>
-      <div className="portfolio-head">
+      <div className={portfolioHead}>
         <div>
-          <h1 className="screen-title lg:text-screen-title lg:leading-title">Carteira</h1>
-          <p className="quiet-line lg:text-label">Posições e marcação EOD do journal</p>
+          <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>Carteira</h1>
+          <p className={`${quietLine} lg:text-label`}>Posições e marcação EOD do journal</p>
         </div>
         {auth.hasToken && (
-          <div className="portfolio-actions">
+          <div className={actionsRow}>
             <Button
               id="new-position-trigger"
               type="button"
@@ -118,20 +136,20 @@ function Carteira() {
       {portfolio.isError && <ErrorState error={portfolio.error} title="Carteira indisponível" />}
 
       {writeNotice && (
-        <p className="notice lg:text-label" role="status">
+        <p className={`${notice} lg:text-label`} role="status">
           {writeNotice}
         </p>
       )}
 
       {portfolio.data && (
         <>
-          <p className="quiet-line lg:text-label">
+          <p className={`${quietLine} lg:text-label`}>
             sessão {portfolio.data.data.session} · {portfolio.data.data.totals.open_positions}{' '}
             {portfolio.data.data.totals.open_positions === 1 ? 'posição aberta' : 'posições abertas'}
           </p>
 
           {(portfolio.data.meta?.truncated || portfolio.data.meta?.note) && (
-            <p className="notice lg:text-label" role="status">
+            <p className={`${notice} lg:text-label`} role="status">
               {portfolio.data.meta.note ??
                 `Mostrando ${portfolio.data.meta.returned} de ${portfolio.data.meta.total} posições abertas.`}
             </p>
@@ -139,28 +157,28 @@ function Carteira() {
 
           <PositionTotalsGrid totals={portfolio.data.data.totals} onMetric={openMetric} />
 
-          <div className="block-head">
-            <h2 className="block-title lg:text-block-title lg:leading-title">Posições</h2>
-            <span className="block-count lg:text-label">{portfolio.data.data.positions.length}</span>
+          <div className={blockHead}>
+            <h2 className={`${blockTitleBase} lg:text-block-title lg:leading-title`}>Posições</h2>
+            <span className={`${blockCount} lg:text-label`}>{portfolio.data.data.positions.length}</span>
           </div>
 
           {portfolio.data.data.positions.length === 0 &&
           (portfolio.data.meta?.total ?? 0) === 0 ? (
-            <div className="position-empty">
-              <p>Nenhuma posição aberta.</p>
-              <p className="note lg:text-label">
+            <div className="rounded-[6px] border border-dashed border-input bg-card px-[16px] py-[24px]">
+              <p className="mb-[4px]">Nenhuma posição aberta.</p>
+              <p className={`${noteBase} lg:text-label`}>
                 {auth.hasToken
                   ? 'Use “Nova posição” para registrar pernas e a marcação de entrada.'
                   : 'Salve o token acima e use “Nova posição” para registrar pernas e a marcação de entrada.'}
               </p>
             </div>
           ) : portfolio.data.data.positions.length === 0 ? (
-            <div className="position-empty">
-              <p>Existem posições abertas, mas nenhuma pôde ser transportada nesta resposta.</p>
-              <p className="note lg:text-label">Recarregue a carteira; o backend não inventou uma lista vazia.</p>
+            <div className="rounded-[6px] border border-dashed border-input bg-card px-[16px] py-[24px]">
+              <p className="mb-[4px]">Existem posições abertas, mas nenhuma pôde ser transportada nesta resposta.</p>
+              <p className={`${noteBase} lg:text-label`}>Recarregue a carteira; o backend não inventou uma lista vazia.</p>
             </div>
           ) : (
-            <div className="position-list">
+            <div className="grid gap-[12px]">
               {portfolio.data.data.positions.map((position) => (
                 <PositionCard
                   key={position.id}
@@ -268,8 +286,8 @@ function PositionTotalsGrid({
           onOpen={onMetric}
         />
       </MetricGrid>
-      <p className="position-flags-line lg:text-label">
-        <span className="quiet lg:text-label">Flags da carteira</span>{' '}
+      <p className="mb-[16px] text-[11.5px] lg:text-label">
+        <span className={`${quiet} lg:text-label`}>Flags da carteira</span>{' '}
         <PositionFlags flags={totals.flags} />
       </p>
     </>
@@ -286,29 +304,29 @@ function PositionCard({
   const breakevens = position.breakeven_brl
 
   return (
-    <article className="position-card">
-      <header className="position-card__head">
+    <article className={positionCard}>
+      <header className="flex flex-wrap items-baseline justify-between gap-x-[12px] gap-y-[4px]">
         <div>
           <Link
-            className="position-card__title lg:text-metric"
+            className="inline-flex min-h-[44px] items-center font-mono text-[20px] font-medium text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[2px] focus-visible:outline-primary lg:text-metric"
             to="/carteira/$positionId"
             params={{ positionId: position.id }}
           >
             {position.underlying}
           </Link>
-          <span className="position-card__kind lg:text-label">{positionKindLabel(position.kind)}</span>
+          <span className="ml-[12px] text-[12px] text-[color:var(--text-2)] lg:text-label">{positionKindLabel(position.kind)}</span>
         </div>
-        <span className="quiet lg:text-label">{positionStatusLabel(position.status)}</span>
+        <span className={`${quiet} lg:text-label`}>{positionStatusLabel(position.status)}</span>
       </header>
 
-      <div className="position-card__meta lg:text-label">
+      <div className="mb-[12px] flex flex-wrap gap-x-[16px] gap-y-[4px] font-mono text-[11px] text-muted-foreground tabular-nums lg:text-label">
         <span>aberta em {dateBr(position.opened_session)}</span>
         {position.closed_session && <span>fechada em {dateBr(position.closed_session)}</span>}
         {position.maturity && <span>vencimento {dateBr(position.maturity)}</span>}
         <span>limite {brl(position.capital_limit_brl)}</span>
       </div>
 
-      <MetricGrid>
+      <MetricGrid inCard>
         <Metric
           label="P&L"
           value={<span className={pnlTone(position.pnl_brl)}>{formatPnlBrl(position.pnl_brl)}</span>}
@@ -346,26 +364,26 @@ function PositionCard({
         />
       </MetricGrid>
 
-      <div className="position-card__row lg:text-label">
-        <span className="quiet lg:text-label">Breakevens</span>
-        <span className="num">
+      <div className={`${positionRow} lg:text-label`}>
+        <span className={`${quiet} lg:text-label`}>Breakevens</span>
+        <span className={`${num} text-right`}>
           {breakevens.length > 0 ? breakevens.map((value) => brl(value)).join(' · ') : '—'}
         </span>
       </div>
 
-      {position.notes && <p className="position-card__notes lg:text-body lg:leading-body">{position.notes}</p>}
+      {position.notes && <p className="border-t border-t-border py-[12px] text-[12.5px] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{position.notes}</p>}
 
-      <div className="position-card__row lg:text-label">
-        <span className="quiet lg:text-label">Flags</span>
+      <div className={`${positionRow} lg:text-label`}>
+        <span className={`${quiet} lg:text-label`}>Flags</span>
         <PositionFlags flags={position.flags} />
       </div>
 
       <Link
-        className="position-card__link lg:text-label"
+        className="inline-flex min-h-[44px] items-center gap-[8px] text-[12px] text-[color:var(--text-2)] underline underline-offset-[2px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[2px] focus-visible:outline-primary lg:text-label"
         to="/carteira/$positionId"
         params={{ positionId: position.id }}
       >
-        Abrir posição <span aria-hidden="true">›</span>
+        Abrir posição <span className="font-mono text-[18px] leading-none text-muted-foreground" aria-hidden="true">›</span>
       </Link>
     </article>
   )

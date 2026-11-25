@@ -13,6 +13,7 @@
  * que usa o gráfico — o tooltip não substitui o dado acessível.
  */
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { num, visuallyHidden } from '../lib/classes'
 
 export interface ChartSeries {
   label: string
@@ -75,7 +76,7 @@ export function LineChart({
     .filter((v): v is number => v != null && Number.isFinite(v))
 
   if (labels.length < 2 || finite.length < 2) {
-    return <p className="chart-empty lg:text-detail">sem pontos suficientes para desenhar</p>
+    return <p className="mx-0 my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">sem pontos suficientes para desenhar</p>
   }
 
   const W = 320
@@ -377,13 +378,13 @@ export function LineChart({
           {tipRows.map((row) => (
             <div className="chart__tip-row" key={row.label}>
               <span>{row.label}</span>
-              <span className="num">{row.value}</span>
+              <span className={num}>{row.value}</span>
             </div>
           ))}
           {tipDetail && <div className="chart__tip-note">{tipDetail}</div>}
         </div>
       )}
-      <p className="visually-hidden" aria-live="polite">
+      <p className={visuallyHidden} aria-live="polite">
         {liveText}
       </p>
       <div className="chart__legend lg:text-chart">

@@ -8,6 +8,7 @@ import {
   type GlossaryEntry,
 } from '../lib/api'
 import { ErrorBox, Loading } from '../lib/ui'
+import { note } from '../lib/classes'
 
 const HOUR = 3_600_000
 
@@ -82,7 +83,7 @@ function EntryRow({
       </button>
       <div
         id={panelId}
-        className="mt-[-6px] rounded-b-[4px] border-x border-b border-border bg-card p-[14px] lg:text-body lg:leading-body [&_.note]:m-0"
+        className="mt-[-6px] rounded-b-[4px] border-x border-b border-border bg-card p-[14px] lg:text-body lg:leading-body [&_[data-note]]:m-0"
         role="region"
         aria-label={entry.title}
         hidden={!open}
@@ -118,7 +119,7 @@ function Aprender() {
       <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">
         Aprender
       </h1>
-      <p className="note lg:text-label">
+      <p className={`${note} lg:text-label`}>
         Toque num verbete para abrir a ficha. Vários podem ficar abertos.
       </p>
 

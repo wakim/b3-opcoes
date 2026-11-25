@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { fetchScreenAll, type ScreenRow } from '../lib/api'
 import { brl, dateBr, fmt, sharePct } from '../lib/format'
+import { tickerLink } from '../lib/classes'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
@@ -57,7 +58,7 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
             <TableRow key={row.underlying}>
               <TableCell className="px-[8px] py-[10px]">
                 {row.status === 'ok' ? (
-                  <Link className="ticker-link lg:text-table" to="/t/$ticker" params={{ ticker: row.underlying }}>
+                  <Link className={`${tickerLink} lg:text-table`} to="/t/$ticker" params={{ ticker: row.underlying }}>
                     {row.underlying}
                   </Link>
                 ) : (

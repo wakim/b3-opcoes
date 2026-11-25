@@ -6,6 +6,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { apiGet, type GlossaryDetail } from '../lib/api'
+import { num } from '../lib/classes'
 import { glossaryKey, type ModalTarget } from './metricKeys'
 import { InlineMd } from './InlineMd'
 import { Dialog } from './Dialog'
@@ -62,7 +63,7 @@ export function MetricModal({
         <div className="grid gap-4">
           <div className="grid gap-1 rounded-[6px] border border-border bg-muted/30 p-4">
             <span className="lg:text-label text-muted-foreground">no painel</span>
-            <span className="num lg:text-metric">{target.value}</span>
+            <span className={`${num} lg:text-metric`}>{target.value}</span>
           </div>
           {entry.isError && (
             <div className="lg:text-label text-destructive" role="alert">

@@ -7,6 +7,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, type Health } from '../lib/api'
+import { num } from '../lib/classes'
 
 const STORAGE_KEY = 'b3o:last-health'
 
@@ -90,7 +91,7 @@ export function OfflineBanner({ offline, session }: { offline: boolean; session:
       sem rede —{' '}
       {session ? (
         <>
-          última sessão <strong className="num whitespace-nowrap">{session}</strong>
+          última sessão <strong className={`${num} whitespace-nowrap`}>{session}</strong>
         </>
       ) : (
         'sessão indisponível'

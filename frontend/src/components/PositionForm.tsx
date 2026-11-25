@@ -19,6 +19,28 @@ import { DialogClose } from './ui/dialog'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
 import { Textarea } from './ui/textarea'
+import {
+  blockCountBase,
+  chainNote,
+  field,
+  fieldLabel,
+  note,
+  notice,
+  quiet,
+  visuallyHidden,
+} from '../lib/classes'
+
+// F8: o contorno de foco legado (`.builder__field input/select:focus-visible`, offset -2 px)
+// perde para o `outline-none` do primitive no estilo (fica `none`), mas cor e offset valem —
+// por isso aqui NÃO entra `outline-solid` (focusInset desenharia um contorno que não existe hoje).
+const fieldControl =
+  'min-h-[44px] font-mono text-[12px] tabular-nums text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary'
+// `.position-form__textarea`: padding, borda, fundo e min-height legados perdem para o primitive.
+const textareaControl =
+  'resize-y text-[13px] leading-[1.5] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
+// `.position-form__toggle input`: tamanho e accent já vêm do Checkbox (size-5, accent-primary).
+const focusToggle =
+  'focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
 
 const MAX_LEGS = 60
 const DEFAULT_QUANTITY = '100'
@@ -338,17 +360,17 @@ export function PositionForm({
         </Button>
       </DialogClose>
 
-      <form className="position-form" onSubmit={submit} aria-busy={create.isPending} noValidate>
+      <form className="grid gap-[20px]" onSubmit={submit} aria-busy={create.isPending} noValidate>
         <fieldset
-          className="position-form__fieldset position-form__fieldset--all"
+          className="contents m-0 min-w-0 border-none p-0"
           disabled={create.isPending}
         >
-          <legend className="visually-hidden">Dados da posição</legend>
-          <div className="position-form__grid">
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">Ativo-objeto</span>
+          <legend className={`${visuallyHidden} border-none`}>Dados da posição</legend>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>Ativo-objeto</span>
               <Input
-                className="lg:text-control"
+                className={`${fieldControl} lg:text-control`}
                 value={underlying}
                 onChange={(event) => setUnderlying(event.target.value.toUpperCase())}
                 placeholder="PETR4"
@@ -359,21 +381,21 @@ export function PositionForm({
                 required
               />
             </label>
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">Data da sessão (opcional)</span>
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>Data da sessão (opcional)</span>
               <Input
-                className="lg:text-control"
+                className={`${fieldControl} lg:text-control`}
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
               />
             </label>
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>
                 Limite de capital (R$, opcional)
               </span>
               <Input
-                className="lg:text-control"
+                className={`${fieldControl} lg:text-control`}
                 type="text"
                 inputMode="decimal"
                 value={capitalLimit}
@@ -383,10 +405,10 @@ export function PositionForm({
                 autoComplete="off"
               />
             </label>
-            <label className="builder__field position-form__full">
-              <span className="builder__field-label lg:text-label">Notas</span>
+            <label className={`${field} col-span-full`}>
+              <span className={`${fieldLabel} lg:text-label`}>Notas</span>
               <Textarea
-                className="position-form__textarea lg:text-control lg:leading-body"
+                className={`${textareaControl} lg:text-control lg:leading-body`}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="contexto da decisão"
@@ -396,22 +418,25 @@ export function PositionForm({
             </label>
           </div>
 
-          <fieldset className="position-form__fieldset" disabled={create.isPending}>
-            <legend className="position-form__legend lg:text-block-title lg:leading-title">
+          <fieldset className="m-0 min-w-0 border-none p-0" disabled={create.isPending}>
+            <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[13px] font-medium lg:text-block-title lg:leading-title">
               Pernas
               <HelpTip
                 label="O que é uma perna?"
                 text="Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade. Uma coberta, por exemplo, tem duas pernas: a ação comprada e a call vendida."
               />
             </legend>
-            <p className="chain-note lg:text-label lg:leading-body">
+            <p className={`${chainNote} lg:text-label lg:leading-body`}>
               A quantidade é em ações. 100 ações = 1 contrato padrão; nada é multiplicado por 100.
             </p>
-            <div className="position-form__legs">
+            <div className="grid gap-[8px]">
               {legs.map((leg, index) => (
-                <div className="position-form__leg" key={leg.id}>
-                  <div className="position-form__leg-head">
-                    <span className="quiet lg:text-label">Perna {index + 1}</span>
+                <div
+                  className="rounded-[6px] border border-border bg-card p-[12px]"
+                  key={leg.id}
+                >
+                  <div className="mb-[8px] flex items-center justify-between gap-[8px]">
+                    <span className={`${quiet} lg:text-label`}>Perna {index + 1}</span>
                     <Button
                       type="button"
                       variant="link"
@@ -424,11 +449,11 @@ export function PositionForm({
                       remover
                     </Button>
                   </div>
-                  <div className="position-form__leg-grid">
-                    <label className="builder__field">
-                      <span className="builder__field-label lg:text-label">Tipo</span>
+                  <div className="grid grid-cols-[minmax(0,1fr)] gap-[8px] min-[640px]:grid-cols-[repeat(2,minmax(0,1fr))] min-[720px]:grid-cols-[120px_minmax(140px,1fr)_132px_104px]">
+                    <label className={field}>
+                      <span className={`${fieldLabel} lg:text-label`}>Tipo</span>
                       <NativeSelect
-                        className="lg:text-control"
+                        className={`${fieldControl} lg:text-control`}
                         value={leg.kind}
                         onChange={(event) => changeKind(leg.id, event.target.value as LegKind)}
                         aria-label={`Tipo da perna ${index + 1}`}
@@ -437,10 +462,10 @@ export function PositionForm({
                         <option value="stock">ação</option>
                       </NativeSelect>
                     </label>
-                    <label className="builder__field">
-                      <span className="builder__field-label lg:text-label">Ticker</span>
+                    <label className={field}>
+                      <span className={`${fieldLabel} lg:text-label`}>Ticker</span>
                       <Input
-                        className="lg:text-control"
+                        className={`${fieldControl} lg:text-control`}
                         value={leg.ticker}
                         onChange={(event) =>
                           updateLeg(leg.id, { ticker: event.target.value.toUpperCase() })
@@ -457,10 +482,10 @@ export function PositionForm({
                         required
                       />
                     </label>
-                    <label className="builder__field">
-                      <span className="builder__field-label lg:text-label">Lado</span>
+                    <label className={field}>
+                      <span className={`${fieldLabel} lg:text-label`}>Lado</span>
                       <NativeSelect
-                        className="lg:text-control"
+                        className={`${fieldControl} lg:text-control`}
                         value={leg.side}
                         onChange={(event) =>
                           updateLeg(leg.id, { side: event.target.value as LegSide })
@@ -471,10 +496,10 @@ export function PositionForm({
                         <option value="short">vendida</option>
                       </NativeSelect>
                     </label>
-                    <label className="builder__field">
-                      <span className="builder__field-label lg:text-label">Ações</span>
+                    <label className={field}>
+                      <span className={`${fieldLabel} lg:text-label`}>Ações</span>
                       <Input
-                        className="lg:text-control"
+                        className={`${fieldControl} lg:text-control`}
                         type="number"
                         inputMode="numeric"
                         min={1}
@@ -490,7 +515,7 @@ export function PositionForm({
                 </div>
               ))}
             </div>
-            <div className="position-form__add">
+            <div className="mt-[8px] flex flex-wrap items-center gap-[8px]">
               <Button
                 type="button"
                 variant="outline"
@@ -507,29 +532,30 @@ export function PositionForm({
               >
                 Adicionar ação
               </Button>
-              <span className="block-count lg:text-label">
+              <span className={`${blockCountBase} ml-auto lg:text-label`}>
                 {legs.length}/{MAX_LEGS}
               </span>
             </div>
           </fieldset>
 
-          <fieldset className="position-form__fieldset" disabled={create.isPending}>
-            <legend className="position-form__legend lg:text-block-title lg:leading-title">
+          <fieldset className="m-0 min-w-0 border-none p-0" disabled={create.isPending}>
+            <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[13px] font-medium lg:text-block-title lg:leading-title">
               Tese
             </legend>
-            <label className="position-form__toggle lg:text-label">
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-[8px] text-[12.5px] text-[color:var(--text-2)] lg:text-label">
               <Checkbox
+                className={focusToggle}
                 checked={predictionEnabled}
                 onChange={(event) => setPredictionEnabled(event.target.checked)}
               />
               <span>Registrar previsão estruturada</span>
             </label>
             {predictionEnabled && (
-              <div className="position-form__grid position-form__prediction">
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">Métrica</span>
+              <div className="mt-[12px] grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>Métrica</span>
                   <NativeSelect
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     value={metric}
                     onChange={(event) => setMetric(event.target.value)}
                     aria-label="Métrica da previsão"
@@ -540,10 +566,10 @@ export function PositionForm({
                     <option value="rr25">RR25</option>
                   </NativeSelect>
                 </label>
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">Operador</span>
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>Operador</span>
                   <NativeSelect
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     value={operator}
                     onChange={(event) =>
                       setOperator(event.target.value as PositionPredictionInput['operator'])
@@ -555,10 +581,10 @@ export function PositionForm({
                     <option value=">=">&gt;=</option>
                   </NativeSelect>
                 </label>
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">Valor</span>
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>Valor</span>
                   <Input
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     type="text"
                     inputMode="decimal"
                     maxLength={64}
@@ -567,10 +593,10 @@ export function PositionForm({
                     autoComplete="off"
                   />
                 </label>
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">Horizonte (sessões)</span>
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>Horizonte (sessões)</span>
                   <Input
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     type="number"
                     inputMode="numeric"
                     min={1}
@@ -580,10 +606,10 @@ export function PositionForm({
                     onChange={(event) => setHorizon(event.target.value)}
                   />
                 </label>
-                <label className="builder__field position-form__full">
-                  <span className="builder__field-label lg:text-label">Avaliar em</span>
+                <label className={`${field} col-span-full`}>
+                  <span className={`${fieldLabel} lg:text-label`}>Avaliar em</span>
                   <Input
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     type="date"
                     value={evaluateOn}
                     onChange={(event) => setEvaluateOn(event.target.value)}
@@ -593,19 +619,19 @@ export function PositionForm({
             )}
           </fieldset>
 
-          <p className="note lg:text-label">
+          <p className={`${note} lg:text-label`}>
             O backend resolve preço de entrada, strike, IV e delta da sessão. Nenhum número
             financeiro é calculado aqui.
           </p>
 
           {validationError && (
-            <p className="notice lg:text-label" role="alert">
+            <p className={`${notice} lg:text-label`} role="alert">
               {validationError}
             </p>
           )}
           {create.isError && <ErrorState error={create.error} title="Posição não registrada" />}
 
-          <div className="position-form__actions">
+          <div className="mt-[4px] flex flex-wrap justify-end gap-[8px] max-sm:grid max-sm:grid-cols-[minmax(0,1fr)]">
             <Button
               type="button"
               variant="outline"

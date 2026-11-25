@@ -18,6 +18,26 @@ import { DialogClose } from './ui/dialog'
 import { Input } from './ui/input'
 import { NativeSelect } from './ui/native-select'
 import { Textarea } from './ui/textarea'
+import {
+  chainNote,
+  field,
+  fieldLabel,
+  note,
+  notice,
+  visuallyHidden,
+} from '../lib/classes'
+
+// F8: o contorno de foco legado (`.builder__field input/select:focus-visible`, offset -2 px)
+// perde para o `outline-none` do primitive no estilo (fica `none`), mas cor e offset valem —
+// por isso aqui NÃO entra `outline-solid` (focusInset desenharia um contorno que não existe hoje).
+const fieldControl =
+  'min-h-[44px] font-mono text-[12px] tabular-nums text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary'
+// `.position-form__textarea`: padding, borda, fundo e min-height legados perdem para o primitive.
+const textareaControl =
+  'resize-y text-[13px] leading-[1.5] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
+// `.position-form__toggle input`: tamanho e accent já vêm do Checkbox (size-5, accent-primary).
+const focusToggle =
+  'focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
 
 const DRAFT_KEY = 'b3o:journal-draft'
 const METRICS: Array<{ value: PredictionMetric; label: string; unit: string }> = [
@@ -266,17 +286,17 @@ export function DecisionForm({
         </Button>
       </DialogClose>
 
-      <form className="position-form" onSubmit={submit} aria-busy={create.isPending} noValidate>
+      <form className="grid gap-[20px]" onSubmit={submit} aria-busy={create.isPending} noValidate>
         <fieldset
-          className="position-form__fieldset position-form__fieldset--all"
+          className="contents m-0 min-w-0 border-none p-0"
           disabled={create.isPending}
         >
-          <legend className="visually-hidden">Dados da decisão</legend>
-          <div className="position-form__grid">
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">Ativo-objeto</span>
+          <legend className={`${visuallyHidden} border-none`}>Dados da decisão</legend>
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>Ativo-objeto</span>
               <Input
-                className="lg:text-control"
+                className={`${fieldControl} lg:text-control`}
                 value={underlying}
                 onChange={(event) => setUnderlying(event.target.value.toUpperCase())}
                 placeholder="PETR4"
@@ -287,19 +307,19 @@ export function DecisionForm({
                 required
               />
             </label>
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">Sessão (opcional)</span>
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>Sessão (opcional)</span>
               <Input
-                className="lg:text-control"
+                className={`${fieldControl} lg:text-control`}
                 type="date"
                 value={date}
                 onChange={(event) => setDate(event.target.value)}
               />
             </label>
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">Tipo de decisão</span>
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>Tipo de decisão</span>
               <NativeSelect
-                className="lg:text-control"
+                className={`${fieldControl} lg:text-control`}
                 value={decisionType}
                 onChange={(event) => setDecisionType(event.target.value as DecisionType)}
               >
@@ -310,20 +330,20 @@ export function DecisionForm({
                 ))}
               </NativeSelect>
             </label>
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">Contexto (opcional)</span>
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>Contexto (opcional)</span>
               <Input
-                className="lg:text-control"
+                className={`${fieldControl} lg:text-control`}
                 value={context}
                 onChange={(event) => setContext(event.target.value)}
                 maxLength={500}
                 autoComplete="off"
               />
             </label>
-            <label className="builder__field position-form__full">
-              <span className="builder__field-label lg:text-label">Notas</span>
+            <label className={`${field} col-span-full`}>
+              <span className={`${fieldLabel} lg:text-label`}>Notas</span>
               <Textarea
-                className="position-form__textarea lg:text-control lg:leading-body"
+                className={`${textareaControl} lg:text-control lg:leading-body`}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 placeholder="o que você decidiu e por quê"
@@ -333,26 +353,27 @@ export function DecisionForm({
             </label>
           </div>
 
-          <fieldset className="position-form__fieldset" disabled={create.isPending}>
-            <legend className="position-form__legend lg:text-block-title lg:leading-title">
+          <fieldset className="m-0 min-w-0 border-none p-0" disabled={create.isPending}>
+            <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[13px] font-medium lg:text-block-title lg:leading-title">
               Previsão estruturada
             </legend>
-            <label className="position-form__toggle lg:text-label">
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-[8px] text-[12.5px] text-[color:var(--text-2)] lg:text-label">
               <Checkbox
+                className={focusToggle}
                 checked={predictionEnabled}
                 onChange={(event) => setPredictionEnabled(event.target.checked)}
               />
               <span>Adicionar previsão avaliável</span>
             </label>
-            <p className="chain-note lg:text-label lg:leading-body">
+            <p className={`${chainNote} lg:text-label lg:leading-body`}>
               Notas continuam texto livre. Só os campos abaixo entram na calibração.
             </p>
             {predictionEnabled && (
-              <div className="position-form__grid position-form__prediction">
-                <label className="builder__field position-form__full">
-                  <span className="builder__field-label lg:text-label">Métrica</span>
+              <div className="mt-[12px] grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
+                <label className={`${field} col-span-full`}>
+                  <span className={`${fieldLabel} lg:text-label`}>Métrica</span>
                   <NativeSelect
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     value={metric}
                     onChange={(event) => setMetric(event.target.value as PredictionMetric)}
                   >
@@ -363,10 +384,10 @@ export function DecisionForm({
                     ))}
                   </NativeSelect>
                 </label>
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">Operador</span>
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>Operador</span>
                   <NativeSelect
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     value={operator}
                     onChange={(event) =>
                       setOperator(event.target.value as JournalPredictionInput['operator'])
@@ -378,12 +399,12 @@ export function DecisionForm({
                     <option value=">=">&gt;=</option>
                   </NativeSelect>
                 </label>
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>
                     Valor {unit && `(${unit})`}
                   </span>
                   <Input
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     type="text"
                     inputMode="decimal"
                     maxLength={64}
@@ -392,10 +413,10 @@ export function DecisionForm({
                     autoComplete="off"
                   />
                 </label>
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">Horizonte (sessões)</span>
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>Horizonte (sessões)</span>
                   <Input
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     type="number"
                     inputMode="numeric"
                     min={1}
@@ -405,10 +426,10 @@ export function DecisionForm({
                     onChange={(event) => setHorizon(event.target.value)}
                   />
                 </label>
-                <label className="builder__field">
-                  <span className="builder__field-label lg:text-label">Avaliar em</span>
+                <label className={field}>
+                  <span className={`${fieldLabel} lg:text-label`}>Avaliar em</span>
                   <Input
-                    className="lg:text-control"
+                    className={`${fieldControl} lg:text-control`}
                     type="date"
                     value={evaluateOn}
                     onChange={(event) => setEvaluateOn(event.target.value)}
@@ -418,17 +439,17 @@ export function DecisionForm({
             )}
           </fieldset>
 
-          <p className="note lg:text-label">
+          <p className={`${note} lg:text-label`}>
             A data de avaliação precisa corresponder ao horizonte no calendário B3. O lote EOD usa o
             primeiro pregão posterior; métrica ausente vira “sem dados”, não erro.
           </p>
           {validationError && (
-            <p className="notice lg:text-label" role="alert">
+            <p className={`${notice} lg:text-label`} role="alert">
               {validationError}
             </p>
           )}
           {create.isError && <ErrorState error={create.error} title="Decisão não registrada" />}
-          <div className="position-form__actions">
+          <div className="mt-[4px] flex flex-wrap justify-end gap-[8px] max-sm:grid max-sm:grid-cols-[minmax(0,1fr)]">
             <Button
               type="button"
               variant="outline"

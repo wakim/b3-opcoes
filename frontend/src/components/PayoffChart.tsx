@@ -6,6 +6,7 @@
  */
 import { useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { brl, fmt } from '../lib/format'
+import { num, visuallyHidden } from '../lib/classes'
 
 export interface PayoffPoint {
   spot_brl: number
@@ -23,7 +24,7 @@ export function PayoffChart({
 }) {
   const [active, setActive] = useState<number | null>(null)
   if (points.length < 2) {
-    return <p className="chart-empty lg:text-detail">payoff indisponível</p>
+    return <p className="mx-0 my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">payoff indisponível</p>
   }
 
   const W = 320
@@ -164,11 +165,11 @@ export function PayoffChart({
           <div className="chart__tip-head">Preço {brl(activePoint.spot_brl)}</div>
           <div className="chart__tip-row">
             <span>P&amp;L</span>
-            <span className="num">{brl(activePoint.pnl_brl)}</span>
+            <span className={num}>{brl(activePoint.pnl_brl)}</span>
           </div>
         </div>
       )}
-      <p className="visually-hidden" aria-live="polite">
+      <p className={visuallyHidden} aria-live="polite">
         {activePoint != null ? `Preço ${brl(activePoint.spot_brl)}: P&L ${brl(activePoint.pnl_brl)}` : ''}
       </p>
       <div className="chart__legend lg:text-chart">

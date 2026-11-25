@@ -37,6 +37,29 @@ import {
   TableHeader,
   TableRow,
 } from '../components/ui/table'
+import {
+  back,
+  blockTitle,
+  chainNote,
+  field,
+  fieldLabel,
+  focusInset,
+  notice,
+  note,
+  num,
+  quiet,
+  quietLine,
+  screenTitle,
+} from '../lib/classes'
+
+const identityGrid =
+  'grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[1px] overflow-hidden rounded-[6px] border border-border bg-border'
+const identityCell = 'bg-card px-[12px] py-[10px]'
+const identityDt = 'text-[11px] text-[color:var(--text-2)] lg:text-label'
+const identityDd = 'mt-[4px] text-[12px] text-foreground [overflow-wrap:anywhere] lg:text-detail'
+const identityNumDd = `${num} ${identityDd}`
+const detailHead = 'flex flex-wrap items-start justify-between gap-[12px] max-sm:block'
+const actionsRow = 'flex flex-wrap items-center gap-[12px] max-sm:mt-[12px]'
 
 export const Route = createFileRoute('/carteira_/$positionId')({
   component: PositionDetailPage,
@@ -117,14 +140,14 @@ function PositionDetailPage() {
 
   return (
     <>
-      <Link className="back lg:text-label" to="/carteira">
+      <Link className={`${back} lg:text-label`} to="/carteira">
         <span aria-hidden="true">‹</span> Carteira
       </Link>
 
-      <div className="position-detail__head">
+      <div className={detailHead}>
         <div>
-          <h1 className="screen-title lg:text-screen-title lg:leading-title">{data.underlying}</h1>
-          <p className="quiet-line lg:text-label">
+          <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>{data.underlying}</h1>
+          <p className={`${quietLine} lg:text-label`}>
             {positionKindLabel(data.kind)} · {positionStatusLabel(data.status)} · sessão{' '}
             {position.data.as_of_session ?? '—'}
           </p>
@@ -132,19 +155,19 @@ function PositionDetailPage() {
       </div>
 
       {writeNotice && (
-        <p className="notice lg:text-label" role="status">
+        <p className={`${notice} lg:text-label`} role="status">
           {writeNotice}
         </p>
       )}
       {(position.data.meta?.truncated || position.data.meta?.note) && (
-        <p className="notice lg:text-label" role="status">
+        <p className={`${notice} lg:text-label`} role="status">
           {position.data.meta.note ??
             'O payoff foi truncado no transporte e não é exibido como completo. Reabra a posição para tentar novamente.'}
         </p>
       )}
 
-      <p className="position-flags-line lg:text-label">
-        <span className="quiet lg:text-label">Flags da posição</span>{' '}
+      <p className="mb-[16px] text-[11.5px] lg:text-label">
+        <span className={`${quiet} lg:text-label`}>Flags da posição</span>{' '}
         <PositionFlags flags={data.flags} />
       </p>
 
@@ -212,39 +235,39 @@ function PositionDetailPage() {
         />
       </MetricGrid>
 
-      <section className="position-section" aria-labelledby="position-identity-title">
-        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-identity-title">Registro</h2>
-        <dl className="identity">
-          <div>
-            <dt className="lg:text-label">Capital comprometido</dt>
-            <dd className="num lg:text-detail">{brl(data.capital_committed_brl)}</dd>
+      <section className="mt-[24px]" aria-labelledby="position-identity-title">
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-identity-title">Registro</h2>
+        <dl className={identityGrid}>
+          <div className={identityCell}>
+            <dt className={identityDt}>Capital comprometido</dt>
+            <dd className={identityNumDd}>{brl(data.capital_committed_brl)}</dd>
           </div>
-          <div>
-            <dt className="lg:text-label">Limite de capital</dt>
-            <dd className="num lg:text-detail">{brl(data.capital_limit_brl)}</dd>
+          <div className={identityCell}>
+            <dt className={identityDt}>Limite de capital</dt>
+            <dd className={identityNumDd}>{brl(data.capital_limit_brl)}</dd>
           </div>
-          <div>
-            <dt className="lg:text-label">Aberta em</dt>
-            <dd className="num lg:text-detail">{dateBr(data.opened_session)}</dd>
+          <div className={identityCell}>
+            <dt className={identityDt}>Aberta em</dt>
+            <dd className={identityNumDd}>{dateBr(data.opened_session)}</dd>
           </div>
-          <div>
-            <dt className="lg:text-label">Fechada em</dt>
-            <dd className="num lg:text-detail">{dateBr(data.closed_session)}</dd>
+          <div className={identityCell}>
+            <dt className={identityDt}>Fechada em</dt>
+            <dd className={identityNumDd}>{dateBr(data.closed_session)}</dd>
           </div>
-          <div>
-            <dt className="lg:text-label">Vencimento</dt>
-            <dd className="num lg:text-detail">{dateBr(data.maturity)}</dd>
+          <div className={identityCell}>
+            <dt className={identityDt}>Vencimento</dt>
+            <dd className={identityNumDd}>{dateBr(data.maturity)}</dd>
           </div>
-          <div>
-            <dt className="lg:text-label">Status</dt>
-            <dd className="lg:text-detail">{positionStatusLabel(data.status)}</dd>
+          <div className={identityCell}>
+            <dt className={identityDt}>Status</dt>
+            <dd className={identityDd}>{positionStatusLabel(data.status)}</dd>
           </div>
         </dl>
-        {data.notes && <p className="position-detail__notes lg:text-body lg:leading-body">{data.notes}</p>}
+        {data.notes && <p className="mt-[12px] text-[13px] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{data.notes}</p>}
       </section>
 
-      <section className="position-section" aria-labelledby="position-legs-title">
-        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-legs-title">
+      <section className="mt-[24px]" aria-labelledby="position-legs-title">
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-legs-title">
           Pernas registradas
           <HelpTip
             label="O que é uma perna?"
@@ -252,12 +275,12 @@ function PositionDetailPage() {
           />
         </h2>
         <div
-          className="table-wrap table-wrap--position"
+          className={`table-wrap ${focusInset}`}
           role="region"
           tabIndex={0}
           aria-label="Tabela horizontal das pernas registradas"
         >
-          <Table contained={false} className="screen-table position-table lg:text-table lg:leading-table">
+          <Table contained={false} className="screen-table min-w-[760px] lg:text-table lg:leading-table">
             <TableHeader>
               <TableRow>
                 <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
@@ -290,15 +313,15 @@ function PositionDetailPage() {
         </div>
       </section>
 
-      <section className="position-section" aria-labelledby="position-marks-title">
-        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-marks-title">Marcação da sessão</h2>
+      <section className="mt-[24px]" aria-labelledby="position-marks-title">
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-marks-title">Marcação da sessão</h2>
         <div
-          className="table-wrap table-wrap--position"
+          className={`table-wrap ${focusInset}`}
           role="region"
           tabIndex={0}
           aria-label="Tabela horizontal da marcação da sessão"
         >
-          <Table contained={false} className="screen-table position-table position-table--marks lg:text-table lg:leading-table">
+          <Table contained={false} className="screen-table min-w-[980px] lg:text-table lg:leading-table">
             <TableHeader>
               <TableRow>
                 <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
@@ -329,7 +352,7 @@ function PositionDetailPage() {
                   <TableCell className="px-2 py-2.5">{brl(mark.spread_brl)}</TableCell>
                   <TableCell className="px-2 py-2.5">{percentPoints(mark.spread_pct)}</TableCell>
                   <TableCell className="px-2 py-2.5">{mark.one_sided ? 'sim' : 'não'}</TableCell>
-                  <TableCell className="position-table__flags px-2 py-2.5">
+                  <TableCell className="min-w-[160px] px-2 py-2.5">
                     <PositionFlags flags={mark.flags} emptyLabel="—" />
                   </TableCell>
                 </TableRow>
@@ -339,50 +362,50 @@ function PositionDetailPage() {
         </div>
       </section>
 
-      <section className="position-section" aria-labelledby="position-thesis-title">
-        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-thesis-title">Tese vs realidade</h2>
-        <div className="position-thesis">
-          <p className="position-thesis__line lg:text-body lg:leading-body">
+      <section className="mt-[24px]" aria-labelledby="position-thesis-title">
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-thesis-title">Tese vs realidade</h2>
+        <div className="rounded-[6px] border border-border bg-card p-[16px]">
+          <p className="mb-[16px] text-[14px] leading-[1.55] text-foreground [overflow-wrap:anywhere] lg:text-body lg:leading-body">
             {data.thesis_line ?? 'Nenhuma linha de tese retornada para esta posição.'}
           </p>
           {data.prediction ? (
-            <dl className="identity">
-              <div>
-                <dt className="lg:text-label">Métrica</dt>
-                <dd className="num lg:text-detail">{data.prediction.metric}</dd>
+            <dl className={identityGrid}>
+              <div className={identityCell}>
+                <dt className={identityDt}>Métrica</dt>
+                <dd className={identityNumDd}>{data.prediction.metric}</dd>
               </div>
-              <div>
-                <dt className="lg:text-label">Condição</dt>
-                <dd className="num lg:text-detail">
+              <div className={identityCell}>
+                <dt className={identityDt}>Condição</dt>
+                <dd className={identityNumDd}>
                   {data.prediction.operator} {fmt(data.prediction.value)}
                 </dd>
               </div>
-              <div>
-                <dt className="lg:text-label">Horizonte</dt>
-                <dd className="num lg:text-detail">{fmt(data.prediction.horizon_sessions, 0)} sessões</dd>
+              <div className={identityCell}>
+                <dt className={identityDt}>Horizonte</dt>
+                <dd className={identityNumDd}>{fmt(data.prediction.horizon_sessions, 0)} sessões</dd>
               </div>
-              <div>
-                <dt className="lg:text-label">Avaliar em</dt>
-                <dd className="num lg:text-detail">{dateBr(data.prediction.evaluate_on)}</dd>
+              <div className={identityCell}>
+                <dt className={identityDt}>Avaliar em</dt>
+                <dd className={identityNumDd}>{dateBr(data.prediction.evaluate_on)}</dd>
               </div>
-              <div>
-                <dt className="lg:text-label">Status</dt>
-                <dd className="lg:text-detail">{predictionStatusLabel(data.prediction.status)}</dd>
+              <div className={identityCell}>
+                <dt className={identityDt}>Status</dt>
+                <dd className={identityDd}>{predictionStatusLabel(data.prediction.status)}</dd>
               </div>
-              <div>
-                <dt className="lg:text-label">Observado</dt>
-                <dd className="num lg:text-detail">{fmt(data.prediction.observed)}</dd>
+              <div className={identityCell}>
+                <dt className={identityDt}>Observado</dt>
+                <dd className={identityNumDd}>{fmt(data.prediction.observed)}</dd>
               </div>
             </dl>
           ) : (
-            <p className="note lg:text-label">Sem previsão estruturada; esta posição não entra na calibração.</p>
+            <p className={`${note} lg:text-label`}>Sem previsão estruturada; esta posição não entra na calibração.</p>
           )}
         </div>
       </section>
 
-      <section className="position-section" aria-labelledby="position-payoff-title">
-        <h2 className="block-title lg:text-block-title lg:leading-title" id="position-payoff-title">Payoff no vencimento</h2>
-        <p className="chain-note lg:text-label lg:leading-body">Preços de entrada do journal; o backend calcula todos os pontos.</p>
+      <section className="mt-[24px]" aria-labelledby="position-payoff-title">
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-payoff-title">Payoff no vencimento</h2>
+        <p className={`${chainNote} lg:text-label lg:leading-body`}>Preços de entrada do journal; o backend calcula todos os pontos.</p>
         {!payoffTruncated && (
           <PayoffChart
             points={data.payoff}
@@ -393,12 +416,12 @@ function PositionDetailPage() {
       </section>
 
       {isOpen && (
-        <section className="position-write" aria-labelledby="position-close-title">
-          <h2 className="block-title lg:text-block-title lg:leading-title" id="position-close-title">Fechamento</h2>
+        <section className="mt-[24px] border-t border-t-border pt-[16px]" aria-labelledby="position-close-title">
+          <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-close-title">Fechamento</h2>
           {!auth.hasToken && !confirmOpen && (
             <TokenGate compact notice={tokenNotice} onUnlock={() => setTokenNotice(null)} />
           )}
-          <div className="position-detail__actions">
+          <div className={actionsRow}>
             <Button
               id="close-position-trigger"
               type="button"
@@ -437,19 +460,20 @@ function PositionDetailPage() {
                 onUnlock={() => setTokenNotice(null)}
               />
             )}
-            <label className="builder__field">
-              <span className="builder__field-label lg:text-label">Data da sessão (opcional)</span>
+            <label className={field}>
+              <span className={`${fieldLabel} lg:text-label`}>Data da sessão (opcional)</span>
               <Input
                 type="date"
+                className="min-h-[44px] font-mono text-[12px] text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]"
                 value={closeDate}
                 onChange={(event) => setCloseDate(event.target.value)}
                 data-autofocus
                 disabled={close.isPending}
               />
             </label>
-            <p className="note lg:text-label">Em branco, o backend usa a última sessão disponível.</p>
+            <p className={`${note} lg:text-label`}>Em branco, o backend usa a última sessão disponível.</p>
             {close.isError && <ErrorState error={close.error} title="Fechamento não registrado" />}
-            <div className="position-form__actions">
+            <div className="mt-[4px] flex flex-wrap justify-end gap-[8px] max-sm:grid max-sm:grid-cols-[minmax(0,1fr)]">
               <Button
                 type="button"
                 variant="outline"

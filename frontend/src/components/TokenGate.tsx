@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { APP_TOKEN_STORAGE_KEY, apiGet, type Health } from '../lib/api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
+import { blockTitleBase, chainNote, field, fieldLabel, notice as noticeClass, note } from '../lib/classes'
 
 const APP_TOKEN_EVENT = 'b3o:app-token-change'
 
@@ -97,22 +98,31 @@ export function TokenGate({
   }
 
   return (
-    <section className={`token-gate${compact ? ' token-gate--compact' : ''}`} aria-labelledby={`${id}-title`}>
-      <h2 className="block-title lg:text-block-title lg:leading-title" id={`${id}-title`}>
+    <section
+      className={`rounded-[6px] border border-border bg-card ${
+        compact ? 'mt-[8px] mb-[12px] max-w-none p-[12px]' : 'my-[16px] max-w-[560px] p-[16px]'
+      }`}
+      aria-labelledby={`${id}-title`}
+    >
+      <h2 className={`${blockTitleBase} lg:text-block-title lg:leading-title`} id={`${id}-title`}>
         {title ?? (compact ? 'Token para fechar' : 'Liberar escritas')}
       </h2>
-      <p className="chain-note lg:text-label lg:leading-body">
+      <p className={`${chainNote} lg:text-label lg:leading-body`}>
         {description ??
           (compact
             ? 'O fechamento grava um evento no journal e exige o token de escrita.'
             : 'A leitura é liberada na tailnet. O token libera apenas as escritas desta carteira.')}
       </p>
-      <form className="token-gate__form" onSubmit={submit}>
-        <label className="builder__field token-gate__field" htmlFor={`${id}-token`}>
-          <span className="builder__field-label lg:text-label">Token do aplicativo</span>
+      <form
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-[8px] max-sm:grid-cols-[minmax(0,1fr)]"
+        onSubmit={submit}
+      >
+        <label className={field} htmlFor={`${id}-token`}>
+          <span className={`${fieldLabel} lg:text-label`}>Token do aplicativo</span>
           <Input
             id={`${id}-token`}
             type="password"
+            className="min-h-[44px] font-mono text-[12px] text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[2px]"
             value={value}
             onChange={(event) => setValue(event.target.value)}
             autoComplete="off"
@@ -126,11 +136,11 @@ export function TokenGate({
         <Button type="submit">Salvar token</Button>
       </form>
       {(notice || error) && (
-        <p className="notice lg:text-label" role="alert">
+        <p className={`${noticeClass} lg:text-label`} role="alert">
           {error ?? notice}
         </p>
       )}
-      <p className="note lg:text-label" id={`${id}-note`}>
+      <p className={`${note} lg:text-label`} id={`${id}-note`}>
         Fica somente neste navegador e é enviado no cabeçalho das escritas. Não aparece na tela nem no
         log.
       </p>

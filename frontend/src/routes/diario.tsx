@@ -16,6 +16,21 @@ import {
   type JournalPrediction,
 } from '../lib/api'
 import { brl, dateBr, fmt } from '../lib/format'
+import {
+  blockCount,
+  blockHead,
+  blockTitleBase,
+  chainNote,
+  focusOutset,
+  inlineLink,
+  note,
+  noteBase,
+  notice,
+  num,
+  quiet,
+  quietLine,
+  screenTitle,
+} from '../lib/classes'
 import { DecisionForm } from '../components/DecisionForm'
 import { Dialog } from '../components/Dialog'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
@@ -164,13 +179,13 @@ function Diario() {
 
   return (
     <>
-      <div className="portfolio-head">
+      <div className="flex flex-wrap items-start justify-between gap-[12px] max-sm:block">
         <div>
-          <h1 className="screen-title lg:text-screen-title lg:leading-title">Diário</h1>
-          <p className="quiet-line lg:text-label">Decisões, previsões estruturadas e desfecho EOD</p>
+          <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>Diário</h1>
+          <p className={`${quietLine} lg:text-label`}>Decisões, previsões estruturadas e desfecho EOD</p>
         </div>
         {auth.hasToken && (
-          <div className="portfolio-actions">
+          <div className="flex flex-wrap items-center gap-[12px] max-sm:mt-[12px]">
             <Button
               id="new-decision-trigger"
               type="button"
@@ -200,19 +215,19 @@ function Diario() {
       )}
 
       {writeNotice && (
-        <p className="notice lg:text-label" role="status">
+        <p className={`${notice} lg:text-label`} role="status">
           {writeNotice}
         </p>
       )}
 
-      <section className="journal-section" aria-labelledby="journal-calibration-title">
-        <div className="block-head">
-          <h2 className="block-title lg:text-block-title lg:leading-title" id="journal-calibration-title">
+      <section className="mt-[24px]" aria-labelledby="journal-calibration-title">
+        <div className={blockHead}>
+          <h2 className={`${blockTitleBase} mt-0 lg:text-block-title lg:leading-title`} id="journal-calibration-title">
             Calibração pessoal
           </h2>
-          <span className="block-count lg:text-label">{calibration.data?.meta?.total ?? 0}</span>
+          <span className={`${blockCount} lg:text-label`}>{calibration.data?.meta?.total ?? 0}</span>
         </div>
-        <p className="chain-note lg:text-label lg:leading-body">
+        <p className={`${chainNote} lg:text-label lg:leading-body`}>
           Por métrica e horizonte. A taxa usa apenas acertos e erros; “sem dados” fica separado.
           Não há comparação com sinal nem recomendação.
         </p>
@@ -225,31 +240,31 @@ function Diario() {
         )}
       </section>
 
-      <section className="journal-section" aria-labelledby="journal-list-title">
-        <div className="block-head">
-          <h2 className="block-title lg:text-block-title lg:leading-title" id="journal-list-title">
+      <section className="mt-[24px]" aria-labelledby="journal-list-title">
+        <div className={blockHead}>
+          <h2 className={`${blockTitleBase} mt-0 lg:text-block-title lg:leading-title`} id="journal-list-title">
             Decisões
           </h2>
-          <span className="block-count lg:text-label">{journal.data?.meta?.total ?? 0}</span>
+          <span className={`${blockCount} lg:text-label`}>{journal.data?.meta?.total ?? 0}</span>
         </div>
         {journal.isLoading && <Loading label="carregando diário…" />}
         {journal.isError && <ErrorState error={journal.error} title="Diário indisponível" />}
         {journal.data?.meta?.note && (
-          <p className="notice lg:text-label" role="status">
+          <p className={`${notice} lg:text-label`} role="status">
             {journal.data.meta.note}
           </p>
         )}
         {journal.data && journal.data.data.decisions.length === 0 ? (
-          <div className="position-empty">
-            <p>Nenhuma decisão registrada.</p>
-            <p className="note lg:text-label">
+          <div className="rounded-[6px] border border-dashed border-input bg-card px-[16px] py-[24px]">
+            <p className="mx-0 mt-0 mb-[4px]">Nenhuma decisão registrada.</p>
+            <p className={`${noteBase} m-0 lg:text-label`}>
               {auth.hasToken
                 ? 'Use “Nova decisão” para registrar, inclusive, uma escolha de não entrar.'
                 : 'Salve o token acima para registrar uma decisão.'}
             </p>
           </div>
         ) : (
-          <div className="position-list">
+          <div className="grid gap-[12px]">
             {journal.data?.data.decisions.map((decision) => (
               <DecisionCard key={decision.id} decision={decision} onMetric={openMetric} />
             ))}
@@ -330,15 +345,15 @@ function CalibrationReport({
         />
       </MetricGrid>
       {data.groups.length === 0 ? (
-        <p className="note lg:text-label">Ainda não há previsão avaliada. O relatório não inventa taxa sem n.</p>
+        <p className={`${note} lg:text-label`}>Ainda não há previsão avaliada. O relatório não inventa taxa sem n.</p>
       ) : (
         <div
-          className="table-wrap table-wrap--scroll journal-table-wrap"
+          className="table-wrap table-wrap--scroll"
           role="region"
           aria-label="Calibração por métrica e horizonte"
           tabIndex={0}
         >
-          <Table contained={false} className="screen-table journal-table lg:text-table lg:leading-table">
+          <Table contained={false} className="screen-table min-w-[760px] lg:text-table lg:leading-table">
             <TableHeader>
               <TableRow>
                 <TableHead scope="col" className="font-normal lg:text-table-head">Métrica</TableHead>
@@ -348,7 +363,7 @@ function CalibrationReport({
                 <TableHead scope="col" className="font-normal lg:text-table-head">Erros</TableHead>
                 <TableHead scope="col" className="font-normal lg:text-table-head">Sem dados</TableHead>
                 <TableHead scope="col" className="font-normal lg:text-table-head">Taxa</TableHead>
-                <TableHead scope="col" className="font-normal lg:text-table-head">Motivo de void</TableHead>
+                <TableHead scope="col" className="min-w-[220px] font-normal lg:text-table-head">Motivo de void</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -371,16 +386,16 @@ function CalibrationReport({
                       {metricLabel(group.metric)}
                     </Button>
                   </TableHead>
-                  <TableCell className="num px-2 py-2.5">{sessionsLabel(group.horizon_sessions)}</TableCell>
-                  <TableCell className="num px-2 py-2.5">{group.n}</TableCell>
-                  <TableCell className="num px-2 py-2.5">{group.hit}</TableCell>
-                  <TableCell className="num px-2 py-2.5">{group.miss}</TableCell>
-                  <TableCell className="num px-2 py-2.5">{group.void}</TableCell>
-                  <TableCell className="num px-2 py-2.5">
+                  <TableCell className={`${num} px-2 py-2.5`}>{sessionsLabel(group.horizon_sessions)}</TableCell>
+                  <TableCell className={`${num} px-2 py-2.5`}>{group.n}</TableCell>
+                  <TableCell className={`${num} px-2 py-2.5`}>{group.hit}</TableCell>
+                  <TableCell className={`${num} px-2 py-2.5`}>{group.miss}</TableCell>
+                  <TableCell className={`${num} px-2 py-2.5`}>{group.void}</TableCell>
+                  <TableCell className={`${num} px-2 py-2.5`}>
                     {group.hit_rate_pct == null ? '—' : `${fmt(group.hit_rate_pct, 1)}%`}
-                    <span className="journal-table__n lg:text-detail">n {group.n}</span>
+                    <span className="mt-[2px] block text-[10.5px] text-muted-foreground lg:text-detail">n {group.n}</span>
                   </TableCell>
-                  <TableCell className="px-2 py-2.5">
+                  <TableCell className="min-w-[220px] px-2 py-2.5 text-left">
                     {group.void_reasons.length === 0
                       ? '—'
                       : group.void_reasons
@@ -409,29 +424,29 @@ function DecisionCard({
 }) {
   const prediction = decision.prediction
   return (
-    <article className="position-card journal-card">
-      <header className="position-card__head">
+    <article className="min-w-0 rounded-[6px] border border-border bg-card p-[16px] max-sm:p-[12px]">
+      <header className="flex flex-wrap items-baseline justify-between gap-x-[12px] gap-y-[4px]">
         <div>
           <Link
-            className="position-card__title lg:text-metric"
+            className={`inline-flex min-h-[44px] items-center font-mono text-[20px] font-medium tabular-nums text-foreground ${focusOutset} lg:text-metric`}
             to="/t/$ticker"
             params={{ ticker: decision.underlying }}
           >
             {decision.underlying}
           </Link>
-          <span className="position-card__kind lg:text-label">
+          <span className="ml-[12px] text-[12px] text-[color:var(--text-2)] lg:text-label">
             {decisionTypeLabel(decision.decision_type)}
           </span>
         </div>
-        <span className="quiet lg:text-label">{dateBr(decision.session)}</span>
+        <span className={`${quiet} lg:text-label`}>{dateBr(decision.session)}</span>
       </header>
-      {decision.context && <p className="journal-card__context lg:text-body lg:leading-body">{decision.context}</p>}
-      {decision.notes && <p className="position-card__notes lg:text-body lg:leading-body">{decision.notes}</p>}
+      {decision.context && <p className="m-0 pt-[8px] text-[12.5px] leading-[1.5] text-[color:var(--text-2)] [overflow-wrap:anywhere] lg:text-body lg:leading-body">{decision.context}</p>}
+      {decision.notes && <p className="m-0 border-t border-t-border py-[12px] text-[12.5px] leading-[1.55] whitespace-pre-wrap text-[color:var(--text-2)] [overflow-wrap:anywhere] lg:text-body lg:leading-body">{decision.notes}</p>}
       {decision.position_id && (
-        <p className="quiet-line lg:text-label">
+        <p className={`${quietLine} lg:text-label`}>
           posição vinculada:{' '}
           <Link
-            className="inline-link lg:text-label"
+            className={`${inlineLink} lg:text-label`}
             to="/carteira/$positionId"
             params={{ positionId: decision.position_id }}
           >
@@ -442,7 +457,7 @@ function DecisionCard({
       {prediction ? (
         <PredictionOutcome prediction={prediction} onMetric={onMetric} />
       ) : (
-        <p className="note lg:text-label">Sem previsão estruturada; esta decisão não entra na calibração.</p>
+        <p className={`${note} lg:text-label`}>Sem previsão estruturada; esta decisão não entra na calibração.</p>
       )}
     </article>
   )
@@ -458,10 +473,10 @@ function PredictionOutcome({
   const threshold = metricValue(prediction.value, prediction.unit)
   const observed = metricValue(prediction.observed, prediction.unit)
   return (
-    <div className="journal-outcome">
-      <div className="journal-outcome__row lg:text-label">
-        <span className="quiet lg:text-label">Previsão</span>
-        <span className="num">
+    <div className="mt-[8px] border-t border-t-border">
+      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
+        <span className={`${quiet} lg:text-label`}>Previsão</span>
+        <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           <Button
             type="button"
             variant="link"
@@ -475,16 +490,16 @@ function PredictionOutcome({
           {dateBr(prediction.evaluate_on)}
         </span>
       </div>
-      <div className="journal-outcome__row lg:text-label">
-        <span className="quiet lg:text-label">Observado</span>
-        <span className="num">
+      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
+        <span className={`${quiet} lg:text-label`}>Observado</span>
+        <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           {observed}
           {prediction.evaluated_on ? ` · ${dateBr(prediction.evaluated_on)}` : ''}
         </span>
       </div>
-      <div className="journal-outcome__row lg:text-label">
-        <span className="quiet lg:text-label">Desfecho</span>
-        <span className="num">
+      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
+        <span className={`${quiet} lg:text-label`}>Desfecho</span>
+        <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           <Button
             type="button"
             variant="link"
@@ -501,7 +516,7 @@ function PredictionOutcome({
             {STATUS_LABELS[prediction.status] ?? prediction.status}
           </Button>
           {prediction.status === 'void' && prediction.void_reason && (
-            <span className="journal-outcome__reason">
+            <span className="text-[color:var(--text-2)]">
               {' '}
               · {VOID_LABELS[prediction.void_reason] ?? prediction.void_reason}
             </span>

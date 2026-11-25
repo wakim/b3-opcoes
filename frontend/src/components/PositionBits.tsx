@@ -1,5 +1,6 @@
 /** Rótulos e formatação de posição — apresentação, nunca cálculo financeiro. */
 import { brl, fmt } from '../lib/format'
+import { numNeg, numPos, quiet } from '../lib/classes'
 
 const FLAG_LABELS: Record<string, string> = {
   near_expiry: 'vencimento próximo',
@@ -66,12 +67,12 @@ export function formatPnlPct(value: number | null): string {
 
 export function pnlTone(value: number | null): string | undefined {
   if (value == null || value === 0) return undefined
-  return value > 0 ? 'num--pos' : 'num--neg'
+  return value > 0 ? numPos : numNeg
 }
 
 export function PositionFlags({ flags, emptyLabel = 'sem flags' }: { flags: string[]; emptyLabel?: string }) {
   const unique = [...new Set(flags)]
-  if (unique.length === 0) return <span className="quiet min-w-0 lg:text-label">{emptyLabel}</span>
+  if (unique.length === 0) return <span className={`${quiet} min-w-0 lg:text-label`}>{emptyLabel}</span>
   return (
     <span className="position-flags min-w-0 lg:text-label">
       {unique.map((flag) => (

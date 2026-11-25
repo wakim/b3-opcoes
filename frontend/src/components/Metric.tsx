@@ -77,9 +77,11 @@ export function GlossaryMetric({
   )
 }
 
-export function MetricGrid({ children }: { children: ReactNode }) {
+/** `inCard`: dentro do cartão de posição a margem inferior é 12 px (era o
+ * seletor `.position-card .metric-grid` do legado). */
+export function MetricGrid({ children, inCard = false }: { children: ReactNode; inCard?: boolean }) {
   return (
-    <div className="mb-[16px] grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[1px] overflow-hidden rounded-[6px] border border-border bg-border sm:grid-cols-[repeat(3,minmax(0,1fr))] [.position-card_&]:mb-[12px]">
+    <div className={`${inCard ? 'mb-[12px]' : 'mb-[16px]'} grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[1px] overflow-hidden rounded-[6px] border border-border bg-border sm:grid-cols-[repeat(3,minmax(0,1fr))]`}>
       {children}
     </div>
   )

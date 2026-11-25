@@ -1,7 +1,8 @@
 import * as React from "react"
+// Mantido para o piloto da F8.5.4; ainda sem consumidor antes dessa fase.
 import { cn } from "@/lib/utils"
 import { CheckIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react"
-import * as SelectPrimitive from '@radix-ui/react-select'
+import { Select as SelectPrimitive } from 'radix-ui'
 
 function Select({
   ...props

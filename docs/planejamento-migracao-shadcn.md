@@ -4,7 +4,7 @@
 **Branch:** `f8-shadcn-migration`  
 **Base:** `main` em `a796afa`  
 **Worktree:** `C:\Users\wakim\.local\share\opencode\worktree\54cf8a\b3o-shadcn-migration`  
-**Status:** F8.5.0 concluída e revisada; F8.5.1–F8.5.5 pendentes
+**Status:** F8.5.0 e F8.5.1 concluídas e revisadas; F8.5.2–F8.5.5 pendentes
 
 ---
 
@@ -98,6 +98,14 @@ Achados do baseline a corrigir nas fases seguintes, sem reabrir a F8:
 - links de ticker e voltar com 44 px de altura, mas largura menor;
 - rotas de leitura com `isLoading || !data` antes de `isError`, prendendo o erro em “carregando…”;
 - `HelpTip`: Escape propaga e fecha o diálogo; foco de toque pode conflitar com o clique.
+
+### F8.5.1 — fundação Radix
+
+- `Button`, `Dialog` e `Select` migrados para os namespaces de `radix-ui` (`Slot.Root`, `Dialog.*`, `Select.*`).
+- Dependências individuais removidas do root; as mesmas versões permanecem transitivas de `radix-ui@1.8.1`.
+- Select mantido para o piloto da F8.5.4.
+- 48 estados sem diferença de geometria, estilo, foco, tabela ou texto; dois ruídos de rasterização de 4 pixels ±1.
+- Revisão independente: **PASS**.
 
 ## Fases
 

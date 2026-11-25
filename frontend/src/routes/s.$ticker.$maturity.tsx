@@ -9,7 +9,7 @@ import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
 import { MetricModal } from '../components/MetricModal'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
-import { Button } from '../components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import {
   Table,
   TableBody,
@@ -54,8 +54,8 @@ function SeriesPage() {
     queryFn: ({ signal }) => apiGet<SeriesDetail>(`/api/s/${ticker}/${maturity}`, signal),
   })
 
-  if (series.isLoading || !series.data) return <Loading />
   if (series.isError) return <ErrorState error={series.error} />
+  if (series.isLoading || !series.data) return <Loading />
 
   const data = series.data.data
   const history = data.history
@@ -136,28 +136,26 @@ function SeriesPage() {
 
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
         <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Histórico</h2>
-        <div className="flex flex-wrap gap-[4px]" role="group" aria-label="Série do gráfico">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-            aria-pressed={view === 'price'}
-            onClick={() => setView('price')}
+        <ToggleGroup
+          type="multiple"
+          value={[view]}
+          onValueChange={(values) => { if (values.length) setView(values[values.length - 1] as 'price' | 'iv') }}
+          className="flex flex-wrap gap-[4px]"
+          aria-label="Série do gráfico"
+        >
+          <ToggleGroupItem
+            value="price"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Preço
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-            aria-pressed={view === 'iv'}
-            onClick={() => setView('iv')}
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="iv"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Volatilidade
-          </Button>
-        </div>
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
       <LineChart
         labels={labels}

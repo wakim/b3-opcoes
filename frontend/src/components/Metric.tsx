@@ -5,6 +5,7 @@
  */
 import type { ReactNode } from 'react'
 import type { OpenMetric } from './metricKeys'
+import { InfoTip } from './InfoTip'
 
 export interface MetricProps {
   label: string
@@ -33,16 +34,16 @@ export function Metric({ label, value, note, onOpen, emphasis = false, hint }: M
   )
 
   if (onOpen) {
-    return (
+    const button = (
       <button
         type="button"
         className={classes}
         onClick={onOpen}
-        title={hint ?? `O que é ${label}`}
       >
         {content}
       </button>
     )
+    return <InfoTip text={hint ?? `O que é ${label}`}>{button}</InfoTip>
   }
   return <div className={classes}>{content}</div>
 }

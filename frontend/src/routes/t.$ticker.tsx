@@ -9,9 +9,11 @@ import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
 import { Chain } from '../components/Chain'
 import { MetricModal } from '../components/MetricModal'
+import { InfoTip } from '../components/InfoTip'
 import { StructureBuilder, type BuilderLeg } from '../components/StructureBuilder'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
 import { Button } from '../components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import { NativeSelect } from '../components/ui/native-select'
 import {
   Table,
@@ -83,8 +85,8 @@ function TickerPage() {
     enabled: Boolean(ticker),
   })
 
-  if (overview.isLoading || !overview.data) return <Loading />
   if (overview.isError) return <ErrorState error={overview.error} />
+  if (overview.isLoading || !overview.data) return <Loading />
 
   const data = overview.data.data
   const summary = data.summary
@@ -102,7 +104,7 @@ function TickerPage() {
       <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{ticker}</h1>
       <p className="mb-[16px] font-mono text-[11px] text-muted-foreground lg:text-label">
         {data.counts.term} vencimentos · {data.counts.smile}{' '}
-        <abbr title="preços de exercício">strikes</abbr> · {data.counts.history} dias de histórico
+        <InfoTip text="preços de exercício"><abbr className="underline decoration-dotted" aria-label="strikes: preços de exercício">strikes</abbr></InfoTip> · {data.counts.history} dias de histórico
       </p>
 
       <MetricGrid>
@@ -307,28 +309,26 @@ function TickerPage() {
 
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
         <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Cadeia de opções</h2>
-        <div className="flex flex-wrap gap-[4px]" role="group" aria-label="Filtro da cadeia">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-            aria-pressed={filter === 'strict'}
-            onClick={() => setFilter('strict')}
+        <ToggleGroup
+          type="multiple"
+          value={[filter]}
+          onValueChange={(values) => { if (values.length) setFilter(values[values.length - 1] as 'strict' | 'all') }}
+          className="flex flex-wrap gap-[4px]"
+          aria-label="Filtro da cadeia"
+        >
+          <ToggleGroupItem
+            value="strict"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Líquidas
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control aria-pressed:border-input aria-pressed:bg-muted aria-pressed:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
-            aria-pressed={filter === 'all'}
-            onClick={() => setFilter('all')}
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="all"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Todas
-          </Button>
-        </div>
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
       <p className="mb-[8px] text-[11px] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
         Put = opção de venda · Call = opção de compra · Strike = preço de exercício · números em
@@ -368,8 +368,12 @@ function TermTable({ rows, className }: { rows: Term[]; className?: string }) {
         <TableHeader>
           <TableRow>
             <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Vencimento</TableHead>
-            <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" title="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</TableHead>
-            <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" title="Séries líquidas no vencimento">Líquidas</TableHead>
+            <InfoTip text="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" aria-label="IV. Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</TableHead>
+            </InfoTip>
+            <InfoTip text="Séries líquidas no vencimento">
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" aria-label="Líquidas. Séries líquidas no vencimento">Líquidas</TableHead>
+            </InfoTip>
           </TableRow>
         </TableHeader>
         <TableBody>

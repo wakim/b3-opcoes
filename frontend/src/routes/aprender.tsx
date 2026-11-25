@@ -102,8 +102,8 @@ function Aprender() {
     staleTime: HOUR,
   })
 
-  if (list.isLoading || !list.data) return <Loading />
   if (list.isError) return <ErrorBox error={list.error} />
+  if (list.isLoading || !list.data) return <Loading />
 
   function toggle(key: string) {
     setOpen((previous) => {

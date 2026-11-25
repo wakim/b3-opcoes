@@ -308,6 +308,14 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - **Top por volume não é top por liquidez do papel.** A primeira série é **BBDCA148 (BBDC4)**, call europeia K 14,09/15-01-2027, **R$ 5.356.418,00**, **2.308 negócios**, spread 8,695652%, IV 31,199198%, Δ 0,479017. Conferida no Parquet e no `chain`/`series` pelo `liquid_smoke.py` (24/24).
 - **Linha de tabela interativa precisa vencer o padding global.** `.screen-table td` vem depois de `.liquidity-table td` na folha e deixava a linha em 41 px; o seletor correto é `.screen-table.liquidity-table td` (12 px + linha 20 + hairline = 45 px). Alvo ≥ 44 px é critério, não detalhe visual.
 
+### Tooltip e ToggleGroup (F8.5)
+
+- **`HelpTip` ficou local; `InfoTip` usa Radix Tooltip.** O wrapper Radix do `HelpTip` reabria/fechava a dica com o clique sintético do toque e não preservou o painel inferior mobile. A solução aceita mantém `HelpTip` local, trata `pointerdown` de toque e descarta o clique sintético por 700 ms; `InfoTip` cobre marcadores/métricas. Ao testar toque por CDP, **afaste o mouse antes**: com o cursor sobre o botão, o Edge emite `mouseenter` ao ligar a emulação de toque e o `pointerdown` seguinte fecha a dica.
+- **`InfoTip` só suprime fechamento por 500 ms.** O primeiro toque abre e preserva a abertura contra o clique sintético; Escape chama `close()` diretamente no `TooltipContent`, sem passar pela supressão. Não voltar a janela de 5 s: ela bloqueava Escape e permitia duas dicas abertas.
+- **ToggleGroup controlado em modo múltiplo preserva os botões do baseline.** `value=[seleção]` e `onValueChange` ignora `[]`; o grupo tem `tabIndex=-1` e cada item `tabIndex=0` para não criar parada extra nem esconder o segundo botão do Tab. Setas usam `onKeyDownCapture`, focam e clicam o próximo item.
+- **Trocar `title` por `InfoTip` pode apagar desenho da UA.** O `<abbr title>` nativo desenha sublinhado pontilhado; sem `title`, ele desaparece. No marcador `strikes`, a classe explícita `underline decoration-dotted` preserva o visual sem reintroduzir tooltip duplo.
+- **Captura visual determinística isola storage e modalidade.** Limpar `b3o:position-draft`/`b3o:journal-draft` antes de cada formulário, normalizar o ponteiro para `(2,2)`, usar clique real e desligar a retomada do manifest. Sem isso, draft vaza entre viewports e `:focus-visible` transitório gera `keyStyleDiff`/`bodyTextDiff` falso; não afrouxar o comparador.
+
 ### Tipografia desktop (F8)
 
 - O `html` continua em **13,5 px** no mobile. Tokens de tipografia desktop em `rem` não produzem os px pedidos; a escala F8 usa **px** em `@theme` e utilitários `lg:`.

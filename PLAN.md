@@ -638,6 +638,17 @@ F6 e F7 continuam pendentes de aceitação real (ADR-047); a autorização paral
 - [x] zero regressão de contrato, número, gráfico, offline ou alvo de toque ≥ 44 px — avaliação manual aprovada; offline reexercitado página + service worker (`b3o-f8-offline-final/result.json`: navegação e `/api/screen` do cache; sonda `/api/health?probe=1`, `/api/positions` e `/api/journal` com `network_error`; nenhum deles em `caches`); alvos < 44 px = 0 em 412/1280/1440; console 0; `mcp_smoke` 60/60 após ajuste à ADR-045
 - [x] duas builds limpas idênticas e navegador sem erros de console — 10 arquivos idênticos; `npm run check` e cobertura 26/63/45 verdes; `structure_smoke` 93/93; `liquid_smoke` 23/24 idêntico na referência `57f5f84` por fixture fixa em 23/11 contra `/api/s` na última sessão (limite registrado no relatório)
 
+### F8.5 — consolidação e expansão da migração shadcn
+
+Plano executado em `docs/planejamento-migracao-shadcn.md`, sem reabrir F6/F7/F9 nem alterar backend, dados, fórmulas, API, rotas ou `model_version`.
+
+- [x] **F8.5.0 — baseline e guardas:** referência `a796afa`, lago `2026-11-24`/`model_version=2`/724 sessões e 48 estados aceitos.
+- [x] **F8.5.1 — fundação Radix:** imports unificados em `radix-ui`, dependências individuais removidas e 48 estados sem regressão.
+- [x] **F8.5.2 — Tooltip, ToggleGroup e Alert:** teclado/toque/foco/Escape, aparência e envelope de erro preservados; comparação determinística 48/48 **PASS**, interações **PASS** (Accordion múltiplo fica para F8.5.4), suplemento **PASS**, cobertura 26/63/45 e lago com 191 hashes idênticos. Revisão independente: **PASS**.
+- [ ] **F8.5.3 — tabelas e variantes dos controles:** pendente.
+- [ ] **F8.5.4 — pilotos comportamentais:** pendente.
+- [ ] **F8.5.5 — validação e fechamento:** pendente.
+
 ---
 
 # F9 — Níveis de linguagem: Expert × Leigo

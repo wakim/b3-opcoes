@@ -1,6 +1,7 @@
 /** Rótulos e formatação de posição — apresentação, nunca cálculo financeiro. */
 import { brl, fmt } from '../lib/format'
 import { numNeg, numPos, quiet } from '../lib/classes'
+import { InfoTip } from './InfoTip'
 
 const FLAG_LABELS: Record<string, string> = {
   near_expiry: 'vencimento próximo',
@@ -75,11 +76,14 @@ export function PositionFlags({ flags, emptyLabel = 'sem flags' }: { flags: stri
   if (unique.length === 0) return <span className={`${quiet} min-w-0 lg:text-label`}>{emptyLabel}</span>
   return (
     <span className="position-flags min-w-0 lg:text-label">
-      {unique.map((flag) => (
-        <span key={flag} title={flag}>
-          {FLAG_LABELS[flag] ?? flag}
-        </span>
-      ))}
+      {unique.map((flag) => {
+        const label = FLAG_LABELS[flag] ?? flag
+        return (
+          <InfoTip key={flag} text={`${label}; código ${flag}`}>
+            <span aria-label={`${label}; código ${flag}`}>{label}</span>
+          </InfoTip>
+        )
+      })}
     </span>
   )
 }

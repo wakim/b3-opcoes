@@ -1,25 +1,38 @@
 /** Estados explícitos: erro com code/message/hint e carregamento quieto. */
 import type { ReactNode } from 'react'
 import { ApiError } from '../lib/api'
+import { note } from '../lib/classes'
+import { Alert } from './ui/alert'
 
-export function ErrorState({ error, title }: { error: unknown; title?: string }) {
+export function ErrorStatus({
+  error,
+  title,
+  tone = 'block',
+}: {
+  error: unknown
+  title?: string
+  tone?: 'block' | 'inline'
+}) {
   const api = error instanceof ApiError ? error : null
   const notFound = api?.isNotFound ?? false
   const message = error instanceof Error ? error.message : String(error)
 
   return (
-    <div
-      className="grid gap-2 rounded-[6px] border border-destructive/40 bg-destructive/5 p-4"
-      role="alert"
-    >
-      <div className="lg:text-label font-mono text-destructive">{api?.code ?? 'erro'}</div>
-      <div className="lg:text-block-title lg:leading-title font-medium">
-        {title ?? (notFound ? 'Não encontrado' : 'Não foi possível carregar')}
-      </div>
-      <div className="lg:text-body lg:leading-body">{message}</div>
-      {api?.hint && <div className="lg:text-label text-muted-foreground">{api.hint}</div>}
-    </div>
+    <Alert variant={tone === 'inline' ? 'destructive-inline' : 'default'}>
+      <div className={tone === 'inline' ? 'font-mono text-[11px] text-destructive lg:text-label' : 'lg:text-label font-mono text-destructive'}>{api?.code ?? 'erro'}</div>
+      {tone === 'block' && (
+        <div className="lg:text-block-title lg:leading-title font-medium">
+          {title ?? (notFound ? 'Não encontrado' : 'Não foi possível carregar')}
+        </div>
+      )}
+      <div className={tone === 'inline' ? undefined : 'lg:text-body lg:leading-body'}>{message}</div>
+      {api?.hint && <div data-note="" className={tone === 'inline' ? `${note} lg:text-label` : 'lg:text-label text-muted-foreground'}>{api.hint}</div>}
+    </Alert>
   )
+}
+
+export function ErrorState({ error, title }: { error: unknown; title?: string }) {
+  return <ErrorStatus error={error} title={title} />
 }
 
 export function Loading({ label = 'carregando…' }: { label?: string }): ReactNode {

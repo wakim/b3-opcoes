@@ -9,6 +9,7 @@ import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
 import { TickerSearch } from '../components/TickerSearch'
 import { LiquidityPanel } from '../components/LiquidityPanel'
+import { InfoTip } from '../components/InfoTip'
 import { Button } from '../components/ui/button'
 import {
   Table,
@@ -45,7 +46,9 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
             {withOptions && (
               <>
                 <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita 30d</TableHead>
-                <TableHead scope="col" title="VRP = volatilidade implícita − realizada" className={`text-right ${headClass}`}>Prêmio de volatilidade</TableHead>
+                <InfoTip text="VRP = volatilidade implícita − realizada">
+                  <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Prêmio de volatilidade. VRP = volatilidade implícita − realizada">Prêmio de volatilidade</TableHead>
+                </InfoTip>
                 <TableHead scope="col" className={`text-right ${headClass}`}>Séries líquidas</TableHead>
                 <TableHead scope="col" className={`text-right ${headClass}`}>Vencimentos</TableHead>
               </>
@@ -69,18 +72,21 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
               {withOptions && (
                 <>
                   <TableCell className="px-[8px] py-[10px]">{fmt(row.iv_atm_30d)}</TableCell>
-                  <TableCell className="px-[8px] py-[10px]">
-                    {fmt(row.vrp)}
-                    {row.vrp != null && row.flags.includes('rv_shock_day') && (
-                      <span
-                        className="ml-[3px] cursor-help text-muted-foreground"
-                        title={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}
-                        aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
-                      >
-                        †
-                      </span>
-                    )}
-                  </TableCell>
+                  {row.vrp != null && row.flags.includes('rv_shock_day') ? (
+                    <InfoTip text={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}>
+                      <TableCell className="px-[8px] py-[10px]">
+                        {fmt(row.vrp)}
+                        <span
+                          className="ml-[3px] cursor-help text-muted-foreground"
+                          aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
+                        >
+                          †
+                        </span>
+                      </TableCell>
+                    </InfoTip>
+                  ) : (
+                    <TableCell className="px-[8px] py-[10px]">{fmt(row.vrp)}</TableCell>
+                  )}
                   <TableCell className="px-[8px] py-[10px]">{row.n_liquid_series}</TableCell>
                   <TableCell className="px-[8px] py-[10px]">{row.n_expiries}</TableCell>
                 </>
@@ -102,8 +108,8 @@ function Hoje() {
     queryFn: ({ signal }) => fetchScreenAll(signal),
   })
 
-  if (screen.isLoading || !screen.data) return <Loading />
   if (screen.isError) return <ErrorState error={screen.error} />
+  if (screen.isLoading || !screen.data) return <Loading />
 
   const { summary, rows } = screen.data.data
   const withOptions = rows.filter((row) => row.n_expiries > 0)

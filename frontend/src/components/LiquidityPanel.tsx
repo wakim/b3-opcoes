@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet, type LiquidData, type ScreenRow } from '../lib/api'
 import { brl, brlCompact, dateBr, fmt, sharePct } from '../lib/format'
 import { ErrorState, Loading } from './State'
+import { InfoTip } from './InfoTip'
 import { Button } from './ui/button'
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
 import {
   Table,
   TableBody,
@@ -35,8 +37,7 @@ function spreadLabel(spreadPct: number | null, spreadBrl: number | null): string
 
 const headClass = 'px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head'
 const tabButtonClass =
-  'h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal tabular-nums whitespace-normal text-[color:var(--text-2)] shadow-none transition-colors dark:border-border dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control'
-const activeTabClass = 'border-input bg-muted text-foreground dark:border-input dark:bg-muted'
+  'h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal tabular-nums whitespace-normal text-[color:var(--text-2)] shadow-none transition-colors dark:border-border dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground dark:data-[state=on]:border-input dark:data-[state=on]:bg-muted'
 
 /** Descoberta descritiva: liquidez do papel e séries mais negociadas da sessão. */
 export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
@@ -85,28 +86,20 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
         <h2 className="mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title" id="liquidity-title">
           Liquidez <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{ranked.length} papéis com série líquida</span>
         </h2>
-        <div className="flex max-w-full flex-wrap gap-[4px]" role="group" aria-label="Tipo de liquidez">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={`${tabButtonClass}${tab === 'papers' ? ` ${activeTabClass}` : ''}`}
-            aria-pressed={tab === 'papers'}
-            onClick={() => setTab('papers')}
-          >
+        <ToggleGroup
+          type="multiple"
+          value={[tab]}
+          onValueChange={(values) => { if (values.length) setTab(values[values.length - 1] as 'papers' | 'series') }}
+          className="flex max-w-full flex-wrap gap-[4px]"
+          aria-label="Tipo de liquidez"
+        >
+          <ToggleGroupItem value="papers" variant="outline" className={tabButtonClass}>
             Papéis
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className={`${tabButtonClass}${tab === 'series' ? ` ${activeTabClass}` : ''}`}
-            aria-pressed={tab === 'series'}
-            onClick={() => setTab('series')}
-          >
+          </ToggleGroupItem>
+          <ToggleGroupItem value="series" variant="outline" className={tabButtonClass}>
             Séries mais negociadas
-          </Button>
-        </div>
+          </ToggleGroupItem>
+        </ToggleGroup>
       </div>
       <p className="mb-[8px] text-[11px] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">ordenado por liquidez; não é recomendação</p>
 
@@ -130,7 +123,9 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     <TableHead scope="col" className={`text-right ${headClass}`}>Séries líquidas</TableHead>
                     <TableHead scope="col" className={`text-right ${headClass}`}>Vencimentos</TableHead>
                     <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita 30d</TableHead>
-                    <TableHead scope="col" title="VRP = volatilidade implícita − realizada" className={`text-right ${headClass}`}>Prêmio de volatilidade</TableHead>
+                    <InfoTip text="VRP = volatilidade implícita − realizada">
+                      <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Prêmio de volatilidade. VRP = volatilidade implícita − realizada">Prêmio de volatilidade</TableHead>
+                    </InfoTip>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -148,18 +143,21 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                       <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.n_liquid_series}</TableCell>
                       <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.n_expiries}</TableCell>
                       <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{fmt(row.iv_atm_30d)}</TableCell>
-                      <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">
-                        {fmt(row.vrp)}
-                        {row.vrp != null && row.flags.includes('rv_shock_day') && (
-                          <span
-                            className="ml-[3px] cursor-help text-muted-foreground"
-                            title={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}
-                            aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
-                          >
-                            †
-                          </span>
-                        )}
-                      </TableCell>
+                      {row.vrp != null && row.flags.includes('rv_shock_day') ? (
+                        <InfoTip text={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}>
+                          <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">
+                            {fmt(row.vrp)}
+                            <span
+                              className="ml-[3px] cursor-help text-muted-foreground"
+                              aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
+                            >
+                              †
+                            </span>
+                          </TableCell>
+                        </InfoTip>
+                      ) : (
+                        <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{fmt(row.vrp)}</TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -209,9 +207,13 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                   <TableHead scope="col" className={`text-right ${headClass}`}>Lado / estilo</TableHead>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Strike</TableHead>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Vencimento</TableHead>
-                  <TableHead scope="col" title="Volume financeiro da sessão, em reais" className={`text-right ${headClass}`}>Volume</TableHead>
+                  <InfoTip text="Volume financeiro da sessão, em reais">
+                    <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Volume. Volume financeiro da sessão, em reais">Volume</TableHead>
+                  </InfoTip>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Negócios</TableHead>
-                  <TableHead scope="col" title="Spread percentual do fechamento; reais quando não há percentual" className={`text-right ${headClass}`}>Spread</TableHead>
+                  <InfoTip text="Spread percentual do fechamento; reais quando não há percentual">
+                    <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Spread. Spread percentual do fechamento; reais quando não há percentual">Spread</TableHead>
+                  </InfoTip>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita</TableHead>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Delta</TableHead>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Liquidez</TableHead>
@@ -232,7 +234,9 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{sideLabel(row.side)} / {styleLabel(row.style)}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{brl(row.strike_brl)}</TableCell>
                     <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[20px] lg:leading-table">{dateBr(row.maturity)}</TableCell>
-                    <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table" title={`Volume financeiro: ${brl(row.volume_brl)}`}>{brlCompact(row.volume_brl)}</TableCell>
+                    <InfoTip text={`Volume financeiro: ${brl(row.volume_brl)}`}>
+                      <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table" aria-label={`Volume financeiro: ${brl(row.volume_brl)}`}>{brlCompact(row.volume_brl)}</TableCell>
+                    </InfoTip>
                     <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.trades}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{spreadLabel(row.spread_pct, row.spread_brl)}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{fmt(row.iv_pct)}</TableCell>

@@ -4,7 +4,7 @@
 **Branch:** `f8-shadcn-migration`  
 **Base:** `main` em `a796afa`  
 **Worktree:** `C:\Users\wakim\.local\share\opencode\worktree\54cf8a\b3o-shadcn-migration`  
-**Status:** F8.5.0 e F8.5.1 concluídas e revisadas; F8.5.2–F8.5.5 pendentes
+**Status:** F8.5.0, F8.5.1 e F8.5.2 concluídas e revisadas; F8.5.3–F8.5.5 pendentes
 
 ---
 
@@ -107,6 +107,21 @@ Achados do baseline a corrigir nas fases seguintes, sem reabrir a F8:
 - 48 estados sem diferença de geometria, estilo, foco, tabela ou texto; dois ruídos de rasterização de 4 pixels ±1.
 - Revisão independente: **PASS**.
 
+### F8.5.2 — Tooltip, ToggleGroup e Alert
+
+- `HelpTip` permaneceu local: `pointerdown` de toque, descarte do clique sintético por 700 ms e painel inferior mobile preservado. `InfoTip` passou a usar Radix Tooltip em métricas e marcadores, com supressão de fechamento de 500 ms e Escape direto no conteúdo.
+- Cadeia, Série e Liquidez usam `ToggleGroup` controlado em modo múltiplo, com seleção exclusiva, `tabIndex=-1` no grupo, itens tabuláveis e setas manuseadas na captura.
+- `ErrorState`/`ErrorBox` foram unificados sobre `Alert`/`ErrorStatus`, preservando `code/message/hint`; a ordem `isError` antes de loading foi corrigida em Hoje, Ticker, Série e Aprender.
+- Marcadores `title` migrados para `InfoTip`/`aria-label`. O `<abbr>strikes</abbr>` ganhou `underline decoration-dotted` explícito para preservar o sublinhado nativo que o `title` desenhava.
+- Comparação determinística baseline × candidato: **PASS**, 48 estados em 412/1280/1440, zero diferença de key style, foco, interativo, tabela ou texto fora do `error-state`. Restaram dois ruídos de rasterização de 4/7 pixels ±1 em Série; o `error-state` difere porque o candidato mostra o alerta que o baseline deixava preso em “carregando…”.
+- Interações: **PASS** (`data/out/f85-phase2-interactions-final/result.json`), com apenas `accordion_multiple_keyboard` pendente para a F8.5.4. Suplemento: **PASS**, seis capturas de InfoTip em `th`/`td`, erro do modal, foco dos dois botões do ToggleGroup e HelpTip mobile (`data/out/f85-phase2-supplemental/`).
+- `lint`, typecheck, cobertura (**26 campos tocáveis · 63 no mapa · 45 verbetes**) e `git diff --check` verdes.
+- Lago estável: sessão `2026-11-24`, `model_version=2`, 724 sessões; 191 arquivos com hashes idênticos a `f85-lake-before.json` (`f85-lake-phase2-after.json`).
+- Artefatos: `data/out/f85-baseline-deterministic/`, `data/out/f85-phase2-final/comparison.json`, `data/out/f85-phase2-interactions-final/` e `data/out/f85-phase2-supplemental/`.
+- Revisão independente final: **PASS**.
+
+Diagnóstico do FAIL inicial, sem afrouxar critério: a remoção do `title` apagou o sublinhado pontilhado do `<abbr>`; Carteira 1440 herdou um draft de `sessionStorage`; e os inputs mediram estados transitórios de `:focus-visible`. A correção real foi só o sublinhado. A captura passou a limpar drafts, normalizar ponteiro, usar clique real e rodar sem retomada, eliminando os artefatos.
+
 ## Fases
 
 ### F8.5.0 — Baseline e guardas
@@ -137,7 +152,8 @@ Achados do baseline a corrigir nas fases seguintes, sem reabrir a F8:
 
 **Estimativa:** 1–2 h
 
-- Envolver `HelpTip` com o primitive Tooltip, mantendo o contrato de toque e o painel inferior no mobile.
+- Manter o `HelpTip` local após as regressões de toque do wrapper Radix; aplicar o primitive Tooltip aos marcadores e métricas via `InfoTip`, preservando o painel inferior móvel do `HelpTip`.
+- Marcadores de tabela/flag não ganham parada extra de Tab: a descrição curta permanece no nome acessível, com ajuda por hover/toque via `InfoTip`; foco por teclado continua nos botões de ajuda e métrica.
 - Trocar os marcadores `title` por ajuda acessível pelo mesmo primitive.
 - Migrar os três grupos de filtro para ToggleGroup.
 - Unificar os estados de erro sobre Alert, preservando o envelope de erro do produto.
@@ -151,7 +167,7 @@ Achados do baseline a corrigir nas fases seguintes, sem reabrir a F8:
 
 - Criar uma composição local `ScreenTable` sobre o `Table` shadcn.
 - Centralizar `contained={false}`, tipografia, classes de cabeçalho e wrapper de scroll.
-- Migrar as sete tabelas sem alterar nenhuma classe efetiva.
+- Migrar as nove instâncias de `Table` em sete arquivos sem alterar nenhuma classe efetiva: Hoje, Liquidez (2), Diário, Carteira detalhe (2), TermTable, Série e StructureBuilder.
 - Mover os overrides de builder/cadeia para variantes CVA de `Button` e `Input`.
 
 **Critério:** cabeçalho e primeira coluna sticky; sem duplo scroll; zero diferença de geometria, fonte ou cor.

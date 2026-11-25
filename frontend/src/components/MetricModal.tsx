@@ -8,6 +8,7 @@ import { useQuery } from '@tanstack/react-query'
 import { apiGet, type GlossaryDetail } from '../lib/api'
 import { num } from '../lib/classes'
 import { glossaryKey, type ModalTarget } from './metricKeys'
+import { ErrorState } from './State'
 import { InlineMd } from './InlineMd'
 import { Dialog } from './Dialog'
 
@@ -65,11 +66,7 @@ export function MetricModal({
             <span className="lg:text-label text-muted-foreground">no painel</span>
             <span className={`${num} lg:text-metric`}>{target.value}</span>
           </div>
-          {entry.isError && (
-            <div className="lg:text-label text-destructive" role="alert">
-              verbete indisponível: {entry.error instanceof Error ? entry.error.message : 'erro'}
-            </div>
-          )}
+          {entry.isError && <ErrorState error={entry.error} title="Verbeto indisponível" />}
           {entry.isLoading && <p className="lg:text-label text-muted-foreground">carregando verbete…</p>}
           <Block title="O que é" text={definition} />
           <Block title="Erro comum" text={mistake} />

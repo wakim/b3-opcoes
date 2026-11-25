@@ -1,15 +1,56 @@
 /** Tooltip curto e acessível: hover, foco por teclado ou toque. */
-import { useId, useState, type KeyboardEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react'
 
 export function HelpTip({ label, text }: { label: string; text: string }) {
   const id = useId()
   const [open, setOpen] = useState(false)
+  const ignoreClickUntil = useRef(0)
+  const ignoreMouseLeaveUntil = useRef(0)
 
-  function onKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
-    if (event.key === 'Escape') {
+  function openTip() {
+    setOpen(true)
+  }
+
+  function close() {
+    setOpen(false)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    // O Radix Dialog escuta Escape na captura do documento. A janela vem antes
+    // e impede que a dica feche o diálogo que a contém.
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
       event.preventDefault()
-      setOpen(false)
+      event.stopImmediatePropagation()
+      close()
     }
+    window.addEventListener('keydown', onEscape, true)
+    return () => window.removeEventListener('keydown', onEscape, true)
+  }, [open])
+
+  function onPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (event.pointerType === 'mouse') return
+    // O navegador emula mouse/click depois do toque. Sem prevenir o pointerdown
+    // e descartar esse clique, o primeiro toque abre e o clique sintético fecha.
+    event.preventDefault()
+    ignoreClickUntil.current = Date.now() + 700
+    ignoreMouseLeaveUntil.current = Date.now() + 1000
+    if (open) close()
+    else openTip()
+  }
+
+  function onFocus(event: FocusEvent<HTMLButtonElement>) {
+    // Toque não é foco por teclado: abrir no focus e alternar no clique fecharia
+    // a dica imediatamente.
+    if (!event.currentTarget.matches(':focus-visible')) return
+    setOpen(true)
+  }
+
+  function onClick() {
+    if (Date.now() < ignoreClickUntil.current) return
+    if (open) close()
+    else openTip()
   }
 
   return (
@@ -20,12 +61,14 @@ export function HelpTip({ label, text }: { label: string; text: string }) {
         aria-label={label}
         aria-describedby={id}
         aria-expanded={open}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
-        onClick={() => setOpen((value) => !value)}
-        onKeyDown={onKeyDown}
+        onMouseEnter={openTip}
+        onMouseLeave={() => {
+          if (Date.now() >= ignoreMouseLeaveUntil.current) close()
+        }}
+        onFocus={onFocus}
+        onBlur={close}
+        onPointerDown={onPointerDown}
+        onClick={onClick}
       >
         <span aria-hidden="true">?</span>
       </button>

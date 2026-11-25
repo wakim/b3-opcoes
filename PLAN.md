@@ -24,6 +24,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…045) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. Sem UI. |
 | Retomar em | **Aceitação F6/F7 (uso real) e o restante da F8.** F8.1–F8.4 entregues (`1230b69`, `54e7489`, ADR-044); a aceitação F8 está em 2 de 4: falta reduzir o CSS global a tokens/base (`styles-view.css` com 1.097 linhas) e reexercitar o offline. F6 segue com aceitação pendente da reconciliação manual; F7 aguarda 30 sessões de uso real. A app da 8083 ainda roda a imagem anterior à ADR-045/F8.3 (rebuild do `app`). |
+| Novo pedido | **F9 — níveis de linguagem Expert/Leigo**, pedido do dono em 24/11/2026. Planejado, ainda não iniciado; é apresentação, não altera dado, cálculo ou a aceitação de uso de F6/F7. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -636,10 +637,61 @@ F6 e F7 continuam pendentes de aceitação real; a autorização paralela está 
 
 ---
 
+# F9 — Níveis de linguagem: Expert × Leigo
+
+**Pedido do dono (24/11/2026):** permitir escolher uma linguagem mais expert ou mais leiga. No modo
+leigo, os termos devem ser menos abreviados e ter mais explicações/tooltips.
+**Status:** planejado, ainda não iniciado. Não reabre F6/F7 nem altera a aceitação de uso real.
+
+**Objetivo:** mudar apenas a camada de apresentação do PWA, mantendo os mesmos números, unidades,
+ordens, rotas e contratos da API.
+**Estimativa:** 3 h · **Depende de:** F8. Não depende da aceitação de uso de F6/F7.
+
+| ID | Tarefa | Est. |
+|---|---|---|
+| F9.1 | Preferência global de linguagem, com seletor acessível e persistência local por aparelho (`localStorage`); default **Expert**, valor inválido cai no default | 30 min |
+| F9.2 | Dicionário único de apresentação por campo/semântica: rótulo, sigla, explicação curta e rótulo expandido; reaproveitar `metricKeys.ts`, `HelpTip`, `MetricModal` e `docs/glossario.md` | 45 min |
+| F9.3 | Aplicar os dois perfis em Hoje, Ticker, Série, Carteira, Diário, Aprender, builder, tabelas, gráficos, modais, flags e mensagens recorrentes | 1 h |
+| F9.4 | Ajuda contextual no modo Leigo: uma frase curta por termo/métrica, com a ficha completa do glossário sob demanda; sem esconder informação essencial atrás de hover | 30 min |
+| F9.5 | Regressão dos dois perfis em 412/1280/1440 px, teclado/toque, offline, cobertura e builds; documentar o contrato na spec §10 | 15 min |
+
+**Regras de escopo**
+- **Expert:** preserva a linguagem concisa atual (IV, RV, VRP, Δ, Θ, ν, RR25, BFLY25 etc.); a ajuda
+  continua disponível pelos componentes existentes.
+- **Leigo:** expande o termo antes da sigla (ex.: “Volatilidade implícita (IV)”, “Volatilidade realizada
+  (RV)”, “Prêmio de volatilidade (VRP)”) e acrescenta explicação curta em português. A sigla não
+  desaparece: ela continua sendo a ponte com o glossário e com o vocabulário do app.
+- A preferência é global, vale em todas as rotas e sobrevive a reload, atualização do PWA e uso offline.
+  Não há conta, backend, sincronização entre aparelhos nem gravação no journal.
+- Textos curtos ficam num mapa de apresentação único; **definições completas continuam somente em
+  `docs/glossario.md`**, servidas por `/api/glossary`. Nada de `if` de linguagem espalhado pelos componentes.
+- Tooltip existe para **hover, foco e toque**, com fechamento por Escape e sem conteúdo essencial
+  exclusivamente hover. O modal de métrica continua sendo a explicação completa.
+- Campos da API, chaves do glossário, fórmulas, unidades e `model_version` **não mudam**; segue 2.
+  Trocar de perfil não pode mudar nenhum número nem criar escrita em `data/`.
+
+**Aceitação F9**
+- [ ] um seletor global alterna Expert/Leigo sem reload; a escolha persiste após reload e offline, e um
+      valor inválido/ausente abre em Expert
+- [ ] no Leigo, todos os termos recorrentes mapeados usam rótulo expandido e têm ajuda curta; no Expert,
+      os rótulos atuais permanecem reconhecíveis e a ficha completa continua acessível
+- [ ] a ajuda abre por hover, teclado e toque, fecha por Escape, preserva o foco e não depende de hover;
+      alvos de toque ≥ 44 px
+- [ ] Hoje, Ticker, Série, Carteira, Diário, Aprender, builder, gráficos, tabelas, flags e modais respeitam
+      o perfil escolhido, sem overflow, truncamento ou colisão em 412/1280/1440 px
+- [ ] `npm run coverage` continua verde nos dois perfis; todo campo aponta para o mesmo slug do glossário,
+      independentemente do rótulo visível
+- [ ] os payloads e números exibidos são idênticos nos dois perfis; `model_version` segue 2 e `data/` não
+      recebe escrita
+- [ ] `lint`, `tsc --noEmit`, duas builds limpas idênticas, smokes existentes e console do navegador passam;
+      spec §10 documenta os dois perfis e o default
+
+---
+
 ## Grafo de dependências
 
 ```
-F0 ──> F1 ──> F1b ──> F2 ──> F3 ──> F4 ──> F5 ──> F6 ──> F7 ──> F8
+F0 ──> F1 ──> F1b ──> F2 ──> F3 ──> F4 ──> F5 ──> F6 ──> F7 ──> F8 ──> F9
               portão
 ```
 

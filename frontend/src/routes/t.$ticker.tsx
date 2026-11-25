@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { apiGet, type ChainData, type ChainRow, type Term, type Underlying } from '../lib/api'
 import { brl, dateBr, fmt, sharePct } from '../lib/format'
+import { back } from '../lib/classes'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, MetricGrid } from '../components/Metric'
 import { Ruler } from '../components/Ruler'
@@ -98,7 +99,7 @@ function TickerPage() {
 
   return (
     <>
-      <Link className="mb-[12px] inline-flex min-h-[44px] items-center font-mono text-[12px] text-[color:var(--text-2)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label" to="/">
+      <Link className={`${back} lg:text-label`} to="/">
         <span aria-hidden="true">‹</span> Hoje
       </Link>
       <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{ticker}</h1>

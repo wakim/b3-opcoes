@@ -50,13 +50,13 @@ export const notice =
   'mx-0 mt-0 mb-[16px] border-l-2 border-solid border-l-input pl-[10px] text-[11.5px] text-[color:var(--text-2)]'
 
 /** `.back` (as duas folhas somadas: inline-flex vence o inline-block). */
-export const back = `mb-[12px] inline-flex min-h-[44px] items-center font-mono text-[12px] text-[color:var(--text-2)] ${focusInset}`
+export const back = `mb-[12px] inline-flex min-h-[44px] min-w-[44px] items-center font-mono text-[12px] text-[color:var(--text-2)] ${focusInset}`
 
 /** `.inline-link` */
 export const inlineLink = `inline-flex min-h-[44px] cursor-pointer items-center border-none bg-transparent p-0 text-foreground underline underline-offset-[2px] [font:inherit] ${focusInset}`
 
 /** `.ticker-link` */
-export const tickerLink = `inline-flex min-h-[44px] items-center text-primary ${focusInset}`
+export const tickerLink = `inline-flex min-h-[44px] min-w-[44px] items-center text-primary ${focusInset}`
 
 /** `.visually-hidden` (clip, não clip-path: igual ao legado). */
 export const visuallyHidden =

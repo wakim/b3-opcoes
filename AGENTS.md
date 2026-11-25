@@ -347,6 +347,13 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - **Primeira visita do SW não controla a página.** `navigator.serviceWorker.ready` só garante registro ativo; em perfil novo, `controller` continua `null` até um reload. Na prova offline, espere `ready`, recarregue, confira `controller` e só então corte a rede nos dois alvos.
 - **`python -I` ignora `PYTHONIOENCODING`**: no console cp1252 do Windows o `print` de `−`/`ç` quebra; use `-X utf8`.
 
+### Checkbox, Accordion e alvos (F8.5.4–F8.5.5)
+
+- **`Checkbox.Root asChild` não repassa `checked` ao input filho.** O Radix injeta `aria-checked`/`data-state`, mas a caixa nativa continua sem `checked`; retomar rascunho marcado mostra `aria-checked=true` com `.checked=false` e inverte no primeiro clique. O primitive passa `checked` também ao `<input readOnly>`; a prova inclui `predictionEnabled=true` no draft.
+- **Accordion `forceMount` exige `hidden` explícito.** No Collapsible, `forceMount` torna `isOpen` verdadeiro até para painel fechado. Use `forceMount hidden={!open}`, mantenha `{open && <EntryDetail/>}` e neutralize `aria-labelledby` injetado com `aria-labelledby={undefined}` para preservar o `aria-label` exato do region. `Header` deve conter `Trigger`; `Item className="contents"` preserva o flex `gap-[6px] + mt-[-6px]` sem sobrepor painel.
+- **Enter via `Input.dispatchKeyEvent` bruto não é prova confiável neste Edge headless.** O evento chega ao foco, mas não sintetiza o clique nativo do botão. Use o navegador real para Enter; no script CDP, abra o Accordion com Espaço e mantenha Tab entre triggers. Não marcar `toggle_group_enter` como prova de ativação sem medir a mudança de estado.
+- **`min-h-[44px]` não garante alvo quadrado.** Links de ticker e “‹ Hoje” tinham 44 px de altura, mas 31–38,5 px de largura. `tickerLink` e `back` agora usam `min-w-[44px]`; o link de Ticker reutiliza `back` em vez de duplicar classes. A auditoria final varre `a/button/input/select/textarea/[role]` visíveis nas rotas principais.
+
 ---
 
 ## Armazenamento

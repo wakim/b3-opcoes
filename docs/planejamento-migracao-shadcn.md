@@ -4,7 +4,7 @@
 **Branch:** `f8-shadcn-migration`  
 **Base:** `main` em `a796afa`  
 **Worktree:** `C:\Users\wakim\.local\share\opencode\worktree\54cf8a\b3o-shadcn-migration`  
-**Status:** F8.5.0, F8.5.1, F8.5.2, F8.5.3 e F8.5.4 concluídas e revisadas; F8.5.5 pendente
+**Status:** F8.5.0–F8.5.5 concluídas e revisadas
 
 ---
 
@@ -52,8 +52,8 @@ Pontos de oportunidade:
 | Alta | `ErrorState` e `ErrorBox` | shadcn `Alert` + componente único de status | Não perder `code`, `message`, `hint` nem `role="alert"` |
 | Alta | Tabelas das telas | Composição local `ScreenTable` sobre `Table` | Preservar scroll e sticky |
 | Média | Overrides de `Button`/`Input` | Variantes CVA nos primitives | Zero diferença de computed style |
-| Média | `NativeSelect` dos formulários | shadcn `Select` | Somente após piloto mobile/teclado aprovado |
-| Média | `NativeSelect` de vencimento | Decisão após piloto | Pode permanecer nativo se houver regressão |
+| Média | `NativeSelect` dos formulários | shadcn `Select` | Piloto reprovado; `NativeSelect` mantido |
+| Média | `NativeSelect` de vencimento | Decisão após piloto | Mantido nativo; não migrar |
 | Média | Checkbox nativo | shadcn `Checkbox` | Passar `disabled` explicitamente |
 | Média | Accordion do Aprender | shadcn `Accordion` | Modo múltiplo, preservando ADR-033 |
 | Baixa | `<details>` de vencimentos sem IV | shadcn `Collapsible` | Opcional; ganho pequeno |
@@ -146,6 +146,18 @@ Diagnóstico do FAIL inicial, sem afrouxar critério: a remoção do `title` apa
 - `npm run check`, build da app 8093 e `git diff --check` verdes. Esta fase foi validada funcionalmente, sem captura ou comparação contra baseline, conforme orientação do dono.
 - Revisão independente final: **PASS**, sem blockers.
 
+### F8.5.5 — validação e fechamento
+
+- Auditoria ampla de alvos encontrou dois defeitos preexistentes: links de ticker com 38,5 px no desktop e “‹ Hoje” com 35,75 px. `tickerLink` e `back` ganharam `min-w-[44px]`; o link de Ticker passou a usar o token `back` em vez de duplicar a classe. Auditoria final: **PASS**, 18 checks (6 rotas × 3 larguras), zero alvos visíveis <44 px (`data/out/f85-target-audit-final.json`).
+- `npm run check` e cobertura campo ↔ glossário verdes: **26 campos tocáveis · 63 no mapa · 45 verbetes**.
+- Duas builds limpas produziram **10 arquivos idênticos**; os manifestos SHA-256 têm hash `DB7AF93F08293DB405010DEB7DF21551D559C5FBCE859781A8B2EB68705D685E` (`data/out/f85-final-build-{1,2}.sha256`).
+- Interações finais: **PASS**, 62 checks em cada uma das larguras 412/1280/1440 (`data/out/f85-final-interactions-{412,1280,1440}/result.json`), incluindo Checkbox, Accordion múltiplo, toque, teclado, modais, Tooltip, ToggleGroup e zero pageerror.
+- Tabelas finais: **PASS**, 36 checks nas três larguras (`data/out/f85-final-tables.json`), com sticky, sem duplo scroll, Enter navegando e alvos ≥44 px.
+- Offline: **PASS**, 20 checks com página e service worker (`data/out/f85-offline-final/result.json`). Navegação e `/api/screen`/glossário saem do cache; sonda, posições e diário retornam `network_error`; nenhuma dessas rotas NetworkOnly aparece em `caches`.
+- Lago imutável: sessão `2026-11-24`, `model_version=2`, 724 sessões antes e depois; 191 arquivos com hashes idênticos (`data/out/f85-lake-phase4-before*`, `data/out/f85-lake-phase5-*`).
+- `git diff --check` limpo; nenhuma dependência, lock, backend, API, rota de servidor, dado do lago ou `model_version` alterado. Validação exclusivamente funcional, sem captura/comparação contra baseline.
+- Revisão independente final: **PASS**, sem blockers.
+
 ## Fases
 
 ### F8.5.0 — Baseline e guardas
@@ -226,23 +238,23 @@ Diagnóstico do FAIL inicial, sem afrouxar critério: a remoção do `title` apa
 
 ## Critérios de aceitação
 
-- [ ] Nenhuma alteração em backend, dados, fórmulas, API, rotas ou `model_version`.
-- [ ] Geometria, fontes e cores preservadas em 412, 1280 e 1440 px.
-- [ ] Alvos interativos visíveis maiores ou iguais a 44 px.
-- [ ] Navegação por Tab, setas, Enter, Espaço e Escape funcionando.
-- [ ] Modais preservam foco inicial, retorno de foco e bloqueio durante salvamento.
-- [ ] Tabelas preservam cabeçalho e primeira coluna sticky.
-- [ ] Tooltip funciona por hover, foco e toque, com fechamento por Escape.
-- [ ] Grupos de filtro preservam semântica, rótulos e estado ativo.
-- [ ] Erros continuam exibindo `code`, `message` e `hint` quando disponíveis.
-- [ ] Browser sem erros de console ou pageerror.
-- [ ] Lint e typecheck passam no container.
-- [ ] Duas builds limpas produzem resultado idêntico.
-- [ ] Cobertura campo ↔ glossário passa sem regressão.
-- [ ] Offline revalidado na página e no service worker.
-- [ ] Sessão do lago igual antes e depois das comparações.
-- [ ] `git diff --check` limpo.
-- [ ] Nenhuma dependência nova sem lock atualizado no container.
+- [x] Nenhuma alteração em backend, dados, fórmulas, API, rotas ou `model_version`.
+- [x] Geometria, fontes e cores preservadas em 412, 1280 e 1440 px (layout/sticky/alvos validados funcionalmente; nova comparação visual dispensada pelo dono).
+- [x] Alvos interativos visíveis maiores ou iguais a 44 px.
+- [x] Navegação por Tab, setas, Enter, Espaço e Escape funcionando.
+- [x] Modais preservam foco inicial, retorno de foco e bloqueio durante salvamento.
+- [x] Tabelas preservam cabeçalho e primeira coluna sticky.
+- [x] Tooltip funciona por hover, foco e toque, com fechamento por Escape.
+- [x] Grupos de filtro preservam semântica, rótulos e estado ativo.
+- [x] Erros continuam exibindo `code`, `message` e `hint` quando disponíveis.
+- [x] Browser sem erros de console ou pageerror.
+- [x] Lint e typecheck passam no container.
+- [x] Duas builds limpas produzem resultado idêntico.
+- [x] Cobertura campo ↔ glossário passa sem regressão.
+- [x] Offline revalidado na página e no service worker.
+- [x] Sessão do lago igual antes e depois das validações.
+- [x] `git diff --check` limpo.
+- [x] Nenhuma dependência nova sem lock atualizado no container.
 
 ## Estratégia de execução
 

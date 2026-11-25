@@ -73,7 +73,7 @@ function AppShell() {
           offline={offline}
         />
       </header>
-      <main className="mx-auto w-full max-w-[900px] flex-1 px-[16px] pb-[88px] pt-[16px]">
+      <main className="mx-auto w-full max-w-[900px] flex-1 px-[16px] pb-[88px] pt-[16px] lg:max-w-[1334px]">
         <OfflineBanner offline={offline} session={knownSession} />
         {health.isError && !offline && (
           <ErrorState error={health.error} title="Saúde do lake indisponível" />

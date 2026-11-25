@@ -91,6 +91,18 @@ Sans de sistema na interface; números continuam mono com `tabular-nums`.
 Hierarquia por tamanho e cor, sem compensar com peso, caixa alta ou tracking.
 Cor, matiz, espaço vertical, raio e direção continuam os mesmos.
 
+### Largura do conteúdo no desktop — 25/11/2026
+
+- Abaixo de **1024 px**, o `<main>` mantém o limite de **900 px**; o celular e o
+  tablet não mudam.
+- A partir de **1024 px**, o limite sobe para **1334 px**. Com os 32 px de padding,
+  o conteúdo útil passa de **868 px para 1302 px** — **+50%** sobre a largura
+  original. Em viewports menores que 1334 px, a largura acompanha a tela.
+- O limite vive apenas em `frontend/src/routes/__root.tsx`, via
+  `max-w-[900px] lg:max-w-[1334px]`; o CSS global não duplica o valor.
+- Cabeçalho e navegação continuam ocupando a largura da viewport. Gráficos e
+  tabelas acompanham o `<main>`; blocos com limite próprio permanecem como estão.
+
 ### Espaço, raio, movimento
 
 - Grade de **4 px**. Dentro do grupo 8–12; entre seções 24–32.

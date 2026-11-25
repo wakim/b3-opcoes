@@ -114,7 +114,6 @@ button {
 main {
   flex: 1;
   padding: 16px 16px 88px;
-  max-width: 900px;
   width: 100%;
   margin: 0 auto;
 }

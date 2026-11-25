@@ -31,10 +31,10 @@ import {
 // perde para o `outline-none` do primitive no estilo (fica `none`), mas cor e offset valem —
 // por isso aqui NÃO entra `outline-solid` (focusInset desenharia um contorno que não existe hoje).
 const fieldControl =
-  'min-h-[44px] font-mono text-[12px] tabular-nums text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary'
+  'min-h-[44px] font-mono text-[calc(12px*var(--font-scale))] tabular-nums text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary'
 // `.position-form__textarea`: padding, borda, fundo e min-height legados perdem para o primitive.
 const textareaControl =
-  'resize-y text-[13px] leading-[1.5] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
+  'resize-y text-[calc(13px*var(--font-scale))] leading-[1.5] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
 // `.position-form__toggle input`: tamanho e accent já vêm do Checkbox (size-5, accent-primary).
 const focusToggle =
   'focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
@@ -354,10 +354,10 @@ export function DecisionForm({
           </div>
 
           <fieldset className="m-0 min-w-0 border-none p-0" disabled={create.isPending}>
-            <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[13px] font-medium lg:text-block-title lg:leading-title">
+            <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
               Previsão estruturada
             </legend>
-            <label className="flex min-h-[44px] cursor-pointer items-center gap-[8px] text-[12.5px] text-[color:var(--text-2)] lg:text-label">
+            <label className="flex min-h-[44px] cursor-pointer items-center gap-[8px] text-[calc(12.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
               <Checkbox
                 className={focusToggle}
                 checked={predictionEnabled}

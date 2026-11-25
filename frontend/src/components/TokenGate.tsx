@@ -122,7 +122,7 @@ export function TokenGate({
           <Input
             id={`${id}-token`}
             type="password"
-            className="min-h-[44px] font-mono text-[12px] text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[2px]"
+            className="min-h-[44px] font-mono text-[calc(12px*var(--font-scale))] text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[2px]"
             value={value}
             onChange={(event) => setValue(event.target.value)}
             autoComplete="off"

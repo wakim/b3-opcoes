@@ -102,8 +102,8 @@ function TickerPage() {
       <Link className={`${back} lg:text-label`} to="/">
         <span aria-hidden="true">‹</span> Hoje
       </Link>
-      <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{ticker}</h1>
-      <p className="mb-[16px] font-mono text-[11px] text-muted-foreground lg:text-label">
+      <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{ticker}</h1>
+      <p className="mb-[16px] font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
         {data.counts.term} vencimentos · {data.counts.smile}{' '}
         <InfoTip text="preços de exercício"><abbr className="underline decoration-dotted" aria-label="strikes: preços de exercício">strikes</abbr></InfoTip> · {data.counts.history} dias de histórico
       </p>
@@ -196,7 +196,7 @@ function TickerPage() {
       </MetricGrid>
 
       {summary?.flags.includes('rv_shock_day') && (
-        <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
+        <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
           {sharePct(summary.rv_shock_share_pct)} de tudo o que {ticker} oscilou nos últimos 30
           pregões veio de um só dia ({dateBr(summary.rv_shock_date)}). A volatilidade realizada, o
           prêmio de volatilidade e os desvios-padrão do prêmio refletem esse dia: o número é real,
@@ -205,10 +205,10 @@ function TickerPage() {
       )}
 
       {data.notes.map((note) => (
-        <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label" key={note}>{note}</p>
+        <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label" key={note}>{note}</p>
       ))}
 
-      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita por vencimento</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita por vencimento</h2>
       {withIv.length >= 2 ? (
         <LineChart
           labels={termWindow.map((point) => point.maturity.slice(5))}
@@ -232,27 +232,27 @@ function TickerPage() {
           caption={`Volatilidade implícita em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''} · eixo x proporcional ao tempo`}
         />
       ) : (
-        <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
+        <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
       )}
       {withIv.length > 0 && (
         <div className="mt-[8px]">
-          <p className="mt-[12px] mb-[4px] text-[11px] text-[color:var(--text-2)] lg:text-label">
-            Vencimentos com IV <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{withIv.length}</span>
+          <p className="mt-[12px] mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
+            Vencimentos com IV <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withIv.length}</span>
           </p>
           <TermTable rows={withIv} />
-          <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">
+          <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
             IV é a do strike de |Δ| mais próximo de 0,5; Líquidas = séries líquidas no vencimento.
           </p>
         </div>
       )}
       {withoutIv.length > 0 && (
         <details className="mt-[6px]">
-          <summary className="flex min-h-[44px] cursor-pointer items-center text-[11.5px] text-[color:var(--text-2)] marker:text-muted-foreground lg:text-label">Ver os {withoutIv.length} vencimentos sem IV</summary>
+          <summary className="flex min-h-[44px] cursor-pointer items-center text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] marker:text-muted-foreground lg:text-label">Ver os {withoutIv.length} vencimentos sem IV</summary>
           <TermTable rows={withoutIv} className="mt-[4px] mb-[8px]" />
         </details>
       )}
 
-      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita vs realizada</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita vs realizada</h2>
       <LineChart
         compact
         labels={history.map((point) => point.date.slice(5))}
@@ -267,14 +267,14 @@ function TickerPage() {
         showPoints={false}
       />
 
-      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Vencimento</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Vencimento</h2>
       {term.length > 0 && (
         <div className="mb-[8px] flex items-stretch gap-[6px]" role="group" aria-label="Vencimento">
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[18px] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
+            className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[calc(18px*var(--font-scale))] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
             aria-label="Vencimento anterior"
             disabled={maturityIndex <= 0}
             onClick={() => stepMaturity(-1)}
@@ -282,7 +282,7 @@ function TickerPage() {
             ‹
           </Button>
           <NativeSelect
-            className="min-w-0 flex-1 border-border bg-card px-[10px] py-[8px] font-mono text-[12px] tabular-nums text-foreground dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control"
+            className="min-w-0 flex-1 border-border bg-card px-[10px] py-[8px] font-mono text-[calc(12px*var(--font-scale))] tabular-nums text-foreground dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control"
             aria-label="Escolher vencimento"
             value={activeMaturity ?? ''}
             onChange={(event) => setPickedMaturity(event.target.value)}
@@ -298,7 +298,7 @@ function TickerPage() {
             type="button"
             variant="ghost"
             size="icon"
-            className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[18px] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
+            className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[calc(18px*var(--font-scale))] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
             aria-label="Próximo vencimento"
             disabled={maturityIndex >= term.length - 1}
             onClick={() => stepMaturity(1)}
@@ -309,7 +309,7 @@ function TickerPage() {
       )}
 
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
-        <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Cadeia de opções</h2>
+        <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Cadeia de opções</h2>
         <ToggleGroup
           type="multiple"
           value={[filter]}
@@ -319,19 +319,19 @@ function TickerPage() {
         >
           <ToggleGroupItem
             value="strict"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Líquidas
           </ToggleGroupItem>
           <ToggleGroupItem
             value="all"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Todas
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-      <p className="mb-[8px] text-[11px] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
+      <p className="mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
         Put = opção de venda · Call = opção de compra · Strike = preço de exercício · números em
         volatilidade implícita ao ano.
       </p>
@@ -340,7 +340,7 @@ function TickerPage() {
       {chain.data && (
         <>
           {chain.data.meta?.truncated && (
-            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
+            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
               A cadeia foi cortada em {chain.data.meta.returned} de {chain.data.meta.total} linhas.
             </p>
           )}

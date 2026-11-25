@@ -5,9 +5,9 @@ import { Slot } from 'radix-ui'
 import { focusInset } from "@/lib/classes"
 
 const builderFocus = `focus-visible:ring-0 ${focusInset}`
-const builderButton = `h-[44px] rounded-[4px] border border-input bg-card px-[12px] py-[8px] text-[12px] font-normal whitespace-normal text-[color:var(--text-2)] shadow-none hover:bg-muted hover:text-foreground disabled:opacity-45 dark:border-input dark:bg-card dark:hover:bg-muted ${builderFocus} lg:text-control`
-const builderPrimary = `h-[44px] rounded-[4px] border border-primary bg-primary px-[12px] py-[8px] text-[12px] font-normal whitespace-normal text-primary-foreground shadow-none hover:bg-primary disabled:opacity-45 ${builderFocus} lg:text-control`
-const builderRemove = `h-[44px] rounded-none px-[4px] py-[8px] text-[11px] font-normal text-muted-foreground underline ${builderFocus} lg:text-label`
+const builderButton = `h-[44px] rounded-[4px] border border-input bg-card px-[12px] py-[8px] text-[calc(12px*var(--font-scale))] font-normal whitespace-normal text-[color:var(--text-2)] shadow-none hover:bg-muted hover:text-foreground disabled:opacity-45 dark:border-input dark:bg-card dark:hover:bg-muted ${builderFocus} lg:text-control`
+const builderPrimary = `h-[44px] rounded-[4px] border border-primary bg-primary px-[12px] py-[8px] text-[calc(12px*var(--font-scale))] font-normal whitespace-normal text-primary-foreground shadow-none hover:bg-primary disabled:opacity-45 ${builderFocus} lg:text-control`
+const builderRemove = `h-[44px] rounded-none px-[4px] py-[8px] text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground underline ${builderFocus} lg:text-label`
 
 const buttonVariants = cva(
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-md lg:text-body font-medium whitespace-nowrap transition-colors outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",

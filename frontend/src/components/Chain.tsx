@@ -61,14 +61,14 @@ function DetailRow({
     return (
       <button
         type="button"
-        className="flex min-h-[44px] w-full cursor-pointer items-center justify-between gap-[8px] border-b border-border bg-transparent py-[3px] text-left text-[11px] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-detail"
+        className="flex min-h-[44px] w-full cursor-pointer items-center justify-between gap-[8px] border-b border-border bg-transparent py-[3px] text-left text-[calc(11px*var(--font-scale))] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-detail"
         onClick={() => onMetric(field, label, value)}
       >
         {content}
       </button>
     )
   }
-  return <div className="flex min-h-[28px] w-full items-center justify-between gap-[8px] border-b border-border py-[3px] text-left text-[11px] text-foreground lg:text-detail">{content}</div>
+  return <div className="flex min-h-[28px] w-full items-center justify-between gap-[8px] border-b border-border py-[3px] text-left text-[calc(11px*var(--font-scale))] text-foreground lg:text-detail">{content}</div>
 }
 
 function SideDetail({
@@ -86,8 +86,8 @@ function SideDetail({
   if (!row) {
     return (
       <div>
-        <div className="mb-[4px] text-[11px] text-[color:var(--text-2)] lg:text-label">{title}</div>
-        <div className="mt-[8px] text-[10.5px] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">sem série neste lado</div>
+        <div className="mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">{title}</div>
+        <div className="mt-[8px] text-[calc(10.5px*var(--font-scale))] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">sem série neste lado</div>
       </div>
     )
   }
@@ -98,7 +98,7 @@ function SideDetail({
   const canAdd = Number.isInteger(parsed) && parsed > 0
   return (
     <div>
-      <div className="mb-[4px] text-[11px] text-[color:var(--text-2)] lg:text-label">
+      <div className="mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
         {title} <span className="font-mono text-muted-foreground">{row.ticker}</span>
       </div>
       <DetailRow label="Volatilidade implícita" value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
@@ -116,12 +116,12 @@ function SideDetail({
         onMetric={onMetric}
       />
       <DetailRow label="Ofertas (bid/ask)" value={book} field="bid_brl" onMetric={onMetric} />
-      <div className="mt-[8px] text-[10.5px] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">
+      <div className="mt-[8px] text-[calc(10.5px*var(--font-scale))] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">
         {row.flags.length > 0 ? row.flags.join(' · ') : 'sem flags'}
       </div>
       {onAddLeg && (
         <div className="mt-[10px] flex flex-wrap items-center gap-[8px] border-t border-border pt-[10px]">
-          <label className="inline-flex items-center gap-[6px] text-[11px] text-muted-foreground lg:text-label">
+          <label className="inline-flex items-center gap-[6px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
             <span className="text-muted-foreground">ações</span>
             <Input
               type="number"
@@ -177,19 +177,19 @@ export function Chain({
   const groups = useMemo(() => group(rows), [rows])
 
   if (groups.length === 0) {
-    return <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhuma série neste recorte</p>
+    return <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhuma série neste recorte</p>
   }
 
   return (
     <div>
       {groups.map((groupRow) => (
         <section className="mb-[20px]" key={groupRow.maturity}>
-          <header className="flex justify-between gap-[8px] rounded-t-[4px] border border-b-0 border-border bg-muted px-[12px] py-[8px] font-mono text-[11px] text-[color:var(--text-2)] lg:text-label">
+          <header className="flex justify-between gap-[8px] rounded-t-[4px] border border-b-0 border-border bg-muted px-[12px] py-[8px] font-mono text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
             <span>{groupRow.maturity}</span>
             <span className="font-mono tabular-nums">{groupRow.strikes.length} strikes</span>
           </header>
           <div
-            className="grid grid-cols-[1fr_1fr_1fr] gap-[8px] border border-b-0 border-border px-[12px] py-[8px] text-[11px] text-muted-foreground [&>span:last-child]:text-right [&>span:nth-child(2)]:text-center lg:text-label"
+            className="grid grid-cols-[1fr_1fr_1fr] gap-[8px] border border-b-0 border-border px-[12px] py-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground [&>span:last-child]:text-right [&>span:nth-child(2)]:text-center lg:text-label"
             aria-hidden="true"
           >
             <span>Put</span>
@@ -203,7 +203,7 @@ export function Chain({
               <div key={id}>
                 <button
                   type="button"
-                  className={`grid min-h-[44px] w-full cursor-pointer grid-cols-[1fr_1fr_1fr] gap-[8px] border border-border bg-card px-[12px] py-[8px] text-left text-[12px] tabular-nums text-foreground transition-[background-color] duration-[120ms] ease-[ease] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary aria-expanded:bg-muted [&>span:last-child]:text-right [&>span:nth-child(2)]:text-center lg:text-chain lg:leading-table${index > 0 ? ' border-t-0' : ''}`}
+                  className={`grid min-h-[44px] w-full cursor-pointer grid-cols-[1fr_1fr_1fr] gap-[8px] border border-border bg-card px-[12px] py-[8px] text-left text-[calc(12px*var(--font-scale))] tabular-nums text-foreground transition-[background-color] duration-[120ms] ease-[ease] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary aria-expanded:bg-muted [&>span:last-child]:text-right [&>span:nth-child(2)]:text-center lg:text-chain lg:leading-table${index > 0 ? ' border-t-0' : ''}`}
                   aria-expanded={expanded}
                   onClick={() => setOpen(expanded ? null : id)}
                 >

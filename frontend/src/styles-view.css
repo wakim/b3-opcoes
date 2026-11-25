@@ -22,7 +22,7 @@
 .screen-table.liquidity-table td {
   padding-top: 12px;
   padding-bottom: 12px;
-  line-height: 20px;
+  line-height: calc(20px * var(--font-scale));
 }
 
 /* Régua — a assinatura -------------------------------------------------- */
@@ -72,7 +72,7 @@
   justify-content: space-between;
   margin-top: 6px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   color: var(--text-3);
 }
 
@@ -92,7 +92,7 @@
   display: flex;
   justify-content: space-between;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   color: var(--text-3);
 }
 
@@ -157,7 +157,7 @@
   justify-content: space-between;
   margin-top: 2px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--font-scale));
   color: var(--text-3);
 }
 
@@ -166,7 +166,7 @@
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   color: var(--text-2);
 }
 
@@ -193,7 +193,7 @@
 .chart__caption {
   margin: 6px 0 0;
   color: var(--text-3);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
 }
 
 /* Leitura ponto a ponto (F5-C+): crosshair, marca de vencimento e legenda.
@@ -221,14 +221,14 @@
   stroke: none;
 }
 
-/* Rótulo da faixa em HTML (não escala com o viewBox): 9,5 px no desktop e no mobile. */
+/* Rótulo da faixa em HTML (não escala com o viewBox): 13,3 px no desktop e no mobile. */
 .chart__band-tag {
   position: absolute;
   top: 28px;
   transform: translateX(-50%);
   color: var(--text-3);
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--font-scale));
   letter-spacing: 0.02em;
   white-space: nowrap;
   pointer-events: none;
@@ -256,7 +256,7 @@
   border-radius: var(--r-control);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
   color: var(--text);
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--font-scale));
   pointer-events: none;
 }
 
@@ -343,7 +343,7 @@
   border-collapse: separate;
   border-spacing: 0;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
   font-variant-numeric: tabular-nums;
 }
 
@@ -374,13 +374,13 @@
 .screen-table th {
   background: var(--surface-2);
   color: var(--text-2);
-  font-size: 11px;
+  font-size: calc(11px * var(--font-scale));
   font-weight: 400;
 }
 
 .position-flags {
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--font-scale));
 }
 
 .position-flags > span:not(:last-child)::after {

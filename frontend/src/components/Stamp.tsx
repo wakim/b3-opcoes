@@ -1,5 +1,5 @@
 const STAMP =
-  'ml-auto min-w-0 whitespace-normal text-right font-mono text-[11px] text-[var(--text-2)] lg:text-label'
+  'ml-auto min-w-0 whitespace-normal text-right font-mono text-[calc(11px*var(--font-scale))] text-[var(--text-2)] lg:text-label'
 
 /** Carimbo da sessão: vem de /api/health, nunca do relógio do navegador.
  *

@@ -80,9 +80,9 @@ function EntryRow({
           >
             <span className="inline-flex min-w-0 items-baseline gap-[10px]">
               <span>{entry.title}</span>
-              <span className="font-mono text-[11px] text-muted-foreground lg:text-label">nível {entry.level}</span>
+              <span className="font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">nível {entry.level}</span>
             </span>
-            <span className="shrink-0 font-mono text-[16px] leading-none text-muted-foreground lg:text-metric" aria-hidden="true">
+            <span className="shrink-0 font-mono text-[calc(16px*var(--font-scale))] leading-none text-muted-foreground lg:text-metric" aria-hidden="true">
               {open ? '−' : '+'}
             </span>
           </AccordionTrigger>
@@ -116,7 +116,7 @@ function Aprender() {
 
   return (
     <>
-      <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">
+      <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">
         Aprender
       </h1>
       <p className={`${note} lg:text-label`}>

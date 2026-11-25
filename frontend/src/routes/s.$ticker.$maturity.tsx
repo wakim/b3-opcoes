@@ -24,8 +24,8 @@ export const Route = createFileRoute('/s/$ticker/$maturity')({
 })
 
 const IDC = 'bg-card px-[12px] py-[10px]'
-const IDT = 'text-[11px] text-[color:var(--text-2)] lg:text-label'
-const IDD = 'mt-[4px] text-[12px] text-foreground [overflow-wrap:anywhere] lg:text-detail'
+const IDT = 'text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label'
+const IDD = 'mt-[4px] text-[calc(12px*var(--font-scale))] text-foreground [overflow-wrap:anywhere] lg:text-detail'
 const IDD_NUM = `${IDD} font-mono tabular-nums`
 
 function sideLabel(side: string): string {
@@ -63,10 +63,10 @@ function SeriesPage() {
 
   return (
     <>
-      <Link className="mb-[12px] inline-flex min-h-[44px] items-center font-mono text-[12px] text-[color:var(--text-2)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label" to="/t/$ticker" params={{ ticker }}>
+      <Link className="mb-[12px] inline-flex min-h-[44px] items-center font-mono text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label" to="/t/$ticker" params={{ ticker }}>
         <span aria-hidden="true">‹</span> {ticker}
       </Link>
-      <h1 className="mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">Série</h1>
+      <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">Série</h1>
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-border bg-border">
         <div className={IDC}><dt className={IDT}>Contrato</dt><dd className={IDD_NUM}>{data.ticker}</dd></div>
@@ -76,7 +76,7 @@ function SeriesPage() {
         <div className={IDC}><dt className={IDT}>Perna</dt><dd className={IDD_NUM}>{data.leg_id}</dd></div>
       </dl>
 
-      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Último ponto · {data.last.date}</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Último ponto · {data.last.date}</h2>
       <MetricGrid>
         <Metric label="Data" value={data.last.date} />
         <GlossaryMetric
@@ -135,7 +135,7 @@ function SeriesPage() {
       </MetricGrid>
 
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
-        <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Histórico</h2>
+        <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Histórico</h2>
         <ToggleGroup
           type="multiple"
           value={[view]}
@@ -145,13 +145,13 @@ function SeriesPage() {
         >
           <ToggleGroupItem
             value="price"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Preço
           </ToggleGroupItem>
           <ToggleGroupItem
             value="iv"
-            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
+            className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
             Volatilidade
           </ToggleGroupItem>
@@ -169,9 +169,9 @@ function SeriesPage() {
         ariaLabel={`Histórico de ${view === 'price' ? 'preço' : 'volatilidade implícita'} de ${data.ticker}`}
         showPoints={false}
       />
-      {data.flags.length > 0 && <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">flags: {data.flags.join(' · ')}</p>}
+      {data.flags.length > 0 && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {data.flags.join(' · ')}</p>}
 
-      <h2 className="mt-[24px] mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title">Últimos pregões</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Últimos pregões</h2>
       <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
         <TableHeader>
             <TableRow>

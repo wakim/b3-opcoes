@@ -29,7 +29,7 @@ const headClass = 'px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:
 
 function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: boolean }) {
   if (rows.length === 0) {
-    return <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhum papel nesta seção do recorte</p>
+    return <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhum papel nesta seção do recorte</p>
   }
   return (
     <ScreenTable
@@ -117,8 +117,8 @@ function Hoje() {
 
   return (
     <>
-      <h1 className="mb-[16px] mt-[4px] text-[28px] font-medium leading-normal tracking-[-0.02em] lg:text-screen-title lg:leading-title">Hoje</h1>
-      <p className="mb-[16px] text-[12.5px] text-[color:var(--text-2)] lg:text-lede lg:leading-body">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
+      <h1 className="mb-[16px] mt-[4px] text-[calc(28px*var(--font-scale))] font-medium leading-normal tracking-[-0.02em] lg:text-screen-title lg:leading-title">Hoje</h1>
+      <p className="mb-[16px] text-[calc(12.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-lede lg:leading-body">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
 
       <TickerSearch />
 
@@ -143,7 +143,7 @@ function Hoje() {
       </MetricGrid>
 
       {summary.rv_shock_count > 0 && (
-        <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
+        <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
           Em {summary.rv_shock_count} de {summary.ok} papéis com métrica, um único pregão responde
           por metade ou mais da oscilação dos últimos 30 pregões
           {summary.rv_shock_dates.length > 0 && (
@@ -166,15 +166,15 @@ function Hoje() {
       <LiquidityPanel rows={rows} />
 
       <section className="min-w-0 max-w-full">
-        <h2 className="mb-[8px] mt-[24px] text-[13px] font-medium lg:text-block-title lg:leading-title">
-          Com opções <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{withOptions.length} papéis</span>
+        <h2 className="mb-[8px] mt-[24px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
+          Com opções <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withOptions} withOptions />
       </section>
 
       <section className="mt-[8px] min-w-0 max-w-full">
-        <h2 className="mb-[8px] mt-[24px] text-[13px] font-medium lg:text-block-title lg:leading-title">
-          Sem opções <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{withoutOptions.length} papéis</span>
+        <h2 className="mb-[8px] mt-[24px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
+          Sem opções <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withoutOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withoutOptions} withOptions={false} />
       </section>

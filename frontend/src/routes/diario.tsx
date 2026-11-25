@@ -395,7 +395,7 @@ function CalibrationReport({
                   <TableCell className={`${num} px-2 py-2.5`}>{group.void}</TableCell>
                   <TableCell className={`${num} px-2 py-2.5`}>
                     {group.hit_rate_pct == null ? '—' : `${fmt(group.hit_rate_pct, 1)}%`}
-                    <span className="mt-[2px] block text-[10.5px] text-muted-foreground lg:text-detail">n {group.n}</span>
+                    <span className="mt-[2px] block text-[calc(10.5px*var(--font-scale))] text-muted-foreground lg:text-detail">n {group.n}</span>
                   </TableCell>
                   <TableCell className="min-w-[220px] px-2 py-2.5 text-left">
                     {group.void_reasons.length === 0
@@ -429,20 +429,20 @@ function DecisionCard({
       <header className="flex flex-wrap items-baseline justify-between gap-x-[12px] gap-y-[4px]">
         <div>
           <Link
-            className={`inline-flex min-h-[44px] items-center font-mono text-[20px] font-medium tabular-nums text-foreground ${focusOutset} lg:text-metric`}
+            className={`inline-flex min-h-[44px] items-center font-mono text-[calc(20px*var(--font-scale))] font-medium tabular-nums text-foreground ${focusOutset} lg:text-metric`}
             to="/t/$ticker"
             params={{ ticker: decision.underlying }}
           >
             {decision.underlying}
           </Link>
-          <span className="ml-[12px] text-[12px] text-[color:var(--text-2)] lg:text-label">
+          <span className="ml-[12px] text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
             {decisionTypeLabel(decision.decision_type)}
           </span>
         </div>
         <span className={`${quiet} lg:text-label`}>{dateBr(decision.session)}</span>
       </header>
-      {decision.context && <p className="m-0 pt-[8px] text-[12.5px] leading-[1.5] text-[color:var(--text-2)] [overflow-wrap:anywhere] lg:text-body lg:leading-body">{decision.context}</p>}
-      {decision.notes && <p className="m-0 border-t border-t-border py-[12px] text-[12.5px] leading-[1.55] whitespace-pre-wrap text-[color:var(--text-2)] [overflow-wrap:anywhere] lg:text-body lg:leading-body">{decision.notes}</p>}
+      {decision.context && <p className="m-0 pt-[8px] text-[calc(12.5px*var(--font-scale))] leading-[1.5] text-[color:var(--text-2)] [overflow-wrap:anywhere] lg:text-body lg:leading-body">{decision.context}</p>}
+      {decision.notes && <p className="m-0 border-t border-t-border py-[12px] text-[calc(12.5px*var(--font-scale))] leading-[1.55] whitespace-pre-wrap text-[color:var(--text-2)] [overflow-wrap:anywhere] lg:text-body lg:leading-body">{decision.notes}</p>}
       {decision.position_id && (
         <p className={`${quietLine} lg:text-label`}>
           posição vinculada:{' '}
@@ -475,7 +475,7 @@ function PredictionOutcome({
   const observed = metricValue(prediction.observed, prediction.unit)
   return (
     <div className="mt-[8px] border-t border-t-border">
-      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
+      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[calc(11.5px*var(--font-scale))] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
         <span className={`${quiet} lg:text-label`}>Previsão</span>
         <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           <Button
@@ -491,14 +491,14 @@ function PredictionOutcome({
           {dateBr(prediction.evaluate_on)}
         </span>
       </div>
-      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
+      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[calc(11.5px*var(--font-scale))] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
         <span className={`${quiet} lg:text-label`}>Observado</span>
         <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           {observed}
           {prediction.evaluated_on ? ` · ${dateBr(prediction.evaluated_on)}` : ''}
         </span>
       </div>
-      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
+      <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[calc(11.5px*var(--font-scale))] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
         <span className={`${quiet} lg:text-label`}>Desfecho</span>
         <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           <Button

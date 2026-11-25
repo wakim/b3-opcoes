@@ -63,7 +63,7 @@ function AppShell() {
   return (
     <div className="flex min-h-dvh flex-col overflow-x-clip">
       <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-x-[12px] gap-y-[4px] border-b border-border bg-background px-[16px] py-[12px]">
-        <span className="shrink-0 text-[16px] font-medium tracking-normal lg:text-block-title">
+        <span className="shrink-0 text-[calc(16px*var(--font-scale))] font-medium tracking-normal lg:text-block-title">
           Opções B3
         </span>
         <Stamp
@@ -88,7 +88,7 @@ function AppShell() {
           <Link
             key={item.to}
             to={item.to}
-            className="flex min-h-[48px] flex-col items-center justify-center gap-[4px] text-[11px] text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:bg-secondary aria-[current=page]:text-primary lg:text-label"
+            className="flex min-h-[48px] flex-col items-center justify-center gap-[4px] text-[calc(11px*var(--font-scale))] text-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary aria-[current=page]:bg-secondary aria-[current=page]:text-primary lg:text-label"
             aria-current={pathname === item.to ? 'page' : undefined}
           >
             {item.label}

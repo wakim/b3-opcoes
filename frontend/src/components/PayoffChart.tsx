@@ -24,7 +24,7 @@ export function PayoffChart({
 }) {
   const [active, setActive] = useState<number | null>(null)
   if (points.length < 2) {
-    return <p className="mx-0 my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">payoff indisponível</p>
+    return <p className="mx-0 my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">payoff indisponível</p>
   }
 
   const W = 320

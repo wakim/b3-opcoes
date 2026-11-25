@@ -73,7 +73,7 @@ export function HelpTip({ label, text }: { label: string; text: string }) {
         <span aria-hidden="true">?</span>
       </button>
       <span
-        className="pointer-events-none invisible absolute left-0 top-[calc(100%_+_4px)] z-30 w-[280px] max-w-[calc(100vw_-_120px)] whitespace-normal rounded-[6px] border border-input bg-popover px-[12px] py-[10px] text-[12px] font-normal leading-normal text-foreground opacity-0 lg:text-detail data-[open=true]:visible data-[open=true]:opacity-100 max-sm:fixed max-sm:left-[16px] max-sm:right-[16px] max-sm:bottom-[16px] max-sm:top-auto max-sm:w-auto max-sm:max-w-none"
+        className="pointer-events-none invisible absolute left-0 top-[calc(100%_+_4px)] z-30 w-[280px] max-w-[calc(100vw_-_120px)] whitespace-normal rounded-[6px] border border-input bg-popover px-[12px] py-[10px] text-[calc(12px*var(--font-scale))] font-normal leading-normal text-foreground opacity-0 lg:text-detail data-[open=true]:visible data-[open=true]:opacity-100 max-sm:fixed max-sm:left-[16px] max-sm:right-[16px] max-sm:bottom-[16px] max-sm:top-auto max-sm:w-auto max-sm:max-w-none"
         id={id}
         role="tooltip"
         data-open={open}

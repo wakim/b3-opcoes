@@ -6,23 +6,26 @@
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --text-label: 13px;
-  --text-body: 16px;
-  --text-screen-title: 36px;
-  --text-block-title: 16px;
-  --text-lede: 15px;
-  --text-metric: 20px;
-  --text-hero: 28px;
-  --text-table: 14px;
-  --text-table-head: 13px;
-  --text-chain: 14px;
-  --text-detail: 13px;
-  --text-chart: 12px;
-  --text-search: 14px;
-  --text-search-meta: 12.5px;
-  --text-control: 14px;
-  --text-modal-body: 16px;
-  --text-modal-title: 22px;
+  /* Fator único de legibilidade. Ajustar aqui aumenta mobile, desktop,
+     componentes, gráficos e primitives sem escalar espaçamento/geometria. */
+  --text-xs: calc(0.75rem * var(--font-scale));
+  --text-label: calc(13px * var(--font-scale));
+  --text-body: calc(16px * var(--font-scale));
+  --text-screen-title: calc(36px * var(--font-scale));
+  --text-block-title: calc(16px * var(--font-scale));
+  --text-lede: calc(15px * var(--font-scale));
+  --text-metric: calc(20px * var(--font-scale));
+  --text-hero: calc(28px * var(--font-scale));
+  --text-table: calc(14px * var(--font-scale));
+  --text-table-head: calc(13px * var(--font-scale));
+  --text-chain: calc(14px * var(--font-scale));
+  --text-detail: calc(13px * var(--font-scale));
+  --text-chart: calc(12px * var(--font-scale));
+  --text-search: calc(14px * var(--font-scale));
+  --text-search-meta: calc(12.5px * var(--font-scale));
+  --text-control: calc(14px * var(--font-scale));
+  --text-modal-body: calc(16px * var(--font-scale));
+  --text-modal-title: calc(22px * var(--font-scale));
 
   --leading-body: 1.5;
   --leading-table: 1.4;
@@ -55,6 +58,7 @@
 /* Tokens de docs/direcao.md — "A · Bancada fria". Nesta sessão (F5-A) servem
    de base ao wireframe; os 9 passes do unslop entram na F5-B. */
 :root {
+  --font-scale: 1.4;
   --bg: #101418;
   --surface: #171d24;
   --surface-2: #1d242c;
@@ -87,8 +91,15 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 13.5px;
   line-height: 1.5;
+}
+
+html {
+  font-size: 13.5px;
+}
+
+body {
+  font-size: calc(13.5px * var(--font-scale));
 }
 
 a {

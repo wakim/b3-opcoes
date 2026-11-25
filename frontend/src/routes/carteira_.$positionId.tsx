@@ -55,8 +55,8 @@ import {
 const identityGrid =
   'grid grid-cols-[repeat(2,minmax(0,1fr))] gap-[1px] overflow-hidden rounded-[6px] border border-border bg-border'
 const identityCell = 'bg-card px-[12px] py-[10px]'
-const identityDt = 'text-[11px] text-[color:var(--text-2)] lg:text-label'
-const identityDd = 'mt-[4px] text-[12px] text-foreground [overflow-wrap:anywhere] lg:text-detail'
+const identityDt = 'text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label'
+const identityDd = 'mt-[4px] text-[calc(12px*var(--font-scale))] text-foreground [overflow-wrap:anywhere] lg:text-detail'
 const identityNumDd = `${num} ${identityDd}`
 const detailHead = 'flex flex-wrap items-start justify-between gap-[12px] max-sm:block'
 const actionsRow = 'flex flex-wrap items-center gap-[12px] max-sm:mt-[12px]'
@@ -166,7 +166,7 @@ function PositionDetailPage() {
         </p>
       )}
 
-      <p className="mb-[16px] text-[11.5px] lg:text-label">
+      <p className="mb-[16px] text-[calc(11.5px*var(--font-scale))] lg:text-label">
         <span className={`${quiet} lg:text-label`}>Flags da posição</span>{' '}
         <PositionFlags flags={data.flags} />
       </p>
@@ -263,7 +263,7 @@ function PositionDetailPage() {
             <dd className={identityDd}>{positionStatusLabel(data.status)}</dd>
           </div>
         </dl>
-        {data.notes && <p className="mt-[12px] text-[13px] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{data.notes}</p>}
+        {data.notes && <p className="mt-[12px] text-[calc(13px*var(--font-scale))] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{data.notes}</p>}
       </section>
 
       <section className="mt-[24px]" aria-labelledby="position-legs-title">
@@ -367,7 +367,7 @@ function PositionDetailPage() {
       <section className="mt-[24px]" aria-labelledby="position-thesis-title">
         <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-thesis-title">Tese vs realidade</h2>
         <div className="rounded-[6px] border border-border bg-card p-[16px]">
-          <p className="mb-[16px] text-[14px] leading-[1.55] text-foreground [overflow-wrap:anywhere] lg:text-body lg:leading-body">
+          <p className="mb-[16px] text-[calc(14px*var(--font-scale))] leading-[1.55] text-foreground [overflow-wrap:anywhere] lg:text-body lg:leading-body">
             {data.thesis_line ?? 'Nenhuma linha de tese retornada para esta posição.'}
           </p>
           {data.prediction ? (
@@ -466,7 +466,7 @@ function PositionDetailPage() {
               <span className={`${fieldLabel} lg:text-label`}>Data da sessão (opcional)</span>
               <Input
                 type="date"
-                className="min-h-[44px] font-mono text-[12px] text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]"
+                className="min-h-[44px] font-mono text-[calc(12px*var(--font-scale))] text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]"
                 value={closeDate}
                 onChange={(event) => setCloseDate(event.target.value)}
                 data-autofocus

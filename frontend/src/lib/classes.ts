@@ -13,7 +13,7 @@ export const focusOutset =
 
 /** `.note` — margem 8/0, 11 px, cinza 3. `data-note` permite ao Aprender
  * zerar a margem por estrutura sem depender do nome da classe. */
-export const noteBase = 'text-[11px] text-muted-foreground'
+export const noteBase = 'text-[calc(11px*var(--font-scale))] text-muted-foreground'
 export const note = `mx-0 my-[8px] ${noteBase}`
 
 /** `.quiet` */
@@ -25,10 +25,10 @@ export const numPos = 'text-[color:var(--pos)]'
 export const numNeg = 'text-[color:var(--neg)]'
 
 /** `.screen-title` */
-export const screenTitle = 'mx-0 mt-[4px] mb-[16px] text-[28px] font-medium tracking-[-0.02em]'
+export const screenTitle = 'mx-0 mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em]'
 
 /** `.block-title` — margem 24/0/8, 13 px, peso 500. */
-export const blockTitleBase = 'mx-0 mb-[8px] text-[13px] font-medium'
+export const blockTitleBase = 'mx-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium'
 export const blockTitle = `mt-[24px] ${blockTitleBase}`
 
 /** `.block-head` */
@@ -36,21 +36,21 @@ export const blockHeadBase = 'flex flex-wrap items-center justify-between gap-[8
 export const blockHead = `mt-[24px] ${blockHeadBase}`
 
 /** `.block-count` */
-export const blockCountBase = 'font-mono text-[11px] font-normal text-muted-foreground'
+export const blockCountBase = 'font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground'
 export const blockCount = `ml-[8px] ${blockCountBase}`
 
 /** `.quiet-line` */
-export const quietLine = 'mx-0 mt-0 mb-[16px] font-mono text-[11px] text-muted-foreground'
+export const quietLine = 'mx-0 mt-0 mb-[16px] font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground'
 
 /** `.chain-note` */
-export const chainNote = 'mx-0 mt-0 mb-[8px] text-[11px] leading-[1.45] text-muted-foreground'
+export const chainNote = 'mx-0 mt-0 mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground'
 
 /** `.notice` */
 export const notice =
-  'mx-0 mt-0 mb-[16px] border-l-2 border-solid border-l-input pl-[10px] text-[11.5px] text-[color:var(--text-2)]'
+  'mx-0 mt-0 mb-[16px] border-l-2 border-solid border-l-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)]'
 
 /** `.back` (as duas folhas somadas: inline-flex vence o inline-block). */
-export const back = `mb-[12px] inline-flex min-h-[44px] min-w-[44px] items-center font-mono text-[12px] text-[color:var(--text-2)] ${focusInset}`
+export const back = `mb-[12px] inline-flex min-h-[44px] min-w-[44px] items-center font-mono text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] ${focusInset}`
 
 /** `.inline-link` */
 export const inlineLink = `inline-flex min-h-[44px] cursor-pointer items-center border-none bg-transparent p-0 text-foreground underline underline-offset-[2px] [font:inherit] ${focusInset}`
@@ -65,4 +65,4 @@ export const visuallyHidden =
 /** `.builder__field`. */
 export const field = 'flex min-w-0 flex-col gap-[4px]'
 /** `.builder__field-label` */
-export const fieldLabel = 'text-[11px] text-muted-foreground'
+export const fieldLabel = 'text-[calc(11px*var(--font-scale))] text-muted-foreground'

@@ -96,20 +96,20 @@ export function StructureBuilder({
   return (
     <section className="mt-[28px] border-t border-border pt-[4px]" aria-labelledby="builder-title">
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
-        <h2 className="mt-0 mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title" id="builder-title">
+        <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title" id="builder-title">
           Montar estrutura
         </h2>
-        <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">
+        <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">
           {legs.length}/{MAX_LEGS} pernas
         </span>
       </div>
-      <p className="mb-[8px] text-[11px] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
+      <p className="mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
         Calculadora de payoff. 100 ações = 1 contrato; a quantidade é em ações e não é multiplicada
         por 100. Nada é gravado.
       </p>
 
       {legs.length === 0 ? (
-        <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">
+        <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">
           Expanda uma linha da cadeia e use <strong>Comprar</strong> ou <strong>Vender</strong>, ou
           adicione a ação abaixo.
         </p>
@@ -123,7 +123,7 @@ export function StructureBuilder({
                   {leg.kind === 'stock' ? 'ação' : 'opção'} · {SIDE_LABEL[leg.side]}
                 </span>
               </span>
-              <label className="inline-flex items-center gap-[6px] text-[11px] text-muted-foreground lg:text-label">
+              <label className="inline-flex items-center gap-[6px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
                 <span className="text-muted-foreground lg:text-label">ações</span>
                 <Input
                   type="number"
@@ -155,7 +155,7 @@ export function StructureBuilder({
       <div className="mt-[8px] mb-[12px] grid gap-[12px] min-[720px]:grid-cols-[minmax(0,1fr)_auto] min-[720px]:items-end">
         <div className="grid grid-cols-[minmax(0,1fr)_104px] items-end gap-[8px] min-[720px]:grid-cols-[156px_104px_auto]" role="group" aria-label="Perna de ação">
           <label className="flex min-w-0 flex-col gap-[4px]">
-            <span className="text-[11px] text-muted-foreground lg:text-label">Perna de ação</span>
+            <span className="text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Perna de ação</span>
             <NativeSelect
               variant="builder"
               value={stockSide}
@@ -167,7 +167,7 @@ export function StructureBuilder({
             </NativeSelect>
           </label>
           <label className="flex min-w-0 flex-col gap-[4px]">
-            <span className="text-[11px] text-muted-foreground lg:text-label">Ações</span>
+            <span className="text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Ações</span>
             <Input
               type="number"
               inputMode="numeric"
@@ -212,7 +212,7 @@ export function StructureBuilder({
       </div>
 
       {legs.length >= MAX_LEGS && (
-        <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">Limite de {MAX_LEGS} pernas atingido (o backend recusa mais).</p>
+        <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Limite de {MAX_LEGS} pernas atingido (o backend recusa mais).</p>
       )}
 
       {calc.isError && <ErrorState error={calc.error} title="Estrutura não avaliada" />}
@@ -245,19 +245,19 @@ export function StructureBuilder({
             <Metric label="Vega agregado" value={brl(result.vega_brl)} />
           </MetricGrid>
 
-          <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">
+          <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
             {result.maturity ? `Vencimento ${result.maturity} · ` : ''}
             estrutura {result.structure_version} · sessão {calc.data?.as_of_session ?? '—'}
             {result.forward_brl != null && ` · forward ${brl(result.forward_brl)}`}
           </p>
 
           {result.capital_over && (
-            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
+            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
               O capital comprometido passa do capital informado.
             </p>
           )}
           {result.flags.length > 0 && (
-            <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">flags: {result.flags.join(' · ')}</p>
+            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {result.flags.join(' · ')}</p>
           )}
 
           <PayoffChart
@@ -267,7 +267,7 @@ export function StructureBuilder({
           />
 
           {scenariosUnavailable ? (
-            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
+            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
               Cenários indisponíveis
               {result.flags.includes('no_iv') && ' (série sem volatilidade implícita)'}
               {result.flags.includes('no_rates') && ' (curva de juros ausente)'}
@@ -291,14 +291,14 @@ function ScenariosTable({
 }) {
   const zeroDay = scenarios.filter((row) => row.days_forward === 0)
   if (zeroDay.length === 0) {
-    return <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">sem cenários no dia 0</p>
+    return <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">sem cenários no dia 0</p>
   }
   const spots = [...new Set(zeroDay.map((row) => row.spot_brl))].sort((a, b) => a - b)
   const shifts = [...new Set(zeroDay.map((row) => row.iv_shift_pts))].sort((a, b) => a - b)
 
   return (
     <div className="mt-[12px]">
-      <p className="mt-[8px] mb-[6px] text-[11px] text-muted-foreground lg:text-label">Cenários no dia 0 (spot e choque de IV do backend)</p>
+      <p className="mt-[8px] mb-[6px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Cenários no dia 0 (spot e choque de IV do backend)</p>
       <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
         <TableHeader>
             <TableRow>

@@ -76,7 +76,7 @@ export function LineChart({
     .filter((v): v is number => v != null && Number.isFinite(v))
 
   if (labels.length < 2 || finite.length < 2) {
-    return <p className="mx-0 my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">sem pontos suficientes para desenhar</p>
+    return <p className="mx-0 my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">sem pontos suficientes para desenhar</p>
   }
 
   const W = 320

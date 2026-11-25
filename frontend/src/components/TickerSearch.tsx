@@ -33,12 +33,12 @@ export function TickerSearch() {
 
   return (
     <div className="mb-[16px] min-w-0 max-w-full">
-      <label className="mb-[4px] block text-[11px] text-[color:var(--text-2)] lg:text-label" htmlFor="ticker-search">
+      <label className="mb-[4px] block text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" htmlFor="ticker-search">
         Buscar papel
       </label>
       <Input
         id="ticker-search"
-        className="rounded-[4px] border-border bg-card px-[12px] py-[10px] text-[14px] shadow-none dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-search"
+        className="rounded-[4px] border-border bg-card px-[12px] py-[10px] text-[calc(14px*var(--font-scale))] shadow-none dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-search"
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
@@ -53,14 +53,14 @@ export function TickerSearch() {
 
       {debounced.length > 0 && (
         <div className="mt-[6px]" aria-live="polite">
-          {search.isLoading && <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">buscando…</p>}
+          {search.isLoading && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">buscando…</p>}
           {search.isError && <ErrorState error={search.error} title="Busca indisponível" />}
           {search.data && rows.length === 0 && (
-            <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">nenhum papel para “{debounced}”</p>
+            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">nenhum papel para “{debounced}”</p>
           )}
           {search.data && rows.length > 0 && (
             <>
-              <p className="my-[8px] text-[11px] text-muted-foreground lg:text-label">
+              <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
                 {rows.length < total
                   ? `mostrando ${rows.length} de ${total} papéis`
                   : `${total} ${total === 1 ? 'papel' : 'papéis'}`}
@@ -74,8 +74,8 @@ export function TickerSearch() {
                       params={{ ticker: row.ticker }}
                     >
                       <span className="font-mono font-medium tabular-nums text-primary lg:text-search">{row.ticker}</span>
-                      <span className="min-w-0 flex-[1_1_150px] overflow-hidden text-ellipsis whitespace-nowrap text-[11.5px] text-[color:var(--text-2)] lg:text-search">{row.corp_name}</span>
-                      <span className="basis-full text-[10.5px] text-muted-foreground lg:text-search-meta">
+                      <span className="min-w-0 flex-[1_1_150px] overflow-hidden text-ellipsis whitespace-nowrap text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-search">{row.corp_name}</span>
+                      <span className="basis-full text-[calc(10.5px*var(--font-scale))] text-muted-foreground lg:text-search-meta">
                         {row.in_universe ? 'no universo' : 'fora do universo'} ·{' '}
                         {row.has_options ? 'com opções' : 'sem opções'}
                       </span>

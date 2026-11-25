@@ -27,8 +27,8 @@ export function Metric({ label, value, note, onOpen, emphasis = false, hint }: M
 
   const content = (
     <>
-      <span className={`mb-[4px] block text-[11px] text-[var(--text-2)] lg:text-label ${onOpen ? 'border-b border-dotted border-input' : ''}`}>{label}</span>
-      <span className={`block text-right font-mono tabular-nums text-foreground lg:leading-title ${emphasis ? 'text-[22px] lg:text-hero' : 'text-[16px] lg:text-metric'}`}>{value}</span>
+      <span className={`mb-[4px] block text-[calc(11px*var(--font-scale))] text-[var(--text-2)] lg:text-label ${onOpen ? 'border-b border-dotted border-input' : ''}`}>{label}</span>
+      <span className={`block text-right font-mono tabular-nums text-foreground lg:leading-title ${emphasis ? 'text-[calc(22px*var(--font-scale))] lg:text-hero' : 'text-[calc(16px*var(--font-scale))] lg:text-metric'}`}>{value}</span>
       {note && <span className="mt-[8px] block lg:text-label">{note}</span>}
     </>
   )

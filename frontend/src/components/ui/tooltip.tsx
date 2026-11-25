@@ -40,7 +40,7 @@ function TooltipContent({
         sideOffset={sideOffset}
         onEscapeKeyDown={(event) => event.stopPropagation()}
         className={cn(
-          "pointer-events-none z-[60] w-[280px] max-w-[calc(100vw_-_32px)] whitespace-normal rounded-[6px] border border-input bg-popover px-[12px] py-[10px] text-[12px] font-normal leading-normal text-foreground lg:text-detail",
+          "pointer-events-none z-[60] w-[280px] max-w-[calc(100vw_-_32px)] whitespace-normal rounded-[6px] border border-input bg-popover px-[12px] py-[10px] text-[calc(12px*var(--font-scale))] font-normal leading-normal text-foreground lg:text-detail",
           className
         )}
         {...props}

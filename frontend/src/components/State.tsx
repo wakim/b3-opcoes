@@ -19,7 +19,7 @@ export function ErrorStatus({
 
   return (
     <Alert variant={tone === 'inline' ? 'destructive-inline' : 'default'}>
-      <div className={tone === 'inline' ? 'font-mono text-[11px] text-destructive lg:text-label' : 'lg:text-label font-mono text-destructive'}>{api?.code ?? 'erro'}</div>
+      <div className={tone === 'inline' ? 'font-mono text-[calc(11px*var(--font-scale))] text-destructive lg:text-label' : 'lg:text-label font-mono text-destructive'}>{api?.code ?? 'erro'}</div>
       {tone === 'block' && (
         <div className="lg:text-block-title lg:leading-title font-medium">
           {title ?? (notFound ? 'Não encontrado' : 'Não foi possível carregar')}

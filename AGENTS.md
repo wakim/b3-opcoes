@@ -326,7 +326,7 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 
 ### Tipografia desktop (F8)
 
-- O `html` continua em **13,5 px** no mobile. Tokens de tipografia desktop em `rem` não produzem os px pedidos; a escala F8 usa **px** em `@theme` e utilitários `lg:`.
+- O `html` continua em **13,5 px** no mobile para os utilitários `rem` não escalarem espaço. O corpo mobile usa `calc(13.5px * var(--font-scale))` desde a ADR-048; tokens de tipografia desktop em `rem` não produzem os px pedidos, então a escala F8 usa **px** em `@theme` e utilitários `lg:`.
 - Não nomear o token de input como `--text-input` quando existe `--color-input`: o Tailwind resolve `text-input` como **cor**, não como tamanho. O nome usado é `--text-control` / `lg:text-control`.
 - **Utilitário de espaço em rem é errado no mobile** (F8.3, 24/11/2026): com `html` a 13,5 px, `px-2` = 6,75 px, `py-3` = 10,1 px, `mb-4` = 13,5 px. Copie o valor do CSS legado em px arbitrário (`px-[8px]`, `py-[10px]`).
 - **Os primitives shadcn vazam defaults que o CSS legado não tinha:** `TableHead` (padding em rem, `text-foreground`, `text-left`), `Input`/`NativeSelect` (`dark:bg-input/30` — precisa de `dark:bg-card`/`dark:bg-muted`, não só `bg-*`), `Button` (peso 500, raio em rem, `whitespace-nowrap`) e foco por `ring` com `outline-none`. `focus-visible:outline-2` sozinho não desenha nada: falta `focus-visible:outline-solid`. Os overrides de builder/cadeia agora são variantes dos primitives (`builder` em Button, `variant="builder"` em Input/NativeSelect); `lib/controls.ts` foi removido na F8.5.3.
@@ -346,6 +346,15 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - **Offline por CDP precisa cortar o service worker também.** `Network.emulateNetworkConditions` só na página deixa `navigator.onLine=false` (banner aparece) mas o SW continua buscando na rede: `/api/positions` e a sonda devolvem 200 e a prova é falsa. Anexe ao alvo `service_worker` pela sessão do browser (`Target.attachToTarget`, `flatten`) e emule offline lá. Com os dois cortados: navegação e `/api/screen` saem do cache, sonda/positions/journal falham com `network_error`, e nada de `probe=1`/`positions`/`journal` aparece em `caches`.
 - **Primeira visita do SW não controla a página.** `navigator.serviceWorker.ready` só garante registro ativo; em perfil novo, `controller` continua `null` até um reload. Na prova offline, espere `ready`, recarregue, confira `controller` e só então corte a rede nos dois alvos.
 - **`python -I` ignora `PYTHONIOENCODING`**: no console cp1252 do Windows o `print` de `−`/`ç` quebra; use `-X utf8`.
+
+### Tipografia global (ADR-048, 25/11/2026)
+
+- **`--font-scale: 1.4` é a única fonte da escala.** Ele fica em `:root`, em `frontend/src/styles.css`. Ajustar esse valor aumenta mobile, desktop, componentes, gráficos, modais e forms sem tocar em espaço ou geometria.
+- **Mudar só `body` ou o `rem` raiz não funciona.** Havia tamanhos fixos em classes Tailwind, tokens `@theme`, CSS de gráficos/régua/tabelas e no primitivo `text-xs`. Todos usam `calc(<base>px * var(--font-scale))`; o `line-height` fixo de 20 px também.
+- **Não usar `zoom`, `transform: scale` ou aumentar o `rem` raiz.** Isso amplia layout, largura de tabela e alvos junto com a fonte. A regra da ADR-048 é escalar só tipografia.
+- **Valores de referência:** corpo mobile **18,9 px**, corpo desktop **22,4 px**, título desktop **50,4 px**, tabela desktop **19,6 px**, gráfico desktop **16,8 px**. Os números originais continuam como base dentro do `calc()`.
+- **Validação de densidade:** comparar computed styles e overflow em 412/1280/1440, incluindo cadeia expandida, builder, modal, formulários e gráfico por teclado. Nesta rodada: 15 rotas + 24 estados, zero overflow do documento e zero erro de console; duas builds limpas idênticas.
+- **Playwright fora de `localhost`/HTTPS:** `crypto.randomUUID` não existe em contexto HTTP inseguro. Para medir viewports num container, usar `localhost`/HTTPS ou um polyfill somente no harness; não "corrigir" a app por causa disso.
 
 ### Checkbox, Accordion e alvos (F8.5.4–F8.5.5)
 

@@ -37,7 +37,7 @@ function spreadLabel(spreadPct: number | null, spreadBrl: number | null): string
 
 const headClass = 'px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head'
 const tabButtonClass =
-  'h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[11.5px] font-normal tabular-nums whitespace-normal text-[color:var(--text-2)] shadow-none transition-colors dark:border-border dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground dark:data-[state=on]:border-input dark:data-[state=on]:bg-muted'
+  'h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal tabular-nums whitespace-normal text-[color:var(--text-2)] shadow-none transition-colors dark:border-border dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground dark:data-[state=on]:border-input dark:data-[state=on]:bg-muted'
 
 /** Descoberta descritiva: liquidez do papel e séries mais negociadas da sessão. */
 export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
@@ -83,8 +83,8 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
   return (
     <section className="mt-[24px] min-w-0 max-w-full" aria-labelledby="liquidity-title">
       <div className="mt-0 flex min-w-0 max-w-full flex-wrap items-center justify-between gap-[8px]">
-        <h2 className="mb-[8px] text-[13px] font-medium lg:text-block-title lg:leading-title" id="liquidity-title">
-          Liquidez <span className="ml-[8px] font-mono text-[11px] font-normal text-muted-foreground lg:text-label">{ranked.length} papéis com série líquida</span>
+        <h2 className="mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title" id="liquidity-title">
+          Liquidez <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{ranked.length} papéis com série líquida</span>
         </h2>
         <ToggleGroup
           type="multiple"
@@ -101,11 +101,11 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-      <p className="mb-[8px] text-[11px] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">ordenado por liquidez; não é recomendação</p>
+      <p className="mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">ordenado por liquidez; não é recomendação</p>
 
       {tab === 'papers' ? (
         ranked.length === 0 ? (
-          <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhum papel com série líquida nesta sessão</p>
+          <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhum papel com série líquida nesta sessão</p>
         ) : (
           <>
             <ScreenTable
@@ -140,14 +140,14 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                       onClick={() => openTicker(row.underlying)}
                       onKeyDown={rowKeyDown(() => openTicker(row.underlying))}
                     >
-                      <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.underlying}</TableCell>
-                      <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{brl(row.spot_brl)}</TableCell>
-                      <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.n_liquid_series}</TableCell>
-                      <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.n_expiries}</TableCell>
-                      <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{fmt(row.iv_atm_30d)}</TableCell>
+                      <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.underlying}</TableCell>
+                      <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{brl(row.spot_brl)}</TableCell>
+                      <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.n_liquid_series}</TableCell>
+                      <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.n_expiries}</TableCell>
+                      <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.iv_atm_30d)}</TableCell>
                       {row.vrp != null && row.flags.includes('rv_shock_day') ? (
                         <InfoTip text={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}>
-                          <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">
+                          <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">
                             {fmt(row.vrp)}
                             <span
                               className="ml-[3px] cursor-help text-muted-foreground"
@@ -158,7 +158,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                           </TableCell>
                         </InfoTip>
                       ) : (
-                        <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{fmt(row.vrp)}</TableCell>
+                        <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.vrp)}</TableCell>
                       )}
                     </TableRow>
                   ))}
@@ -169,7 +169,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="mt-[8px] h-[44px] max-sm:w-full rounded-[4px] border-border bg-card px-[12px] py-[8px] font-normal whitespace-normal text-[11.5px] text-[color:var(--text-2)] shadow-none transition-colors hover:bg-muted hover:text-foreground dark:border-border dark:bg-card dark:hover:bg-muted focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control"
+                className="mt-[8px] h-[44px] max-sm:w-full rounded-[4px] border-border bg-card px-[12px] py-[8px] font-normal whitespace-normal text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] shadow-none transition-colors hover:bg-muted hover:text-foreground dark:border-border dark:bg-card dark:hover:bg-muted focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control"
                 aria-expanded={showAll}
                 aria-controls="liquidity-papers"
                 onClick={() => setShowAll((value) => !value)}
@@ -186,11 +186,11 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
       ) : !liquid.data ? (
         <Loading label="carregando séries…" />
       ) : liquid.data.data.rows.length === 0 ? (
-        <p className="my-[8px] text-[11.5px] text-muted-foreground lg:text-detail">nenhuma série líquida nesta sessão</p>
+        <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhuma série líquida nesta sessão</p>
       ) : (
         <>
           {liquid.data.meta?.truncated && (
-            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[11.5px] text-[color:var(--text-2)] lg:text-label" role="status">
+            <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
               Mostrando {liquid.data.meta.returned} de {liquid.data.meta.total} séries por volume.
             </p>
           )}
@@ -232,19 +232,19 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     onClick={() => openSeries(row.ticker, row.maturity)}
                     onKeyDown={rowKeyDown(() => openSeries(row.ticker, row.maturity))}
                   >
-                    <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.ticker}</TableCell>
-                    <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.underlying}</TableCell>
-                    <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{sideLabel(row.side)} / {styleLabel(row.style)}</TableCell>
-                    <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{brl(row.strike_brl)}</TableCell>
-                    <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[20px] lg:leading-table">{dateBr(row.maturity)}</TableCell>
+                    <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.ticker}</TableCell>
+                    <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.underlying}</TableCell>
+                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{sideLabel(row.side)} / {styleLabel(row.style)}</TableCell>
+                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{brl(row.strike_brl)}</TableCell>
+                    <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{dateBr(row.maturity)}</TableCell>
                     <InfoTip text={`Volume financeiro: ${brl(row.volume_brl)}`}>
-                      <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table" aria-label={`Volume financeiro: ${brl(row.volume_brl)}`}>{brlCompact(row.volume_brl)}</TableCell>
+                      <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table" aria-label={`Volume financeiro: ${brl(row.volume_brl)}`}>{brlCompact(row.volume_brl)}</TableCell>
                     </InfoTip>
-                    <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.trades}</TableCell>
-                    <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{spreadLabel(row.spread_pct, row.spread_brl)}</TableCell>
-                    <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{fmt(row.iv_pct)}</TableCell>
-                    <TableCell className="px-[8px] py-[12px] leading-[20px] lg:leading-table">{fmt(row.delta, 3)}</TableCell>
-                    <TableCell className="text-[color:var(--text-3)] px-[8px] py-[12px] leading-[20px] lg:leading-table">{row.is_liquid ? 'líquida' : '—'}</TableCell>
+                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.trades}</TableCell>
+                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{spreadLabel(row.spread_pct, row.spread_brl)}</TableCell>
+                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.iv_pct)}</TableCell>
+                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.delta, 3)}</TableCell>
+                    <TableCell className="text-[color:var(--text-3)] px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.is_liquid ? 'líquida' : '—'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

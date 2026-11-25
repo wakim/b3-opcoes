@@ -43,7 +43,7 @@ const actionsRow = 'flex flex-wrap items-center gap-[12px] max-sm:mt-[12px]'
 const positionCard =
   'rounded-[6px] border border-border bg-card p-[16px] max-sm:p-[12px]'
 const positionRow =
-  'grid grid-cols-[minmax(112px,0.4fr)_minmax(0,1fr)] gap-[12px] border-t border-t-border py-[12px] text-[11.5px] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[4px]'
+  'grid grid-cols-[minmax(112px,0.4fr)_minmax(0,1fr)] gap-[12px] border-t border-t-border py-[12px] text-[calc(11.5px*var(--font-scale))] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[4px]'
 
 export const Route = createFileRoute('/carteira')({
   component: Carteira,
@@ -286,7 +286,7 @@ function PositionTotalsGrid({
           onOpen={onMetric}
         />
       </MetricGrid>
-      <p className="mb-[16px] text-[11.5px] lg:text-label">
+      <p className="mb-[16px] text-[calc(11.5px*var(--font-scale))] lg:text-label">
         <span className={`${quiet} lg:text-label`}>Flags da carteira</span>{' '}
         <PositionFlags flags={totals.flags} />
       </p>
@@ -308,18 +308,18 @@ function PositionCard({
       <header className="flex flex-wrap items-baseline justify-between gap-x-[12px] gap-y-[4px]">
         <div>
           <Link
-            className="inline-flex min-h-[44px] items-center font-mono text-[20px] font-medium text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[2px] focus-visible:outline-primary lg:text-metric"
+            className="inline-flex min-h-[44px] items-center font-mono text-[calc(20px*var(--font-scale))] font-medium text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[2px] focus-visible:outline-primary lg:text-metric"
             to="/carteira/$positionId"
             params={{ positionId: position.id }}
           >
             {position.underlying}
           </Link>
-          <span className="ml-[12px] text-[12px] text-[color:var(--text-2)] lg:text-label">{positionKindLabel(position.kind)}</span>
+          <span className="ml-[12px] text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">{positionKindLabel(position.kind)}</span>
         </div>
         <span className={`${quiet} lg:text-label`}>{positionStatusLabel(position.status)}</span>
       </header>
 
-      <div className="mb-[12px] flex flex-wrap gap-x-[16px] gap-y-[4px] font-mono text-[11px] text-muted-foreground tabular-nums lg:text-label">
+      <div className="mb-[12px] flex flex-wrap gap-x-[16px] gap-y-[4px] font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground tabular-nums lg:text-label">
         <span>aberta em {dateBr(position.opened_session)}</span>
         {position.closed_session && <span>fechada em {dateBr(position.closed_session)}</span>}
         {position.maturity && <span>vencimento {dateBr(position.maturity)}</span>}
@@ -371,7 +371,7 @@ function PositionCard({
         </span>
       </div>
 
-      {position.notes && <p className="border-t border-t-border py-[12px] text-[12.5px] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{position.notes}</p>}
+      {position.notes && <p className="border-t border-t-border py-[12px] text-[calc(12.5px*var(--font-scale))] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{position.notes}</p>}
 
       <div className={`${positionRow} lg:text-label`}>
         <span className={`${quiet} lg:text-label`}>Flags</span>
@@ -379,11 +379,11 @@ function PositionCard({
       </div>
 
       <Link
-        className="inline-flex min-h-[44px] items-center gap-[8px] text-[12px] text-[color:var(--text-2)] underline underline-offset-[2px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[2px] focus-visible:outline-primary lg:text-label"
+        className="inline-flex min-h-[44px] items-center gap-[8px] text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] underline underline-offset-[2px] focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[2px] focus-visible:outline-primary lg:text-label"
         to="/carteira/$positionId"
         params={{ positionId: position.id }}
       >
-        Abrir posição <span className="font-mono text-[18px] leading-none text-muted-foreground" aria-hidden="true">›</span>
+        Abrir posição <span className="font-mono text-[calc(18px*var(--font-scale))] leading-none text-muted-foreground" aria-hidden="true">›</span>
       </Link>
     </article>
   )

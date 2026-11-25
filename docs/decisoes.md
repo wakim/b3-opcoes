@@ -669,3 +669,17 @@ Em qualquer outro caso: adote o default, registre, siga.
 - **Por quê:** separar "pronto para usar" de "provado no uso" evita marcar checkbox com dado fabricado e evita inventar trabalho de construção enquanto a prova depende do calendário.
 - **Consequência:** `PLAN.md` → "Retomar em" = começar a usar F6/F7 (decisão diária no Diário + 2 posições reais para reconciliar), com a F9 preservada como trabalho planejado. Revisão das ADRs provisórias na pauta "30 dias de uso".
 - **Revisar em:** primeira posição real aberta, ou 30 sessões depois da primeira decisão.
+
+## ADR-048 — tipografia global +40% com fator central
+
+- **Data:** 2026-11-25 · **Status:** provisória — aplicada e aguardando avaliação final do dono · **Custo de reverter:** baixo (uma variável e os `calc()` de tipografia)
+- **Contexto:** o dono pediu aumento de fonte em todo o PWA. Depois da primeira rodada de +20%, esclareceu que queria **40% acima do original**. O projeto fixa tamanhos em px nos componentes, tokens desktop, gráficos e tabelas; mudar apenas o `body` ou o `rem` raiz não atinge toda a interface e ampliaria espaçamento por engano.
+- **Decisão:**
+  1. `--font-scale: 1.4` em `:root` é a única fonte da escala. Mobile, desktop, componentes, gráficos, régua, tabelas, modais e forms usam `calc(<base>px * var(--font-scale))`.
+  2. Os tokens `--text-*` de `@theme` também usam o fator; `--text-xs` é sobrescrito para que a exceção do primitive Button não fique menor. O `line-height` fixo de 20 px da tabela de liquidez acompanha a fonte.
+  3. Espaço, raio, ícones, larguras e geometria dos gráficos não escalam. Não usar `zoom`, `transform: scale` nem aumentar o `rem` raiz.
+  4. `docs/direcao.md` registra os novos valores: corpo mobile 18,9 px, corpo desktop 22,4 px, título desktop 50,4 px e gráfico desktop 16,8 px.
+- **Validação:** `npm run check` e cobertura 26/63/45 verdes; duas builds limpas com 10 arquivos idênticos; 15 capturas de rota e 24 estados interativos em 412/1280/1440 px, zero overflow horizontal do documento e zero erro de console. `data/`, API, fórmulas e `model_version` (2) não mudaram.
+- **Por quê:** um fator único atende ao pedido e permite ajustar a densidade depois sem procurar tamanhos espalhados.
+- **Consequência:** nenhum número exibido ou contrato muda. A aprovação visual final continua com o dono; se pedir outro valor, altera-se somente `--font-scale` e atualizam-se os valores documentados.
+- **Revisar em:** retorno do dono sobre a legibilidade em uso real.

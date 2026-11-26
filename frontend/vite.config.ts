@@ -72,6 +72,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // `injectRegister: false` desliga o default do plugin. Com
+        // `registerType: 'autoUpdate'`, skipWaiting/clientsClaim precisam ser
+        // explícitos; sem isso o SW novo fica "waiting" e a aba nunca sai do
+        // bundle antigo sem hard refresh.
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/mcp/],

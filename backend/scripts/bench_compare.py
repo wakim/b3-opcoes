@@ -51,6 +51,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from html import unescape
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -90,7 +91,7 @@ PCT_FIELDS: frozenset[str] = frozenset(
 )
 
 OBM_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
-    "ticker": ("ticker", "TckrSymb", "codigo", "codigoNegociacao", "ativo", "symbol"),
+    "ticker": ("ticker", "TckrSymb", "codigo", "codigoNegociacao", "ativo", "symbol", "code"),
     "maturity": ("maturity", "vencimento", "expiration", "expiryDate", "dataVencimento"),
     "strike": ("strike", "strike_brl", "strikePrice", "precoExercicio", "k"),
     "side": ("side", "optionSide", "tipo", "type", "callPut"),
@@ -105,9 +106,23 @@ OBM_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "rho": ("rho", "rho_ratio"),
     "volume": ("volume", "volume_financial", "trades_count", "negocios"),
     "oi": ("oi", "openInterest", "posicoesAbertas"),
+    "liq": ("liq", "liquidity", "liquididade"),
 }
 
+# O volume de ações do OHLC da OBM é `volume_shares` (o field `volume` do
+# COTAHIST é financeiro); os dois são conservados como brutos distintos.
+OHLC_QUANTITY_ALIASES: tuple[str, ...] = (
+    "volume_shares",
+    "shares",
+    "qty",
+    "quantity",
+    "quantidade",
+    "tradesQty",
+)
+
 DIVIDEND_TICKER_ALIASES: tuple[str, ...] = (
+    "asset_ticker",
+    "assetTicker",
     "ticker",
     "TckrSymb",
     "codigo",
@@ -784,25 +799,96 @@ def read_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
-def discover_manifests(input_dir: Path, notes: list[str]) -> dict[str, Any]:
-    """Achata manifests recursivamente; classifica por posição/nome."""
+def _ignored_capture_path(path: Path) -> bool:
+    """Backups, temporários e probes nunca são manifestos ativos."""
+    parts = [part.lower() for part in path.parts]
+    return any(
+        part.startswith(".tmp")
+        or part.startswith("backup-")
+        or ".backup-" in part
+        or "probe" in part
+        for part in parts
+    )
+
+
+def discover_manifests(
+    input_dir: Path, notes: list[str], session: str | None = None
+) -> dict[str, Any]:
+    """Descobre P3/P4/P5 a partir da pasta da sessão **ou** da raiz `data/bench`.
+
+    * P3 fica na pasta da sessão (`…/AAAA-MM-DD/manifest.json`);
+    * P4 em `…/AAAA-MM-DD/b3lab/manifest.json`;
+    * P5 em `…/structures-AAAA-MM-DD-*/manifest.json`, **irmão** da sessão.
+
+    Backups (`.backup-`/`backup-`), `.tmp*` e `PROBE` são ignorados — o P5
+    ativo de 2026-11-25 é `structures-2026-11-25-petr4/manifest.json`.
+    """
     found: dict[str, Any] = {"capture": None, "b3lab": None, "structures": []}
-    if not input_dir.is_dir():
+    base = input_dir.resolve()
+    if not base.is_dir():
         notes.append(f"input_dir_ausente: {input_dir}")
         return found
-    for path in sorted(input_dir.rglob("manifest.json")):
+    guessed = base.name if DATE_ISO.match(base.name) else None
+    wanted = session or guessed
+    session_dir = base if guessed else (base / wanted if wanted else base)
+    if session_dir != base and not session_dir.is_dir():
+        notes.append(f"pasta_da_sessao_ausente: {session_dir}")
+        session_dir = base
+
+    capture_path = session_dir / "manifest.json"
+    if capture_path.is_file() and not _ignored_capture_path(capture_path):
         try:
-            relative = path.parent.relative_to(input_dir).as_posix()
-        except ValueError:
-            relative = str(path.parent)
-        if relative == ".":
-            found["capture"] = path
-        elif path.parent.name == "b3lab":
-            found["b3lab"] = path
-        elif path.parent.name.startswith("structures-"):
-            found["structures"].append(path)
-        else:
-            notes.append(f"manifesto_ignorado: {relative}/manifest.json")
+            probe = json.loads(capture_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            probe = None
+        if isinstance(probe, dict) and "artifacts" in probe:
+            found["capture"] = capture_path
+            if wanted is None:
+                wanted = probe.get("session") or probe.get("requested_date")
+                if isinstance(wanted, str) and DATE_ISO.match(wanted):
+                    session_dir = session_dir.parent / wanted
+                    notes.append(f"sessao_inferida_do_manifest: {wanted}")
+    if found["capture"] is None:
+        for path in sorted(session_dir.rglob("manifest.json")):
+            if _ignored_capture_path(path):
+                continue
+            if "b3lab" in path.parts or path.parent.name.startswith("structures-"):
+                continue
+            try:
+                probe = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(probe, dict) and "artifacts" in probe:
+                found["capture"] = path
+                notes.append(f"p3_fora_da_raiz: {path.relative_to(base).as_posix()}")
+                break
+
+    b3lab_path = session_dir / "b3lab" / "manifest.json"
+    if b3lab_path.is_file() and not _ignored_capture_path(b3lab_path):
+        found["b3lab"] = b3lab_path
+    else:
+        for path in sorted(session_dir.rglob("manifest.json")):
+            if "b3lab" in path.parts and not _ignored_capture_path(path):
+                found["b3lab"] = path
+                break
+
+    root = session_dir.parent
+    if wanted and DATE_ISO.match(str(wanted)):
+        for candidate in sorted(root.glob(f"structures-{wanted}-*")):
+            if not candidate.is_dir() or _ignored_capture_path(candidate):
+                notes.append(f"p5_ignorado: {candidate.name}")
+                continue
+            manifest_path = candidate / "manifest.json"
+            if manifest_path.is_file():
+                found["structures"].append(manifest_path)
+    else:
+        for candidate in sorted(root.glob("structures-*-*")):
+            if candidate.is_dir() and not _ignored_capture_path(candidate):
+                manifest_path = candidate / "manifest.json"
+                if manifest_path.is_file():
+                    found["structures"].append(manifest_path)
+    if not found["structures"]:
+        notes.append(f"p5_nao_descoberto: structures-{wanted or 'AAAA-MM-DD'}-* em {root}")
     return found
 
 
@@ -859,7 +945,10 @@ def verify_capture(path: Path | None, session: str) -> SourceInfo:
             "status": "ok",
             "reason": None,
         }
-        if not name or not raw_path.is_file():
+        if entry.get("status") not in (None, "ok"):
+            record["status"] = "unavailable"
+            record["reason"] = str(entry.get("reason") or "declared_unavailable")
+        elif not name or not raw_path.is_file():
             record["status"] = "unavailable"
             record["reason"] = "artifact_missing"
         else:
@@ -904,6 +993,8 @@ def verify_capture(path: Path | None, session: str) -> SourceInfo:
     info.status = "ok" if ok_sources else "unavailable"
     if info.status == "unavailable":
         info.reason = "no_usable_artifacts"
+    else:
+        info.reason = None
     return info
 
 
@@ -1005,8 +1096,52 @@ def verify_b3lab(path: Path | None, session: str) -> SourceInfo:
     return info
 
 
+# Ausências explícitas aceitas pelo dono: não são captura vermelha.
+STRUCTURE_ABSENCE_STATUSES: frozenset[str] = frozenset(
+    {"no_public_single_leg_control", "unsupported_external"}
+)
+
+
+def _health_session_model(health: Any) -> tuple[str | None, Any]:
+    """Sessão e `model_version` de um bloco `/api/health` congelado."""
+    if not isinstance(health, Mapping):
+        return None, None
+    data = health.get("data") if isinstance(health.get("data"), Mapping) else {}
+    session = health.get("as_of_session") or data.get("last_session")
+    model = health.get("model_version")
+    if model is None:
+        model = data.get("model_version")
+    return (
+        session if isinstance(session, str) else None,
+        model,
+    )
+
+
+def _health_is_red(health: Any, session: str) -> str | None:
+    """Captura com erro de fonte/lake ou sessão diferente não é válida."""
+    if not isinstance(health, Mapping):
+        return "health_missing"
+    data = health.get("data") if isinstance(health.get("data"), Mapping) else {}
+    health_session, model = _health_session_model(health)
+    if health_session != session:
+        return "health_session_mismatch"
+    if data.get("last_error") is not None:
+        return "health_last_error"
+    if data.get("model_version_mismatch") is True:
+        return "health_model_version_mismatch"
+    if model is None:
+        return "health_model_version_missing"
+    return None
+
+
 def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> SourceInfo:
-    """P5: cada record évalido pelo SHA canônico **sem o próprio sha256**."""
+    """P5: sessão/modelo, `source_sha256` do plano e SHA canônico dos records.
+
+    O `sha256` do plano não é o do arquivo: é o SHA canônico do objeto sem a
+    própria chave `source_sha256`. O `sha256` de cada record é o SHA canônico
+    sem a chave `sha256`. Ausências explícitas (`put_caixa` e `venda_coberta`)
+    são mantidas com flag, não tratadas como falha.
+    """
     info = SourceInfo("structures")
     if not paths:
         info.unavailable("manifest_missing", reason="manifesto P5 não encontrado")
@@ -1015,11 +1150,23 @@ def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> 
         try:
             manifest = read_json(manifest_path, "structures_manifest")
         except CompareError as exc:
-            info.flags.append(f"{manifest_path.name}:{exc.code}")
+            info.flags.append(f"{manifest_path}:{exc.code}")
             continue
         reference = manifest.get("reference_date") or manifest.get("session")
         if reference != session:
             info.flags.append(f"{manifest_path.name}:session_mismatch")
+            continue
+        red = _health_is_red(manifest.get("health_after"), session)
+        if red is None:
+            red = _health_is_red(manifest.get("health_before"), session)
+        model = manifest.get("model_version")
+        _, health_model = _health_session_model(manifest.get("health_after"))
+        if not is_number(model):
+            red = red or "model_version_missing"
+        elif health_model is not None and model != health_model:
+            red = red or "model_version_mismatch"
+        if red is not None:
+            info.flags.append(f"{manifest_path.name}:{red}")
             continue
         if info.reference_date is None:
             info.reference_date = reference
@@ -1027,7 +1174,41 @@ def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> 
             info.sha256 = manifest.get("sha256")
             info.accessed_at = manifest.get("accessed_at")
             info.flags.extend(str(flag) for flag in manifest.get("flags") or [])
+
+        # Plano: `source_sha256` = SHA canônico sem a própria chave.
+        plan_path = manifest_path.parent / "plan.json"
+        plan_candidates = [plan_path] if plan_path.is_file() else sorted(
+            manifest_path.parent.glob("*.plan.json")
+        )
+        plan_verified = False
+        for candidate in plan_candidates:
+            try:
+                loaded = read_json(candidate, "structures_plan")
+            except CompareError as exc:
+                info.flags.append(f"{candidate.name}:{exc.code}")
+                continue
+            without_source = {
+                key: value for key, value in loaded.items() if key != "source_sha256"
+            }
+            computed = canonical_sha(without_source)
+            declared = manifest.get("source_sha256") or loaded.get("source_sha256")
+            plan_verified = isinstance(declared, str) and declared == computed
+            if loaded.get("session") not in (None, session):
+                plan_verified = False
+                info.flags.append(f"{candidate.name}:session_mismatch")
+            if loaded.get("model_version") not in (None, model):
+                plan_verified = False
+                info.flags.append(f"{candidate.name}:model_version_mismatch")
+            break
+        if not plan_verified:
+            info.flags.append(f"{manifest_path.name}:source_sha256_unverified")
+            continue
+
         files = manifest.get("files") if isinstance(manifest.get("files"), dict) else {}
+        declared_structures = (
+            manifest.get("structures") if isinstance(manifest.get("structures"), dict) else {}
+        )
+        records: list[dict[str, Any]] = []
         for name, filename in sorted(files.items()):
             record_path = manifest_path.parent / str(filename)
             entry: dict[str, Any] = {
@@ -1049,18 +1230,51 @@ def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> 
                     entry["reason"] = "structure_file_unreadable"
                 else:
                     declared = record.get("sha256")
-                    without_sha = {key: value for key, value in record.items() if key != "sha256"}
-                    entry["sha256"] = canonical_sha(without_sha)
+                    without_sha = {
+                        key: value for key, value in record.items() if key != "sha256"
+                    }
+                    computed = canonical_sha(without_sha)
+                    entry["sha256"] = computed
                     entry["declared_sha256"] = declared
-                    if isinstance(declared, str) and declared != entry["sha256"]:
+                    manifest_sha = (
+                        declared_structures.get(name, {}).get("sha256")
+                        if isinstance(declared_structures.get(name), Mapping)
+                        else None
+                    )
+                    entry["manifest_sha256"] = manifest_sha
+                    if not isinstance(declared, str) or declared != computed:
                         entry["status"] = "unavailable"
                         entry["reason"] = "sha256_mismatch"
+                    elif isinstance(manifest_sha, str) and manifest_sha != computed:
+                        entry["status"] = "unavailable"
+                        entry["reason"] = "manifest_sha256_mismatch"
+                    status = str(record.get("status") or "")
+                    if status in STRUCTURE_ABSENCE_STATUSES:
+                        entry["absence_reason"] = record.get("reason")
+                        entry["flags"] = ["explicit_absence", status]
+                    elif status == "captured":
+                        entry["flags"] = []
+                    else:
+                        entry["status"] = "unavailable"
+                        entry["reason"] = "unexpected_structure_status"
+                        entry["flags"] = [status or "status_missing"]
                     entry["record"] = record
             info.artifacts.append(entry)
-    info.status = "ok" if any(item["status"] == "ok" for item in info.artifacts) else "unavailable"
-    if info.status == "unavailable":
-        info.reason = "no_usable_structures"
-    notes.append("P5: SHA recalculado sobre o record sem a chave `sha256` (contrato do pacote).")
+            if entry["status"] == "ok":
+                records.append(entry)
+        if records:
+            info.status = "ok"
+            info.reason = None
+            info.flags.append("plano_e_records_verificados")
+            break
+    if info.status != "ok":
+        info.unavailable("no_usable_structures", reason="nenhum P5 passou nas verificações")
+    notes.append(
+        "P5: sessão/model_version e health sem erro; `source_sha256` do plano é o "
+        "SHA canônico sem a própria chave; cada record é validado pelo SHA canônico "
+        "sem a chave `sha256` e contra o manifesto. `put_caixa`/`venda_coberta` "
+        "com ausência explícita são aceitos com flag."
+    )
     return info
 
 
@@ -1209,13 +1423,169 @@ def _artifact_underlying(entry: Mapping[str, Any]) -> str | None:
     return ticker or None
 
 
-def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any]:
-    """Series, agregados, OHLC (com quantidade), ETTJ, proventos e VI histórico.
+def _node_underlying(node: Any, entry: Mapping[str, Any] | None = None) -> str | None:
+    """Ticker declarado no JSON (`underlying.ticker`); nunca inferido do prefixo."""
+    if isinstance(node, Mapping):
+        underlying = node.get("underlying")
+        if isinstance(underlying, Mapping):
+            ticker = str(underlying.get("ticker") or "").strip().upper()
+            if ticker:
+                return ticker
+        ticker = str(node.get("ticker") or "").strip().upper()
+        if ticker:
+            return ticker
+    return _artifact_underlying(entry) if entry is not None else None
 
-    A mesma resposta OBM pode aparecer no HTML/RSC da página e no JSON
-    interceptado. Aqui o JSON tem prioridade e a primeira ocorrência vence
-    empate; duplicatas são **contadas** em ``dedup``/``dedup_counts`` e o bruto
-    permanece intacto no manifesto P3 (nada é apagado).
+
+def _find_key(node: Any, key: str, depth: int = 0) -> Any:
+    """Achata um container nomeado em JSON/RSC, sem reescrever o bruto."""
+    if depth > 20:
+        return None
+    if isinstance(node, Mapping):
+        if key in node:
+            return node[key]
+        for value in node.values():
+            found = _find_key(value, key, depth + 1)
+            if found is not None:
+                return found
+    elif isinstance(node, Sequence) and not isinstance(node, str | bytes):
+        for item in node:
+            found = _find_key(item, key, depth + 1)
+            if found is not None:
+                return found
+    return None
+
+
+_HTML_TABLE = re.compile(r"<table\b[^>]*>(.*?)</table>", re.I | re.S)
+_HTML_TR = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.I | re.S)
+_HTML_CELL = re.compile(r"<t[hd]\b[^>]*>(.*?)</t[hd]>", re.I | re.S)
+_HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+_HTML_TAG = re.compile(r"<[^>]+>")
+
+
+def _plain_html(text: str) -> str:
+    return unescape(_HTML_TAG.sub("", _HTML_COMMENT.sub("", text))).strip()
+
+
+def _html_tables(text: str) -> list[list[list[str]]]:
+    """Tabelas do HTML server-rendered como células de texto (sem BeautifulSoup)."""
+    tables: list[list[list[str]]] = []
+    for table in _HTML_TABLE.findall(text):
+        rows: list[list[str]] = []
+        for tr in _HTML_TR.findall(table):
+            cells = [_plain_html(cell) for cell in _HTML_CELL.findall(tr)]
+            if cells:
+                rows.append(cells)
+        if rows:
+            tables.append(rows)
+    return tables
+
+
+TERM_TEXT = re.compile(r"(\d{2}/\d{2})\s*·\s*(\d+)\s*du\s*·\s*([\d,]+)%")
+RSC_TERM_LABEL = re.compile(
+    r'\\"(\d{4}-\d{2}-\d{2})\\",\{\\"className\\":\\"mono inline-flex '
+    r'items-center gap-1\\",\\"children\\":\[\\"(\d{2}/\d{2})\\"'
+)
+
+
+def _term_iso_by_label(text: str) -> dict[str, str]:
+    """Rótulos `dd/mm` do SVG casados com as datas ISO das chaves do RSC."""
+    return {label: iso for iso, label in RSC_TERM_LABEL.findall(text)}
+
+
+def _parse_vol_term(text: str) -> list[dict[str, Any]]:
+    """Estrutura a termo renderizada: `dd/mm · N du · IV ATM%`."""
+    plain = _plain_html(text)
+    iso_by_label = _term_iso_by_label(text)
+    rows: list[dict[str, Any]] = []
+    for label, du, iv in TERM_TEXT.findall(plain):
+        number = ptbr_float(iv)
+        if number is None:
+            continue
+        rows.append(
+            {
+                "date": label,
+                "maturity": iso_by_label.get(label),
+                "du": int(du),
+                "iv_pct": number,
+                "raw": f"{label} · {du} du · {iv}%",
+            }
+        )
+    return rows
+
+
+def _parse_vol_surface(text: str) -> list[dict[str, Any]]:
+    """Superfície `VENC \\ STRIKE`: uma linha por vencimento, strikes no cabeçalho."""
+    for rows in _html_tables(text):
+        header = rows[0]
+        if not header or "strike" not in key_of(header[0]):
+            continue
+        iso_by_label = _term_iso_by_label(text)
+        strikes = [ptbr_float(cell) for cell in header[1:]]
+        result: list[dict[str, Any]] = []
+        for cells in rows[1:]:
+            label = cells[0]
+            if not re.fullmatch(r"\d{2}/\d{2}", label):
+                continue
+            values = [ptbr_float(cell) for cell in cells[1:]]
+            result.append(
+                {
+                    "date": label,
+                    "maturity": iso_by_label.get(label),
+                    "strikes_pct": strikes,
+                    "iv_pct": values,
+                    "raw": list(cells),
+                }
+            )
+        return result
+    return []
+
+
+def _parse_ettj_curve(text: str) -> list[tuple[int, float]]:
+    """ETTJ: tabela prefixada atual com os nós 21 e 42 (não a primeira)."""
+    for rows in _html_tables(text):
+        header = [key_of(cell) for cell in rows[0]] if rows else []
+        if not any("vertice" in cell or "prazo" in cell for cell in header):
+            continue
+        if not any("taxa" in cell for cell in header):
+            continue
+        nodes: list[tuple[int, float]] = []
+        for cells in rows[1:]:
+            if len(cells) < 2:
+                continue
+            du_raw = NUMBER_LINE.search(cells[0])
+            rate_raw = NUMBER_LINE.search(cells[1])
+            if du_raw is None or rate_raw is None:
+                continue
+            du_number = ptbr_float(du_raw.group(0))
+            rate_number = ptbr_float(rate_raw.group(0))
+            if du_number is None or rate_number is None or du_number <= 0:
+                continue
+            nodes.append((int(du_number), rate_number))
+        node_set = {du for du, _ in nodes}
+        if 21 in node_set and 42 in node_set:
+            return nodes
+    return []
+
+
+def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any]:
+    """Séries, agregados, OHLC, ETTJ, proventos, VI e volatilidade dos brutos reais.
+
+    Formatos medidos em P3 (2026-11-25):
+
+    * cadeia = JSON com ``rows[]`` e ``call``/``put`` aninhados; o vencimento é
+      ``vencimento.expiration_date``. Cada perna vira uma linha por
+      ``(ticker, maturity, strike_cents, side)`` com o bruto preservado;
+    * agregado = ``latest`` + ``fields[]`` + ``points[]`` + ``latest_positions``;
+      só ``latest`` é usado como métrica atual; ``fields[]`` é preservado;
+    * VI histórico = ``points[]`` com ``date``/``vi_ratio`` (252 por papel);
+    * OHLC = ``initialPrices.items`` dentro do RSC, com ``volume_shares``;
+    * ETTJ = tabela prefixada atual (nós 21 e 42), não a primeira;
+    * proventos = ``items[]`` com ``asset_ticker``/``ex_date``/``value_per_share``;
+    * volatilidade = HTML server-rendered (termo e superfície ``VENC \\ STRIKE``).
+
+    O JSON interceptado tem prioridade sobre HTML/RSC; duplicatas são contadas
+    em ``dedup``/``dedup_counts`` e o bruto permanece intacto no manifesto P3.
     """
     result: dict[str, Any] = {
         "series": [],
@@ -1225,6 +1595,8 @@ def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any
         "curve": [],
         "dividends": [],
         "vi_history": [],
+        "term": [],
+        "surface": [],
         "skipped": [],
         "classifications": [],
         "dedup": [],
@@ -1237,6 +1609,8 @@ def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any
         "vi_history_by_underlying": {},
         "ohlc_sources_by_underlying": {},
         "dividends_by_underlying": {},
+        "term_by_underlying": {},
+        "surface_by_underlying": {},
     }
     seen: dict[str, dict[Any, dict[str, Any]]] = defaultdict(dict)
 
@@ -1300,23 +1674,77 @@ def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any
             except ValueError:
                 pass
         nodes.extend(_json_blobs(wrapper))
-        for node in nodes:
-            if classified == "underlying":
-                for row in _find_rows(node):
-                    series = _obm_series_row(row, entry)
-                    if series is None:
-                        result["skipped"].append(
-                            {"artifact": artifact, "reason": "obm_row_unusable"}
-                        )
+
+        if classified == "underlying":
+            # Só as cadeias interceptadas em JSON entram: o HTML/RSC da página
+            # traz vencimentos semanais fora de `captured_chains` (345 séries
+            # extras em 25/11). O bruto segue intacto no manifesto P3.
+            if Path(artifact).suffix.lower() != ".json":
+                result["skipped"].append(
+                    {"artifact": artifact, "reason": "html_chain_not_in_captured_chains"}
+                )
+                continue
+            for node in nodes:
+                vencimento = _find_key(node, "vencimento")
+                rows = _find_key(node, "rows")
+                if not isinstance(vencimento, Mapping) or not isinstance(rows, list):
+                    continue
+                maturity = str(vencimento.get("expiration_date") or "")[:10]
+                for row in rows:
+                    if not isinstance(row, Mapping):
                         continue
-                    keep("series", series["match"]["match_key"], series, entry)
-            elif classified in {"agregado", "volatilidade"}:
-                for row in _find_rows(node) or [node]:
-                    if isinstance(row, dict):
-                        result["aggregates"].append({"values": row, "artifact": entry})
-            elif classified == "ohlc":
-                underlying = _artifact_underlying(entry)
-                for row in _find_rows(node):
+                    for side_name in ("call", "put"):
+                        leg = row.get(side_name)
+                        if not isinstance(leg, Mapping):
+                            continue
+                        series = _obm_chain_leg(leg, row, maturity, side_name, entry)
+                        if series is None:
+                            result["skipped"].append(
+                                {"artifact": artifact, "reason": "obm_leg_unusable"}
+                            )
+                            continue
+                        keep(
+                            "series",
+                            series["match"]["match_key"],
+                            series,
+                            entry,
+                            series.get("underlying"),
+                        )
+        elif classified == "agregado":
+            for node in nodes:
+                latest = node.get("latest") if isinstance(node, Mapping) else None
+                if not isinstance(latest, Mapping):
+                    continue
+                underlying = _node_underlying(node, entry)
+                record = {
+                    "underlying": underlying,
+                    "reference_date": node.get("reference_date"),
+                    "latest": dict(latest),
+                    # Compatibilidade com `build_underlying_comparisons`.
+                    "values": dict(latest),
+                    "fields": list(node.get("fields") or []),
+                    "points": list(node.get("points") or []),
+                    "latest_positions": node.get("latest_positions"),
+                    "raw": node if isinstance(node, dict) else dict(node),
+                    "artifact": entry,
+                }
+                keep("aggregates", (underlying, latest.get("date")), record, entry, underlying)
+        elif classified == "ohlc":
+            underlying = _artifact_underlying(entry)
+            for node in nodes:
+                initial = _find_key(node, "initialPrices")
+                items = (
+                    initial.get("items")
+                    if isinstance(initial, Mapping) and isinstance(initial.get("items"), list)
+                    else None
+                )
+                if items is None:
+                    items = _find_key(node, "items") if isinstance(node, Mapping) else None
+                if not isinstance(items, list):
+                    continue
+                for row in items:
+                    if not isinstance(row, Mapping):
+                        continue
                     bar = _obm_bar(row)
                     if bar is not None and keep(
                         "ohlc", (underlying, bar.refdate), bar, entry, underlying
@@ -1336,16 +1764,25 @@ def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any
                             entry,
                             underlying,
                         )
-            elif classified == "ettj":
-                for row in _find_rows(node):
-                    du, rate = _ettj_node(row)
-                    if du is not None and rate is not None:
-                        keep("curve", du, (du, rate), entry)
-            elif classified == "dividendos":
-                # Calendário é global: o papel vem da linha, nunca do artefato.
-                for row in _find_rows(node):
+        elif classified == "ettj":
+            curve = _parse_ettj_curve(text)
+            for du, rate in curve:
+                keep("curve", du, (du, rate), entry)
+            if not curve:
+                result["skipped"].append(
+                    {"artifact": artifact, "reason": "ettj_prefixed_table_not_found"}
+                )
+        elif classified == "dividendos":
+            # Calendário é global: o papel vem da linha, nunca do artefato.
+            for node in nodes:
+                items = _find_key(node, "items")
+                if not isinstance(items, list):
+                    continue
+                for row in items:
+                    if not isinstance(row, Mapping):
+                        continue
                     item = _dividend(row)
-                    if item is not None:
+                    if item is not None and item.get("ticker"):
                         ticker = item["ticker"]
                         keep(
                             "dividends",
@@ -1354,9 +1791,15 @@ def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any
                             entry,
                             ticker,
                         )
-            elif classified == "vi_historico":
-                underlying = _artifact_underlying(entry)
-                for row in _find_rows(node):
+        elif classified == "vi_historico":
+            for node in nodes:
+                points = _find_key(node, "points")
+                if not isinstance(points, list):
+                    continue
+                underlying = _node_underlying(node, entry)
+                for row in points:
+                    if not isinstance(row, Mapping):
+                        continue
                     point = _vi_history_point(row)
                     if point is not None:
                         keep(
@@ -1366,68 +1809,103 @@ def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any
                             entry,
                             underlying,
                         )
+        elif classified == "volatilidade":
+            underlying = _artifact_underlying(entry)
+            for point in _parse_vol_term(text):
+                point = dict(point, underlying=underlying, artifact=artifact_ref(entry))
+                keep(
+                    "term",
+                    (underlying, point["maturity"] or point["date"]),
+                    point,
+                    entry,
+                    underlying,
+                )
+            for line in _parse_vol_surface(text):
+                line = dict(line, underlying=underlying, artifact=artifact_ref(entry))
+                keep(
+                    "surface",
+                    (underlying, line["maturity"] or line["date"]),
+                    line,
+                    entry,
+                    underlying,
+                )
     notes.append(
-        "OBM: classificação por segmento da URL + JSON de RSC preservado; campos "
-        "por aliases explícitos, bruto mantido em cada linha. " + GAMMA_NOTE
+        "OBM: cadeia achatada de `rows[].call/put` por (ticker, maturity, "
+        "strike_cents, side) com vencimento de `vencimento.expiration_date`; "
+        "só JSON interceptado entra na cadeia (HTML/RSC da página traz semanais "
+        "fora de `captured_chains` e é registrado em `skipped`); "
+        "agregado usa `latest` e preserva `fields[]`/`points[]`/`latest_positions`; "
+        "OHLC vem de `initialPrices.items` com `volume_shares`; ETTJ da tabela "
+        "prefixada com du 21/42; proventos de `asset_ticker`/`ex_date`/"
+        "`value_per_share`; volatilidade do HTML server-rendered. " + GAMMA_NOTE
     )
     notes.append(
         "OBM dedup: JSON interceptado (.json) tem prioridade sobre HTML/RSC (.html); "
         "empate mantém a primeira ocorrência do manifesto. Duplicatas são contadas em "
         "`dedup`/`dedup_counts`, a linha mantida ganha `duplicate_artifact_collapsed` e "
-        "o bruto segue intacto no manifesto P3. OHLC/VI dedup por (ativo-objeto, data), "
-        "quantidade por (ativo-objeto, data) e provento por (ticker, data, valor); as "
-        "listas agregadas são só compatibilidade, os mapas `*_by_underlying` alimentam "
-        "o recálculo. Provento sem ticker fica fora de todos os mapas."
+        "o bruto segue intacto no manifesto P3. OHLC/VI/termo/superfície dedup por "
+        "(ativo-objeto, data), quantidade por (ativo-objeto, data) e provento por "
+        "(ticker, data, valor); as listas agregadas são só compatibilidade, os mapas "
+        "`*_by_underlying` alimentam o recálculo. Provento sem ticker fica fora de "
+        "todos os mapas."
     )
     return result
 
 
-def _obm_series_row(row: Mapping[str, Any], entry: Mapping[str, Any]) -> dict[str, Any] | None:
-    values: dict[str, Any] = {"raw": dict(row)}
+def _obm_chain_leg(
+    leg: Mapping[str, Any],
+    row: Mapping[str, Any],
+    maturity: str,
+    side_name: str,
+    entry: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Uma perna aninhada da cadeia OBM — bruto e proveniência preservados."""
+    values: dict[str, Any] = {"raw": dict(leg), "row_raw": dict(row)}
     for name, aliases in OBM_FIELD_ALIASES.items():
-        value, _ = alias_get(row, aliases)
+        value, _ = alias_get(leg, aliases)
+        if value is None and name == "strike":
+            value, _ = alias_get(row, aliases)
         values[name] = value
-    if not values.get("ticker") or not values.get("maturity"):
+    if not values.get("ticker") or not DATE_ISO.match(maturity):
         return None
-    side = side_code(values.get("side"))
+    side = side_code(values.get("side") or side_name)
     if side is None:
         return None
     match = make_match_row(
         ticker=str(values["ticker"]),
-        maturity=str(values["maturity"])[:10],
+        maturity=maturity,
         strike_value=values.get("strike"),
         side=side,
     )
     if match["strike_cents"] is None:
         return None
     raw_iv_field = next(
-        (name for name in row if key_of(name) in {key_of(a) for a in OBM_FIELD_ALIASES["iv"]}),
-        "iv",
+        (
+            name
+            for name in leg
+            if key_of(name) in {key_of(alias) for alias in OBM_FIELD_ALIASES["iv"]}
+        ),
+        "vi_ratio",
     )
     # Contrato F10: `vi_ratio` é fração e `premio` é R$/ação, com unidade confirmada.
     iv, iv_flags = normalize_iv(values.get("iv"), str(raw_iv_field))
-    price, price_flags = normalize_price(
-        values.get("price"), unit="brl_per_share"
-    )
+    price, price_flags = normalize_price(values.get("price"), unit="brl_per_share")
     delta = ptbr_float(values.get("delta"))
     if delta is not None and side == "P" and delta > 0:
         delta = -delta  # delta assinado da ponta (spec §6.2)
     values.update(
         {
+            "maturity": maturity,
             "match": match,
-            "underlying": str(entry.get("ticker") or "").upper() or None,
+            "underlying": _artifact_underlying(entry),
+            "iv_raw": values.get("iv"),
+            "price_raw": values.get("price"),
             "iv_normalized": iv,
             "price_normalized": price,
             "price_unit": "brl_per_share",
             "delta_signed": delta,
             "flags": list(match["flags"]) + iv_flags + price_flags,
-            "artifact": {
-                "artifact": entry.get("artifact"),
-                "sha256": entry.get("sha256"),
-                "url": entry.get("url"),
-                "accessed_at": entry.get("accessed_at"),
-                "source": entry.get("source"),
-            },
+            "artifact": dict(artifact_ref(entry), kind=entry.get("kind")),
         }
     )
     return values
@@ -1456,11 +1934,20 @@ def _obm_bar(row: Mapping[str, Any]) -> recalc.OhlcBar | None:
 def _obm_qty(row: Mapping[str, Any]) -> dict[str, Any] | None:
     """Quantidade negociada (ações) da barra OHLC — base do `days_to_liquidate`."""
     day, _ = alias_get(row, ("date", "refdate", "data", "dt"))
-    value, field = alias_get(row, ("qty", "quantity", "quantidade", "tradesQty"))
+    value, field = alias_get(row, OHLC_QUANTITY_ALIASES)
     number = decimal_from(value)
     if number is None or number <= 0 or not isinstance(day, str) or not DATE_ISO.match(day[:10]):
         return None
-    return {"date": day[:10], "qty": float(number), "field": field}
+    shares_financial, _ = alias_get(row, ("volume_financial", "financialVolume"))
+    trades, _ = alias_get(row, ("trades_count", "trades"))
+    return {
+        "date": day[:10],
+        "qty": float(number),
+        "field": field,
+        "volume_financial_raw": shares_financial,
+        "trades_count_raw": trades,
+        "raw": dict(row),
+    }
 
 
 def _ettj_node(row: Mapping[str, Any]) -> tuple[int | None, float | None]:
@@ -1480,8 +1967,10 @@ def _dividend(row: Mapping[str, Any]) -> dict[str, Any] | None:
     O calendário OBM é global: sem ticker declarado o provento não pode ser
     atribuído a papel nenhum (``ticker: None``), nunca por prefixo de opção.
     """
-    day, _ = alias_get(row, ("date", "exDate", "dataEx", "data"))
-    amount, _ = alias_get(row, ("amount", "valor", "dividend", "provento"))
+    day, _ = alias_get(row, ("ex_date", "exDate", "dataEx", "date", "data"))
+    amount, _ = alias_get(
+        row, ("value_per_share", "valuePerShare", "amount", "valor", "dividend", "provento")
+    )
     du_value, _ = alias_get(row, ("du", "diasUteis", "businessDays"))
     ticker_value, _ = alias_get(row, DIVIDEND_TICKER_ALIASES)
     value = decimal_from(amount)
@@ -1512,9 +2001,76 @@ def _vi_history_point(row: Mapping[str, Any]) -> dict[str, Any] | None:
     return {"date": day[:10], "iv_pct": normalized, "flags": flags, "raw": dict(row)}
 
 
+OPCOES_HEADER_COLUMNS: tuple[str, ...] = ("Última", "IV Rank", "Percentil", "Mín", "Máx")
+OPCOES_HEADER_LABELS: tuple[tuple[str, str], ...] = (
+    ("historic", "Volatilidade Histórica"),
+    ("calls", "Volatilidade Implícita CALLs"),
+    ("puts", "PUTs"),
+)
+
+
+def _parse_opcoes_header(page_text: Any, artifact: Any) -> list[dict[str, Any]]:
+    """Cabeçalho VH/CALLs/PUTs separado (Última, IV Rank, Percentil, Mín, Máx).
+
+    A metodologia desse bloco ainda não foi confirmada: os números ficam
+    brutos/normalizados por pt-BR, sem virar IV ou rank do produto.
+    """
+    if not isinstance(page_text, str):
+        return []
+    lines = page_text.splitlines()
+    header_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if all(
+                key_of(word) in key_of(line)
+                for word in (*OPCOES_HEADER_COLUMNS[:3], "min", "max")
+            )
+        ),
+        None,
+    )
+    if header_index is None:
+        return []
+    columns = list(OPCOES_HEADER_COLUMNS)
+    entries: list[dict[str, Any]] = []
+    for name, label in OPCOES_HEADER_LABELS:
+        line = next(
+            (
+                candidate.strip()
+                for candidate in lines[header_index + 1 : header_index + 8]
+                if key_of(label) in key_of(candidate)
+            ),
+            None,
+        )
+        if line is None:
+            continue
+        numbers = [ptbr_float(value) for value in NUMBER_LINE.findall(line)]
+        numbers = numbers[-len(columns) :] if len(numbers) >= len(columns) else numbers
+        entries.append(
+            {
+                "artifact": artifact,
+                "name": name,
+                "label": label,
+                "columns": columns,
+                "values": {
+                    column: number
+                    for column, number in zip(columns, numbers, strict=False)
+                },
+                "raw": line,
+                "flags": ["header_methodology_unconfirmed"],
+            }
+        )
+    return entries
+
+
 def parse_opcoes(info: SourceInfo, notes: list[str]) -> dict[str, Any]:
     """Grade do opcoes.net.br pelo **cabeçalho** DataTable, nunca índice fixo."""
-    result: dict[str, Any] = {"series": [], "headers": [], "skipped": []}
+    result: dict[str, Any] = {
+        "series": [],
+        "headers": [],
+        "header_metrics": [],
+        "skipped": [],
+    }
     for entry in info.artifacts:
         if entry.get("status") != "ok" or entry.get("source") != "opcoes_net":
             continue
@@ -1538,6 +2094,14 @@ def parse_opcoes(info: SourceInfo, notes: list[str]) -> dict[str, Any]:
                 "indexes": indexes,
             }
         )
+        header_metrics = _parse_opcoes_header(
+            extracted.get("page_text"), entry.get("artifact")
+        )
+        result["header_metrics"].extend(header_metrics)
+        if not header_metrics:
+            result["skipped"].append(
+                {"artifact": entry.get("artifact"), "reason": "header_metrics_unresolved"}
+            )
         if indexes.get("ticker") is None or indexes.get("strike") is None:
             result["skipped"].append(
                 {"artifact": entry.get("artifact"), "reason": "columns_unresolved"}
@@ -1622,7 +2186,9 @@ def parse_opcoes(info: SourceInfo, notes: list[str]) -> dict[str, Any]:
     notes.append(
         "opcoes.net.br: colunas resolvidas pelo cabeçalho do DataTable; IV bruta "
         "é fração e virou pontos percentuais; 'Último' é R$/ação por contrato F10 "
-        "(unidade explícita, não depende do rótulo conter 'R$')."
+        "(unidade explícita, não depende do rótulo conter 'R$'). Cabeçalho "
+        "VH/CALLs/PUTs (Última, IV Rank, Percentil, Mín, Máx) preservado à parte, "
+        "com metodologia ainda não confirmada."
     )
     return result
 
@@ -2844,7 +3410,7 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
         "unavailable": unavailable,
         "notes": notes,
     }
-    manifests = discover_manifests(args.input_dir, notes)
+    manifests = discover_manifests(args.input_dir, notes, session=args.date)
     # `capture_verified` é só o verificador interno do P3: as fontes publicadas
     # no JSON são `obm` e `opcoes_net`, cada uma com status/artefatos próprios.
     capture_verified = verify_capture(manifests["capture"], args.date)

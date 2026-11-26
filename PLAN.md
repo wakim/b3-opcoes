@@ -25,6 +25,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. **F5 entregue e aceito**: PWA (Hoje, Ticker, Série, Aprender, builder de estrutura, liquidez) servido pelo FastAPI, instalado no celular via `tailscale serve` 8443 (só tailnet) e offline pelo service worker. **F6 implementado e validado** (ADR-041/045): journal PostgreSQL append-only, carteira com marcação EOD, P&L, gregas, alertas e payoff; aceitação no uso real (ADR-047). **F7 implementado e validado** (ADR-042): Diário de decisões com previsão estruturada, avaliação automática no lote EOD e calibração pessoal; aceitação no uso real (ADR-047). **F8 entregue e aceita** (ADR-043/044/046/047): interface em shadcn + Tailwind, CSS global reduzido a tokens, base e as exceções da ADR-046; avaliação manual do dono aprovada em 25/11/2026. |
 | Retomar em | **F8 aceita; começar a usar F6/F7 (ADR-047).** (1) **Diário todo pregão**: uma decisão real por sessão na app da 8083/8443 (inclusive "não entrei"), com previsão estruturada quando houver tese — a aceitação F7 conta 30 sessões consecutivas e ≥ 10 previsões avaliadas pelo lote. (2) **Duas posições reais** registradas na Carteira na data da execução, e o P&L conferido com o extrato da corretora (F6.6). A F9 está implementada, com validação final pendente; defeito achado no uso vira correção pontual. |
 | Novo pedido | **F9 — níveis de linguagem Expert/Leigo**, pedido do dono em 24/11/2026. Implementação concluída; validação final pendente. É apresentação, não altera dado, cálculo ou a aceitação de uso de F6/F7. |
+| Benchmark externo | **F10 — benchmark de métricas**, pedido do dono em 25/11/2026. Planejado abaixo; **não iniciado**. Validação pontual contra OBM, OpçõesBR e B3Lab, sem dado vivo nem mudança de fórmula apenas para acompanhar site externo. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -703,11 +704,57 @@ ordens, rotas e contratos da API.
 
 ---
 
+# F10 — Benchmark externo de métricas
+
+**Pedido do dono (25/11/2026):** comparar as métricas do painel com referências externas.
+**Status:** planejado; **não executar agora**. Não reabre F6/F7/F9 nem altera a aceitação de uso real.
+
+**Objetivo:** medir a aderência de IV, Gregas, smile/termo e estruturas a implementações externas,
+separando divergência de metodologia de erro real — sem transformar site de terceiro em dono da verdade.
+**Estimativa:** 1 sessão · **Depende de:** F1, F3 e F4. É independente de F9 e da aceitação de uso de F6/F7.
+
+**Referências escolhidas:**
+- **OBM:** principal referência EOD independente para IV por série, IV ATM, smile, estrutura a termo,
+  IV rank/percentil e delta/Gregas.
+- **OpçõesBR:** segunda referência EOD para grade, IV por série/ATM, volume, OI, put/call e Gregas.
+  A metodologia pública informa ATM como média das 4 séries mais próximas e RV30 como desvio-padrão
+  fechamento-a-fechamento em 21 pregões; portanto não é equivalente ao nosso ATM 30d nem ao Yang-Zhang.
+- **B3Lab (calculadora Black-Scholes):** auditoria de preço teórico, IV e das cinco Gregas com inputs
+  controlados. Não é referência para rank, VRP ou definição de ATM.
+- **OpLab:** opcional, apenas como referência de produto/convenções; dado ao vivo e métricas proprietárias
+  não entram na comparação numérica do EOD.
+
+| ID | Tarefa | Est. |
+|---|---|---|
+| F10.1 | Fixar protocolo e amostra: 5 papéis (PETR4, VALE3, BOVA11, B3SA3, ITUB4), 2 vencimentos por papel, calls/puts europeias líquidas; mesma sessão, fechamento, forward, curva DI, dias úteis, strike e estilo; registrar URL, data de acesso e valor externo | 30 min |
+| F10.2 | Comparar IV por série, IV ATM, smile e estrutura a termo contra OBM e OpçõesBR; reportar `n`, mediana, P90 e máximo das diferenças em pontos de volatilidade | 1 h |
+| F10.3 | Comparar preço teórico, delta, gamma, theta, vega e rho contra a calculadora B3Lab com os mesmos inputs e unidades; conferir payoff/breakeven de estruturas em pelo menos um simulador externo | 45 min |
+| F10.4 | Tratar IV rank/percentil, RV e VRP separadamente: só comparar numericamente definições equivalentes; metodologias diferentes entram como divergência explicada, não como falha | 30 min |
+| F10.5 | Relatório em `data/out/benchmark-AAAA-MM-DD.md`: amostra, valores, diferenças, outliers e classificação (`metodologia`, `liquidez`, `dado externo`, `bug interno`); registrar aprendizado no `AGENTS.md` e abrir correção só para bug reproduzido | 45 min |
+
+**Aceitação F10**
+- [ ] toda comparação usa a mesma sessão e o mesmo contrato; spot/forward, strike, vencimento, estilo,
+      taxa, prazo e unidade estão declarados, com fonte e data de acesso externas
+- [ ] IV por série/ATM/smile/termo tem duas referências EOD na amostra, com estatística de diferença e
+      outliers individuais explicados
+- [ ] preço teórico e Gregas são conferidos com inputs idênticos na calculadora; diferenças de unidade
+      (por ação/contrato, por dia corrido/dia útil, por 1 ponto/1% de vol) não são confundidas com erro
+- [ ] IV rank/percentil, RV e VRP só têm gate numérico quando a construção é equivalente; RV30 do
+      OpçõesBR e Yang-Zhang do painel, por exemplo, ficam explicitamente fora da comparação direta
+- [ ] toda divergência material tem causa classificada; só vira correção após reprodução independente no
+      dado interno — nunca apenas para igualar o site externo
+- [ ] relatório salvo fora do git; nenhum scraping, serviço pago ou cotação ao vivo vira dependência do
+      produto; se um bug mudar fórmula, `model_version` sobe e o histórico é recalculado inteiro
+
+---
+
 ## Grafo de dependências
 
 ```
 F0 ──> F1 ──> F1b ──> F2 ──> F3 ──> F4 ──> F5 ──> F6 ──> F7 ──> F8 ──> F9
               portão
+
+F1 + F3 + F4 ──> F10   (benchmark externo; independente de F9)
 ```
 
 O F1b é o portão: se o sinal não se sustenta, nada depois dele é construído sem revisão.
@@ -732,7 +779,7 @@ O F1b é o portão: se o sinal não se sustenta, nada depois dele é construído
 |---|---|
 | Contagem de linhas | `GROUP BY refdate` no TXT vs no Parquet |
 | Legs | 5 tickers com ajuste conhecido + 1 evento de escala |
-| IV | paridade call E × put E; PETR4 vs brapi (sandbox) |
+| IV | paridade call E × put E; benchmark externo F10 (OBM + OpçõesBR; B3Lab para preço/Gregas) |
 | Forward | OTM-only vs ITM-only, mesma data |
 | ATM 30d | série de 60 dias, procurar descontinuidade em rolagem |
 | Payoff | desenhar no papel e comparar com `structure_eval` |

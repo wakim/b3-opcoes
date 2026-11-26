@@ -15,6 +15,9 @@ Regras que valem aqui (não negociáveis)
   ``Qtd`` do OBM **não é normalizada aqui** — isso é trabalho do `bench_compare`.
 * Falha explícita: ``{code, message, hint}`` e ``exit != 0``. Ausência vira
   ``null`` + motivo (`sparse_chain`, `missing_leg`, `unsupported_external`).
+* A sessão do OBM só é aceita com prova positiva e explícita: a classe
+  ``Opções`` e a fonte ``b3_option_prices`` precisam estar nela. Data de
+  outra classe/fonte não conta, e não se chama ``api/v1`` direto.
 * A UI pública do OBM não tem perna de ação (F10.1 alínea (d)): a venda coberta
   registra ``unsupported_external`` e o baseline bruto do POST, sem spot
   sintético e sem tentativa de contorno.
@@ -41,6 +44,7 @@ import re
 import shutil
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -51,6 +55,12 @@ from typing import Any
 HTTP_URL = os.environ.get("B3_HTTP_URL", "http://host.containers.internal:8080")
 DEFAULT_OUTPUT_DIR = Path(os.environ.get("B3_BENCH_DIR", "/data/bench"))
 OBM_MONTADOR_URL = "https://obm.com.br/opcoes/montador"
+OBM_FRESHNESS_PATH = "/api/v1/assets/freshness"
+OBM_COVERAGE_PATH = "/api/v1/assets/coverage"
+OBM_PUBLIC_ENDPOINTS = (OBM_FRESHNESS_PATH, OBM_COVERAGE_PATH)
+"""Os dois endpoints públicos carregados pela página — fonte primária da guarda."""
+OBM_OPTION_ASSET_CLASS = "Opções"
+OBM_OPTION_PRICES_SOURCE = "b3_option_prices"
 DEFAULT_UNDERLYING = "PETR4"
 QUANTITY = 100
 """Ações por perna. 1 contrato padrão = 100 ações; não multiplicar (§0.7)."""
@@ -111,6 +121,11 @@ def _sha256(value: Any) -> str:
     """Hash canônico do que foi lido — serve de idempotência e de referência."""
     blob = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def _record_sha(record: dict[str, Any]) -> str:
+    """SHA do registro sem o próprio campo `sha256` (não é auto-referência)."""
+    return _sha256({key: value for key, value in record.items() if key != "sha256"})
 
 
 def _now_iso() -> str:
@@ -176,8 +191,13 @@ def _raise_if_error(body: Any, where: str) -> None:
         )
 
 
-def read_health(base: str) -> dict[str, Any]:
-    """`GET /api/health`: sessão, versão do modelo e o bruto da resposta."""
+def read_health(base: str, expected_session: str | None = None) -> dict[str, Any]:
+    """`GET /api/health` com guarda de sessão e de versão do modelo.
+
+    `as_of_session`, `data.last_session` e `--date` precisam coincidir; o
+    `model_version` precisa ser inteiro. A guarda final compara os dois lados
+    (antes e depois da captura) com a mesma função.
+    """
     _, body = _request_json(f"{base}/api/health")
     _raise_if_error(body, "/api/health")
     data = body.get("data") or {}
@@ -188,12 +208,43 @@ def read_health(base: str) -> dict[str, Any]:
             f"/api/health não trouxe as_of_session utilizável: {session!r}",
             "rode `b3o prepare` e suba a app antes de capturar",
         )
+    if data.get("last_session") != session:
+        raise BenchFailure(
+            "health_session_inconsistent",
+            f"/api/health: as_of_session={session} mas "
+            f"data.last_session={data.get('last_session')!r}",
+            "aguarde o lake estabilizar antes de capturar",
+        )
+    if expected_session is not None and session != expected_session:
+        raise BenchFailure(
+            "session_mismatch",
+            f"/api/health está em {session}, mas a sessão pedida é {expected_session}",
+            "o benchmark usa só a sessão congelada; ajuste --date ou atualize o lake",
+        )
+    model_version = body.get("model_version")
+    if isinstance(model_version, bool) or not isinstance(model_version, int):
+        raise BenchFailure(
+            "health_model_version_invalid",
+            f"/api/health trouxe model_version não inteiro: {model_version!r}",
+            "rode `b3o metrics` na sessão antes de capturar",
+        )
     return {
         "session": session,
-        "model_version": body.get("model_version"),
+        "model_version": model_version,
         "age_sessions": data.get("age_sessions"),
         "raw": body,
     }
+
+
+def health_matches(health: dict[str, Any], session: str, model_version: Any) -> bool:
+    """Guarda final: sessão, última sessão do lago e modelo nos dois lados."""
+    data = (health.get("raw") or {}).get("data") or {}
+    return (
+        health.get("session") == session
+        and health.get("model_version") == model_version
+        and data.get("last_session") == session
+        and isinstance(health.get("model_version"), int)
+    )
 
 
 def read_underlying(base: str, underlying: str, session: str) -> dict[str, Any]:
@@ -210,34 +261,129 @@ def read_underlying(base: str, underlying: str, session: str) -> dict[str, Any]:
         }
     )
     summary = data.get("summary") or {}
+    term = [row for row in (data.get("term") or []) if isinstance(row, dict)]
     return {
         "smile_maturity": data.get("smile_maturity"),
         "maturities": maturities,
+        "term": term,
         "atm_strike_brl": summary.get("atm_strike_brl"),
         "raw": body,
     }
 
 
-def read_chain(base: str, underlying: str, session: str, expiry: str) -> dict[str, Any]:
-    """Cadeia real do vencimento: sem filtro de liquidez e com delta 0–1."""
+def read_prices(base: str, underlying: str, session: str) -> dict[str, Any]:
+    """Âncora = fechamento D-1 da própria API, nunca o ticker nem o termo.
+
+    `days=2` devolve os dois últimos pontos negociados; o penúltimo é o D-1.
+    Se a API não trouxer D-1, a âncora volta `None` **com flag explícita** —
+    não há fallback silencioso para ATM do termo ou mediana da cadeia.
+    """
+    query = urllib.parse.urlencode({"days": 2})
+    _, body = _request_json(
+        f"{base}/api/t/{urllib.parse.quote(underlying)}/prices?{query}"
+    )
+    _raise_if_error(body, "/api/t/.../prices")
+    returned_session = body.get("as_of_session")
+    if returned_session != session:
+        raise BenchFailure(
+            "session_mismatch",
+            f"/prices está em {returned_session!r}; lago está em {session}",
+            "a âncora D-1 tem que vir da mesma sessão do benchmark",
+        )
+    points = [
+        point
+        for point in ((body.get("data") or {}).get("points") or [])
+        if isinstance(point, dict)
+        and isinstance(point.get("date"), str)
+        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", point["date"])
+        and point.get("traded") is True
+        and _as_positive_float(point.get("close_brl")) is not None
+    ]
+    points.sort(key=lambda item: item["date"])
+    previous = points[-2] if len(points) >= 2 else None
+    anchor = _as_positive_float((previous or {}).get("close_brl"))
+    result = {
+        "anchor": anchor,
+        "anchor_date": (previous or {}).get("date"),
+        "anchor_source": "api.prices.previous_session_close" if anchor is not None else None,
+        "flag": None if anchor is not None else "no_previous_session_close",
+        "n_traded_points": len(points),
+        "points": [
+            {"date": p["date"], "close_brl": p["close_brl"], "traded": p["traded"]}
+            for p in points
+        ],
+        "raw": body,
+    }
+    return result
+
+
+def chain_query(
+    base: str, underlying: str, session: str, expiry: str, delta_min: float, delta_max: float
+) -> dict[str, Any]:
+    """Uma página da cadeia; `meta.truncated` volta junto, nunca escondido."""
     params = {
         "date": session,
         "expiry": expiry,
-        "delta_min": 0,
-        "delta_max": 1,
+        "delta_min": delta_min,
+        "delta_max": delta_max,
         "liquidity": "all",
         "max_rows": 60,
     }
-    query = urllib.parse.urlencode(params)
     _, body = _request_json(
-        f"{base}/api/t/{urllib.parse.quote(underlying)}/chain?{query}"
+        f"{base}/api/t/{urllib.parse.quote(underlying)}/chain?{urllib.parse.urlencode(params)}"
     )
     _raise_if_error(body, "/api/t/.../chain")
     data = body.get("data") or {}
+    meta = body.get("meta") or {}
     return {
+        "params": params,
         "rows": list(data.get("rows") or []),
-        "total": (body.get("meta") or {}).get("total"),
+        "total": meta.get("total"),
+        "returned": meta.get("returned"),
+        "truncated": bool(meta.get("truncated")),
         "raw": body,
+    }
+
+
+def read_chain(base: str, underlying: str, session: str, expiry: str) -> dict[str, Any]:
+    """Cadeia real do vencimento: sem filtro de liquidez.
+
+    O teto do servidor é 60 linhas por página (e a rota não aceita `offset`).
+    Além da varredura 0–1, que dá o panorama e o `truncated`, pede uma faixa
+    de delta em torno do ATM: é ela que traz os strikes vizinhos do anchor.
+    Nenhum strike é inferido do ticker; o que não veio em linha não entra.
+    """
+    broad = chain_query(base, underlying, session, expiry, 0.0, 1.0)
+    focused = chain_query(base, underlying, session, expiry, 0.3, 0.7)
+    by_ticker: dict[str, dict[str, Any]] = {}
+    duplicates = 0
+    for query in (broad, focused):
+        for row in query["rows"]:
+            if not isinstance(row, dict):
+                continue
+            ticker = row.get("ticker")
+            if not isinstance(ticker, str) or not ticker:
+                continue
+            if ticker in by_ticker:
+                duplicates += 1
+                continue
+            by_ticker[ticker] = row
+    queries = [
+        {
+            "params": item["params"],
+            "total": item["total"],
+            "returned": item["returned"],
+            "truncated": item["truncated"],
+        }
+        for item in (broad, focused)
+    ]
+    return {
+        "rows": list(by_ticker.values()),
+        "total": broad["total"],
+        "truncated": bool(broad["truncated"] or focused["truncated"]),
+        "queries": queries,
+        "n_duplicates": duplicates,
+        "raw": {"broad": broad["raw"], "focused": focused["raw"]},
     }
 
 
@@ -272,12 +418,37 @@ def choose_expiry(underlying: dict[str, Any], session: str) -> tuple[str | None,
     return None, "no_maturity"
 
 
+def expiry_anchor(underlying: dict[str, Any], expiry: str) -> tuple[float | None, str]:
+    """Âncora de strike vem do termo do próprio vencimento, nunca do ticker."""
+    row = next(
+        (
+            item
+            for item in (underlying.get("term") or [])
+            if isinstance(item, dict) and item.get("maturity") == expiry
+        ),
+        None,
+    )
+    candidates = (
+        ("term.atm_strike_brl", (row or {}).get("atm_strike_brl")),
+        ("term.forward_brl", (row or {}).get("forward_brl")),
+        ("summary.atm_strike_brl", underlying.get("atm_strike_brl")),
+    )
+    for source, value in candidates:
+        number = _as_positive_float(value)
+        if number is not None:
+            return number, source
+    return None, "no_anchor"
+
+
 def plan_structures(
     underlying: str,
     session: str,
     chain: dict[str, Any],
     expiry: str,
     atm_hint: Any,
+    anchor_source: str = "api",
+    anchor_date: str | None = None,
+    prices_flag: str | None = None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """Monta os cinco pedidos a partir da cadeia; perna sem dado vira `null`."""
     rows = [row for row in chain["rows"] if isinstance(row, dict)]
@@ -295,6 +466,25 @@ def plan_structures(
     anchor = _as_positive_float(atm_hint)
     if anchor is None:
         anchor = paired[len(paired) // 2] if paired else None
+        source = "paired_median"
+    else:
+        source = anchor_source
+
+    def adjacent(strikes: list[float]) -> tuple[float, float] | None:
+        """Dois strikes vizinhos ao redor da âncora; nunca as pontas da página."""
+        if len(strikes) < 2:
+            return None
+        below = [strike for strike in strikes if strike <= anchor] if anchor is not None else []
+        if below:
+            low = below[-1]
+            above = [strike for strike in strikes if strike > low]
+            if above:
+                return low, above[0]
+            return strikes[-2], strikes[-1]
+        return strikes[0], strikes[1]
+
+    call_pair = adjacent(calls)
+    put_pair = adjacent(puts)
 
     def nearest(strikes: list[float]) -> float | None:
         if not strikes:
@@ -321,32 +511,33 @@ def plan_structures(
             return None
         return {"kind": kind, "ticker": ticker, "side": side, "quantity": QUANTITY}
 
+    def spread_leg(
+        pair: tuple[float, float] | None, index: int, side: str, option_side: str
+    ) -> dict[str, Any] | None:
+        strike = pair[index] if pair is not None else None
+        return leg(
+            "option", side, (_pick_row(usable, strike, option_side) or {}).get("ticker")
+        )
+
     specs: dict[str, list[dict[str, Any] | None]] = {
         BULL_CALL_SPREAD: [
-            leg("option", "long", (_pick_row(usable, calls[0], "C") or {}).get("ticker"))
-            if len(calls) >= 2
-            else None,
-            leg("option", "short", (_pick_row(usable, calls[-1], "C") or {}).get("ticker"))
-            if len(calls) >= 2
-            else None,
+            spread_leg(call_pair, 0, "long", "C"),
+            spread_leg(call_pair, 1, "short", "C"),
         ],
         BEAR_PUT_SPREAD: [
-            leg("option", "long", (_pick_row(usable, puts[-1], "P") or {}).get("ticker"))
-            if len(puts) >= 2
-            else None,
-            leg("option", "short", (_pick_row(usable, puts[0], "P") or {}).get("ticker"))
-            if len(puts) >= 2
-            else None,
+            spread_leg(put_pair, 1, "long", "P"),
+            spread_leg(put_pair, 0, "short", "P"),
         ],
     }
-    # O straddle e as pernas avulsas usam o strike mais perto do ATM/âncora.
-    k = nearest(paired) if paired else None
+    # Decisão do dono: straddle, put caixa e call da coberta usam o strike
+    # SUPERIOR do par adjacente, não o mais próximo em valor absoluto.
+    k = call_pair[1] if call_pair is not None else (nearest(paired) if paired else None)
     specs[STRADDLE] = [
         leg("option", "long", (_pick_row(usable, k, "C") or {}).get("ticker")) if k else None,
         leg("option", "long", (_pick_row(usable, k, "P") or {}).get("ticker")) if k else None,
     ]
-    put_k = nearest(puts)
-    call_k = nearest(calls)
+    put_k = put_pair[1] if put_pair is not None else nearest(puts)
+    call_k = call_pair[1] if call_pair is not None else nearest(calls)
     specs[SHORT_PUT] = [
         leg("option", "short", (_pick_row(usable, put_k, "P") or {}).get("ticker"))
         if put_k is not None
@@ -390,6 +581,14 @@ def plan_structures(
         "put_strikes": puts,
         "paired_strikes": paired,
         "anchor": anchor,
+        "anchor_source": source,
+        "anchor_date": anchor_date,
+        "prices_flag": prices_flag,
+        "spread_strikes": {"calls": call_pair, "puts": put_pair},
+        "chain_total": chain.get("total"),
+        "chain_truncated": chain.get("truncated"),
+        "chain_queries": chain.get("queries"),
+        "chain_duplicates": chain.get("n_duplicates"),
         "sparse_chain": sparse,
         "missing": sorted(set(missing)),
     }
@@ -468,7 +667,11 @@ FILL_JS = """({rowIndex, values}) => {
   const typeSel = pick('call');
   const has = (el, value) => !!el && Array.from(el.options).some((o) =>
     o.value === value || (o.text || '').trim().toLowerCase() === value);
-  const sideValue = values.side === 'long' ? 'compra' : 'venda';
+  // `_obm_inputs` envia 'compra'/'venda' (rótulos da UI); aceite também
+  // 'long'/'short' do contrato interno, mas nunca inverta o lado.
+  const sideValue = values.side === 'compra' || values.side === 'long' ? 'compra'
+    : values.side === 'venda' || values.side === 'short' ? 'venda' : null;
+  if (sideValue === null) return {ok:false, error:'side_invalid', side:values.side};
   if (!sideSel || !typeSel || sideSel === typeSel) return {ok:false, error:'select_missing'};
   if (!has(sideSel, sideValue) || !has(typeSel, values.type))
     return {ok:false, error:'option_missing',
@@ -490,20 +693,35 @@ FILL_JS = """({rowIndex, values}) => {
 
 def _guard_obm(page: Any) -> dict[str, Any]:
     """Turnstile/Cloudflare = falha explícita. Sem bypass, sem retry cego."""
-    title = ""
-    text = ""
     try:
-        title = page.title()
-        text = page.locator("body").inner_text()
+        title = (page.title() or "").strip()
+        text = (page.locator("body").inner_text() or "").strip()
     except Exception as exc:  # noqa: BLE001 — diagnóstico, nunca engole a falha
         raise BenchFailure(
             "obm_unreadable",
             f"não foi possível ler o montador do OBM: {exc}",
             "confira a conexão; não insista em página de verificação",
         ) from exc
+    if not title and not text:
+        raise BenchFailure(
+            "obm_unreadable",
+            "o montador do OBM devolveu página sem título e sem texto",
+            "a inspeção falhou; não publique bruto de uma página vazia",
+        )
+    combined = f"{title}\n{text}".lower()
     blocked = any(
-        marker in text or marker in title
-        for marker in ("Executando verificação de segurança", "Um momento", "Just a moment")
+        marker in combined
+        for marker in (
+            "executando verificação de segurança",
+            "verificação de segurança",
+            "just a moment",
+            "um momento",
+            "cf-browser-verification",
+            "cf-challenge",
+            "turnstile",
+            "attention required!",
+            "enable javascript and cookies to continue",
+        )
     )
     if blocked:
         raise BenchFailure(
@@ -554,16 +772,204 @@ def _text_reference_dates(text: str) -> set[str]:
     return found
 
 
-def _obm_reference(page: Any, responses: list[dict[str, Any]], body_text: str) -> dict[str, Any]:
-    """Data de referência do OBM: JSON que a página carrega, depois texto."""
+def _is_option_asset_class(value: Any) -> bool:
+    """Apenas a classe de opções (aceita ``Opções`` e a variante sem acento)."""
+    if not isinstance(value, str):
+        return False
+    plain = "".join(
+        char
+        for char in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(char)
+    )
+    return plain.casefold() == "opcoes"
+
+
+def _freshness_shape(payload: Any) -> bool:
+    """Reconhece o payload que indexa classes por ``asset_class`` e fontes por ``source``."""
+    if not isinstance(payload, dict):
+        return False
+    classes = payload.get("classes")
+    sources = payload.get("sources")
+    return (
+        isinstance(classes, list)
+        and any(
+            isinstance(item, dict) and "asset_class" in item and "last_real_date" in item
+            for item in classes
+        )
+        and isinstance(sources, list)
+        and any(
+            isinstance(item, dict) and "source" in item and "reference_date" in item
+            for item in sources
+        )
+    )
+
+
+def _json_objects_in_text(text: str) -> list[dict[str, Any]]:
+    """Objetos JSON embutidos em HTML/RSC — só fallback, nunca ``api/v1`` direto."""
+    decoder = json.JSONDecoder()
+    found: list[dict[str, Any]] = []
+    for match in re.finditer(r"\{", text):
+        try:
+            value, _ = decoder.raw_decode(text[match.start():])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            found.append(value)
+    return found
+
+
+def _obm_option_evidence(
+    responses: list[dict[str, Any]], fallback_text: str = ""
+) -> dict[str, Any]:
+    """Prova nomeada das opções, sem usar data de outra classe ou fonte.
+
+    Primária: os dois endpoints públicos carregados pela página (freshness e
+    coverage). Fallback: HTML/RSC da página **somente** se eles não trouxerem
+    os objetos. Nenhuma chamada a ``api/v1`` é feita por esta função.
+    """
+    parsed: list[tuple[str, dict[str, Any]]] = []
+    for item in responses or []:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") if isinstance(item.get("url"), str) else ""
+        try:
+            payload = json.loads(item.get("text") or "")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            parsed.append((url, payload))
+
+    public = [
+        (url, payload)
+        for url, payload in parsed
+        if any(path in url for path in OBM_PUBLIC_ENDPOINTS) and _freshness_shape(payload)
+    ]
+    option, b3_source = _extract_obm_evidence(public)
+    origins: list[str] = []
+    if option["value"] is not None or b3_source["value"] is not None:
+        origins.append("public_endpoints")
+    if option["value"] is None or b3_source["value"] is None:
+        fallback = [
+            (OBM_MONTADOR_URL, payload)
+            for payload in _json_objects_in_text(fallback_text)
+            if _freshness_shape(payload)
+        ]
+        fb_option, fb_b3 = _extract_obm_evidence(fallback)
+        if option["value"] is None:
+            option = fb_option
+        if b3_source["value"] is None:
+            b3_source = fb_b3
+        if fb_option["value"] is not None or fb_b3["value"] is not None:
+            origins.append("page_rsc_fallback")
+    return {
+        "origin": "+".join(origins) if origins else None,
+        "option_class": option,
+        "b3_option_prices_source": b3_source,
+    }
+
+
+def _extract_obm_evidence(
+    candidates: list[tuple[str, dict[str, Any]]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Lê só a classe de opções e a fonte de preços B3 de cada payload."""
+    option: dict[str, Any] = {"value": None, "url": None, "observed_at": None, "as_of": None}
+    b3_source: dict[str, Any] = {
+        "value": None,
+        "url": None,
+        "observed_at": None,
+        "expected_at": None,
+        "as_of": None,
+    }
+    for url, payload in candidates:
+        classes = payload.get("classes") or []
+        sources = payload.get("sources") or []
+        option_class = next(
+            (
+                item
+                for item in classes
+                if isinstance(item, dict)
+                and _is_option_asset_class(item.get("asset_class"))
+            ),
+            None,
+        )
+        source = next(
+            (
+                item
+                for item in sources
+                if isinstance(item, dict) and item.get("source") == OBM_OPTION_PRICES_SOURCE
+            ),
+            None,
+        )
+        if isinstance(option_class, dict) and option["value"] is None:
+            # A classe não tem horário próprio: usa o `observado_em` da fonte B3
+            # do mesmo payload quando disponível.
+            option = {
+                "value": option_class.get("last_real_date"),
+                "url": url,
+                "observed_at": source.get("observado_em") if isinstance(source, dict) else None,
+                "as_of": payload.get("as_of"),
+            }
+        if isinstance(source, dict) and b3_source["value"] is None:
+            b3_source = {
+                "value": source.get("reference_date"),
+                "url": url,
+                "observed_at": source.get("observado_em"),
+                "expected_at": source.get("esperado_em"),
+                "as_of": payload.get("as_of"),
+            }
+        if option["value"] is not None and b3_source["value"] is not None:
+            break
+    return option, b3_source
+
+
+def _check_obm_session(
+    option: dict[str, Any], b3_source: dict[str, Any], session: str
+) -> None:
+    """Guarda positiva: as duas provas precisam existir e ser a sessão do lago."""
+    problems: list[str] = []
+    if option.get("value") != session:
+        problems.append(f"classes[{OBM_OPTION_ASSET_CLASS}].last_real_date={option.get('value')!r}")
+    if b3_source.get("value") != session:
+        problems.append(
+            f"sources[{OBM_OPTION_PRICES_SOURCE}].reference_date={b3_source.get('value')!r}"
+        )
+    if problems:
+        raise BenchFailure(
+            "session_mismatch",
+            f"OBM sem prova explícita da sessão {session}: {'; '.join(problems)}",
+            "a captura só vale quando opções e preços B3 estão na sessão do lago; "
+            "não use data de outra classe ou fonte",
+        )
+
+
+def validate_obm_session(
+    responses: list[dict[str, Any]], session: str, fallback_text: str = ""
+) -> dict[str, Any]:
+    """Guarda sobre brutos já capturados — sem rede e sem Playwright."""
+    evidence = _obm_option_evidence(responses, fallback_text)
+    _check_obm_session(evidence["option_class"], evidence["b3_option_prices_source"], session)
+    return evidence
+
+
+def _obm_reference(
+    page: Any,
+    responses: list[dict[str, Any]],
+    body_text: str,
+    fallback_text: str = "",
+) -> dict[str, Any]:
+    """Datas do OBM para auditoria + prova nomeada da sessão das opções."""
     from_json: set[str] = set()
     for item in responses:
         from_json |= _json_reference_dates(item.get("text", ""))
     from_text = _text_reference_dates(body_text)
+    evidence = _obm_option_evidence(responses, fallback_text)
     return {
         "from_json": sorted(from_json),
         "from_text": sorted(from_text),
         "all": sorted(from_json | from_text),
+        "session_evidence_origin": evidence["origin"],
+        "option_class": evidence["option_class"],
+        "b3_option_prices_source": evidence["b3_option_prices_source"],
     }
 
 
@@ -669,6 +1075,207 @@ def _obm_inputs(legs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return inputs
 
 
+NO_SINGLE_LEG_REASON = (
+    "A UI pública do montador não oferece controle para deixar uma única perna: "
+    "a grade tem duas linhas, não há botão/aria-label/título/ícone de remover no DOM "
+    "nem no JS público, e Delete/Backspace não reduzem o número de linhas. "
+    "Nada foi substituído por perna sintética nem por chamada direta à API."
+)
+BE_TOLERANCE_BRL = 0.30
+"""OBM interpola breakevens numa grade de 0,50; meia grade + arredondamento."""
+
+
+def _expected_external(name: str, inputs: list[dict[str, Any]]) -> dict[str, Any]:
+    """O que o botão público 'Recalcular' deve devolver, em base por ação."""
+    signed = [
+        ((1.0 if item["acao"] == "compra" else -1.0), float(item["strike"]), float(item["premio"]))
+        for item in inputs
+    ]
+    net_per_share = sum(sign * premium for sign, _strike, premium in signed)
+    if name == BULL_CALL_SPREAD:
+        low = min(k for _s, k, _p in signed)
+        high = max(k for _s, k, _p in signed)
+        breakevens = [low + net_per_share]
+        max_gain = (high - low - net_per_share) * QUANTITY
+        max_loss = -net_per_share * QUANTITY
+    elif name == BEAR_PUT_SPREAD:
+        high = max(k for _s, k, _p in signed)
+        low = min(k for _s, k, _p in signed)
+        breakevens = [high - net_per_share]
+        max_gain = (high - low - net_per_share) * QUANTITY
+        max_loss = -net_per_share * QUANTITY
+    elif name == STRADDLE:
+        strike = signed[0][1]
+        total = abs(net_per_share)
+        breakevens = sorted((strike - total, strike + total))
+        max_gain = None
+        max_loss = -total * QUANTITY
+    elif name == SHORT_PUT:
+        strike = signed[0][1]
+        breakevens = [strike + net_per_share]  # net_per_share é negativo (crédito)
+        max_gain = abs(net_per_share) * QUANTITY
+        max_loss = -(strike + net_per_share) * QUANTITY
+    else:
+        return {
+            "net_cost_brl": None,
+            "breakevens_brl": None,
+            "max_profit_brl": None,
+            "max_loss_brl": None,
+        }
+    return {
+        "net_cost_brl": round(net_per_share * QUANTITY, 6),
+        "net_cost_per_share_brl": round(net_per_share, 6),
+        "breakevens_brl": [round(value, 6) for value in breakevens],
+        "max_profit_brl": None if max_gain is None else round(max_gain, 6),
+        "max_loss_brl": round(max_loss, 6),
+        "note": "net_cost assinado como no request (compra +, venda -); BE analítico no vencimento",
+    }
+
+
+def _validate_external(
+    name: str, inputs: list[dict[str, Any]], recalc: dict[str, Any]
+) -> dict[str, Any]:
+    """Confere o bruto externo com os inputs preenchidos, não com preset antigo."""
+    expected = _expected_external(name, inputs)
+    raw_response = ((recalc or {}).get("response") or {}).get("text")
+    try:
+        external = json.loads(raw_response) if isinstance(raw_response, str) else {}
+    except (TypeError, json.JSONDecodeError):
+        external = {}
+    problems: list[str] = []
+    got_net = external.get("net_cost")
+    exp_net = expected.get("net_cost_brl")
+    if (
+        not isinstance(got_net, int | float)
+        or exp_net is None
+        or abs(float(got_net) - exp_net) > 1e-6
+    ):
+        problems.append(f"net_cost: externo={got_net!r} esperado={exp_net!r}")
+    payoff_points: list[tuple[float, float]] = []
+    payoff = external.get("payoff")
+    if isinstance(payoff, list):
+        for row in payoff:
+            if isinstance(row, dict):
+                spot = _as_positive_float(row.get("spot"))
+                pnl = row.get("payoff")
+                if spot is not None and isinstance(pnl, int | float):
+                    payoff_points.append((spot, float(pnl)))
+        payoff_points.sort()
+
+    got_be = external.get("breakevens")
+    exp_be = expected.get("breakevens_brl") or []
+    be_source = "analitico"
+    if not isinstance(got_be, list) or len(got_be) != len(exp_be):
+        problems.append(f"breakevens: externo={got_be!r} esperado={exp_be!r}")
+    else:
+        # O OBM interpola os breakevens na própria grade de payoff (passo 0,50).
+        # Reconstrói essa grade e confere o número publicado; só depois compara
+        # com o analítico dos inputs, com tolerância de meia grade.
+        grid_be: list[float] = []
+        if payoff_points:
+            for (x0, y0), (x1, y1) in zip(payoff_points, payoff_points[1:], strict=False):
+                if y0 == 0.0:
+                    grid_be.append(x0)
+                elif y0 * y1 < 0:
+                    grid_be.append(x0 - y0 * (x1 - x0) / (y1 - y0))
+        grid_ok = (
+            len(grid_be) == len(got_be)
+            and all(
+                abs(float(got) - want) <= 0.01
+                for got, want in zip(got_be, grid_be, strict=False)
+            )
+        )
+        if grid_ok:
+            be_source = "grade_do_obm"
+        else:
+            for got, want in zip(got_be, exp_be, strict=False):
+                if not isinstance(got, int | float) or abs(float(got) - want) > BE_TOLERANCE_BRL:
+                    problems.append(
+                        f"breakeven: externo={got!r} esperado={want} (tol {BE_TOLERANCE_BRL})"
+                    )
+    max_source = "analitico"
+    for field, key in (("max_profit", "max_profit_brl"), ("max_loss", "max_loss_brl")):
+        want = expected.get(key)
+        got = external.get(field)
+        if want is None:
+            continue
+        exact = isinstance(got, int | float) and abs(float(got) - want) <= 1e-6
+        grid_value = (
+            max(y for _x, y in payoff_points)
+            if field == "max_profit" and payoff_points
+            else min(y for _x, y in payoff_points)
+            if payoff_points
+            else None
+        )
+        from_grid = (
+            isinstance(got, int | float)
+            and grid_value is not None
+            and abs(float(got) - grid_value) <= 1e-6
+        )
+        if exact:
+            pass
+        elif from_grid:
+            max_source = "grade_do_obm"
+        else:
+            problems.append(
+                f"{field}: externo={got!r} esperado={want!r} (grade={grid_value!r})"
+            )
+    return {
+        "ok": not problems,
+        "expected": expected,
+        "max_source": max_source,
+        "got": {
+            "net_cost": got_net,
+            "breakevens": got_be,
+            "max_profit": external.get("max_profit"),
+            "max_loss": external.get("max_loss"),
+        },
+        "be_tolerance_brl": BE_TOLERANCE_BRL,
+        "be_source": be_source,
+        "breakevens_from_obm_grid": True if be_source == "grade_do_obm" else None,
+        "problems": problems,
+    }
+
+
+def _wait_ui_stable(page: Any, tries: int = 3, delay_ms: int = 300) -> None:
+    """Estabilização simples da UI: três leituras iguais do corpo da página."""
+    previous = None
+    for _ in range(tries):
+        current = page.locator("body").inner_text()
+        if current == previous:
+            return
+        previous = current
+        page.wait_for_timeout(delay_ms)
+
+
+def _public_control_inspection(page: Any, discover: Any) -> dict[str, Any]:
+    """Evidência de que não há controle público para remover uma perna."""
+    state = discover()
+    controls = state.get("buttons") or []
+    keyboard: dict[str, Any] = {}
+    for key in ("Delete", "Backspace"):
+        try:
+            rows = page.evaluate(DISCOVER_JS).get("rows") or []
+            if len(rows) > 1:
+                page.locator("tbody tr, table tr").nth(1).click(
+                    position={"x": 5, "y": 5}, timeout=5000
+                )
+                page.keyboard.press(key)
+                page.wait_for_timeout(350)
+            keyboard[key] = len(page.evaluate(DISCOVER_JS).get("rows") or [])
+        except Exception as exc:  # noqa: BLE001 — diagnóstico, não engole a falha
+            keyboard[key] = f"error:{type(exc).__name__}"
+    return {
+        "n_rows": len(state.get("rows") or []),
+        "button_texts": [str(item.get("text") or "")[:60] for item in controls],
+        "button_aria_labels": [
+            item.get("aria_label") for item in controls if item.get("aria_label")
+        ],
+        "keyboard_rows_after": keyboard,
+        "js_search": "sem 'remover'/'removeLeg' nos chunks públicos do montador",
+    }
+
+
 def _capture_one(
     page: Any,
     name: str,
@@ -684,6 +1291,24 @@ def _capture_one(
     discover = lambda: page.evaluate(DISCOVER_JS)  # noqa: E731 — callback curto e local
     wanted = _obm_inputs(legs)
     adjustment = _adjust_rows(page, len(wanted), discover)
+
+    # Put caixa: esgotada a inspeção dos controles públicos. Sem uma perna
+    # legítima, nunca publicar como `captured`.
+    if name == SHORT_PUT and not adjustment["ok"] and adjustment.get("rows", 0) > len(wanted):
+        return {
+            "status": "no_public_single_leg_control",
+            "reason": NO_SINGLE_LEG_REASON,
+            "preset": preset,
+            "inputs": wanted,
+            "outputs": None,
+            "raw": {
+                "adjustment": adjustment,
+                "filled": [],
+                "controls": discover(),
+                "control_inspection": _public_control_inspection(page, discover),
+            },
+        }
+
     filled: list[dict[str, Any]] = []
     if adjustment["ok"]:
         for index, item in enumerate(wanted):
@@ -701,32 +1326,84 @@ def _capture_one(
                 },
             )
             filled.append({"index": index, "item": item, "result": result})
-    before = len(responses)
-    page.wait_for_timeout(700)
+    preset_required = name in PRESET_LABELS
+    preset_ok = not preset_required or bool(preset.get("clicked"))
+    filled_ok = (
+        adjustment["ok"] and bool(wanted) and all(item["result"].get("ok") for item in filled)
+    )
+    recalc: dict[str, Any] = {
+        "button": None,
+        "request": None,
+        "response": None,
+        "ui": None,
+        "validation": None,
+    }
+    if filled_ok:
+        button = page.locator("button, [role='button']").filter(has_text="Recalcular")
+        if button.count() == 0:
+            recalc["button"] = "recalcular_not_found"
+        else:
+            recalc["button"] = "Recalcular"
+            try:
+                with page.expect_response(
+                    lambda r: r.url.endswith("/api/v1/opcoes/montador")
+                    and r.request.method == "POST",
+                    timeout=20000,
+                ) as expected_response:
+                    button.first.click(timeout=10000)
+                response = expected_response.value
+                _wait_ui_stable(page)
+                request = response.request
+                recalc["request"] = {
+                    "url": request.url,
+                    "method": request.method,
+                    "post_data": request.post_data,
+                }
+                try:
+                    text = response.text()
+                except Exception as exc:  # noqa: BLE001
+                    text = f"ERR:{exc}"
+                recalc["response"] = {
+                    "url": response.url,
+                    "status": response.status,
+                    "text": text[:200000],
+                }
+                state_recalc = discover()
+                recalc["ui"] = {
+                    "body_text": state_recalc.get("body_text"),
+                    "tables": page.evaluate(
+                        "() => Array.from(document.querySelectorAll('table'))"
+                        ".map((t) => t.innerText)"
+                    ),
+                }
+                recalc["validation"] = _validate_external(name, wanted, recalc)
+            except Exception as exc:  # noqa: BLE001 — falha explícita, nunca publicar
+                recalc["button"] = f"recalc_error:{type(exc).__name__}: {exc}"
+
+    validation = recalc.get("validation") or {}
+    ok = preset_ok and filled_ok and bool(validation.get("ok"))
+    if not ok:
+        if not preset_ok:
+            reason = str(preset.get("reason") or "preset_not_clicked")
+        elif not filled_ok:
+            reason = str(adjustment.get("reason") or "leg_fill_error")
+        else:
+            reason = "external_output_mismatch: " + "; ".join(
+                validation.get("problems") or ["sem resposta válida"]
+            )
+    else:
+        reason = None
     state = discover()
     outputs = {
         "body_text": state.get("body_text"),
         "tables": page.evaluate(
             "() => Array.from(document.querySelectorAll('table')).map((t) => t.innerText)"
         ),
-        "api_responses": responses[before:],
+        "api_responses": responses,
+        "recalc": recalc,
     }
-    # Só as três estruturas com preset pública podem ser ditas `captured` sem ele.
-    # `put_caixa` não tem preset e continua válido só por adjustment + fill.
-    preset_required = name in PRESET_LABELS
-    preset_ok = not preset_required or bool(preset.get("clicked"))
-    filled_ok = adjustment["ok"] and all(item["result"].get("ok") for item in filled)
-    ok = preset_ok and filled_ok
-    if not ok:
-        reason = (
-            str(preset.get("reason") or "preset_not_clicked")
-            if not preset_ok
-            else str(adjustment.get("reason") or "leg_fill_error")
-        )
-    else:
-        reason = None
     return {
-        "status": "captured" if ok else "montador_fill_failed",
+        "status": "captured" if ok else "montador_output_mismatch",
         "reason": reason,
         "preset": preset,
         "inputs": wanted,
@@ -768,19 +1445,26 @@ def capture_obm(
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
-        context = browser.new_context(viewport={"width": 1440, "height": 900}, locale="pt-BR")
+        context = browser.new_context(
+            viewport={"width": 1440, "height": 900},
+            locale="pt-BR",
+            user_agent=USER_AGENT,
+        )
         context.on("response", on_response)
         page = context.new_page()
         page.goto(OBM_MONTADOR_URL, wait_until="domcontentloaded", timeout=90000)
         page.wait_for_timeout(9000)
         guard = _guard_obm(page)
-        reference = _obm_reference(page, responses, guard["body_text"])
-        if session not in reference["all"]:
-            raise BenchFailure(
-                "session_mismatch",
-                f"OBM referencia {reference['all'] or 'nenhuma data'}; lago está em {session}",
-                "a captura só vale na mesma sessão; não publique bruto de outro pregão",
-            )
+        try:
+            # HTML/RSC da página: apenas fallback se os endpoints públicos
+            # carregados não trouxerem as duas provas; nunca api/v1 direto.
+            fallback_text = (page.content() or "")[:200000]
+        except Exception:  # noqa: BLE001 — ausência de fallback é falha explícita
+            fallback_text = ""
+        reference = _obm_reference(page, responses, guard["body_text"], fallback_text)
+        _check_obm_session(
+            reference["option_class"], reference["b3_option_prices_source"], session
+        )
         time.sleep(PAUSE_S)
 
         for name in STRUCTURE_NAMES:
@@ -867,24 +1551,130 @@ def _final_dir(output_dir: Path, session: str, underlying: str) -> Path:
     return output_dir / f"structures-{session}-{underlying.lower()}"
 
 
-def _already_done(final: Path, sha: str, model_version: Any) -> bool:
-    manifest = final / "manifest.json"
-    if not manifest.is_file():
+def _already_done(
+    final: Path, sha: str, model_version: Any, session: str, underlying: str
+) -> bool:
+    """Idempotência provada nos arquivos e nos SHA, não só no manifesto."""
+    path = final / "manifest.json"
+    if not path.is_file():
         return False
     try:
-        current = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        if (
+            manifest.get("source_sha256") != sha
+            or manifest.get("model_version") != model_version
+            or manifest.get("published") is not True
+            or manifest.get("session") != session
+            or manifest.get("underlying") != underlying
+            or manifest.get("reference_date") != session
+        ):
+            return False
+        files = manifest.get("files")
+        entries = manifest.get("structures")
+        if not isinstance(files, dict) or not isinstance(entries, dict):
+            return False
+        if set(files) != set(STRUCTURE_NAMES) or set(entries) != set(STRUCTURE_NAMES):
+            return False
+        if len(set(files.values())) != len(STRUCTURE_NAMES):
+            return False
+        plan_path = final / "plan.json"
+        if not plan_path.is_file():
+            return False
+        published_plan = json.loads(plan_path.read_text(encoding="utf-8"))
+        plan_entries = published_plan.get("structures")
+        if (
+            not isinstance(published_plan, dict)
+            or published_plan.get("source_sha256") != sha
+            or not isinstance(plan_entries, dict)
+            or set(plan_entries) != set(STRUCTURE_NAMES)
+        ):
+            return False
+        for name in STRUCTURE_NAMES:
+            record_path = final / str(files[name])
+            if not record_path.is_file() or record_path.name != f"{name}.json":
+                return False
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+            entry = entries[name]
+            # `source_sha256` da estrutura é o hash do par request/response dela,
+            # não o sha do plano inteiro (que vive no manifesto e no plan.json).
+            own_sha = _sha256(
+                {"request": record.get("request"), "response": record.get("response")}
+            )
+            plan_entry = plan_entries[name]
+            if (
+                not isinstance(record, dict)
+                or not isinstance(entry, dict)
+                or not isinstance(plan_entry, dict)
+                or record.get("name") != name
+                or record.get("source_sha256") != own_sha
+                or record.get("sha256") != _record_sha(record)
+                or not isinstance(record.get("status"), str)
+                or not record["status"]
+                or entry.get("sha256") != record["sha256"]
+                or entry.get("source_sha256") != own_sha
+                or plan_entry.get("source_sha256") != own_sha
+            ):
+                return False
+            obm = record.get("obm")
+            if (
+                isinstance(obm, dict)
+                and obm.get("inputs") is not None
+                and entry.get("inputs") != obm["inputs"]
+            ):
+                return False
+            # Idempotência não pode pular captura vermelha: exige output externo
+            # validado contra os inputs para as estruturas com preset pública.
+            status = record.get("status")
+            if name == COVERED_CALL:
+                if status != "unsupported_external":
+                    return False
+            elif name == SHORT_PUT and status == "no_public_single_leg_control":
+                if (
+                    record.get("reason") != NO_SINGLE_LEG_REASON
+                    or not isinstance(obm, dict)
+                    or obm.get("outputs") is not None
+                    or entry.get("external_output_valid") is not False
+                ):
+                    return False
+            else:
+                recalc = ((obm or {}).get("outputs") or {}).get("recalc") or {}
+                validation = recalc.get("validation") or {}
+                if (
+                    status != "captured"
+                    or validation.get("ok") is not True
+                    or entry.get("external_output_valid") is not True
+                ):
+                    return False
+    except (OSError, TypeError, ValueError, KeyError):
         return False
-    return (
-        current.get("source_sha256") == sha
-        and current.get("model_version") == model_version
-        and current.get("published") is True
-    )
+    return True
 
 
 def _cleanup(path: Path) -> None:
     if path.exists():
         shutil.rmtree(path, ignore_errors=True)
+
+
+def _publish(temp: Path, final: Path) -> None:
+    """Publica copiando arquivos: renomear DIRETÓRIO falha no bind do Windows.
+
+    Todo o conteúdo é lido antes de criar o destino; se qualquer escrita falhar,
+    o destino é removido — nunca fica um diretório publicado pela metade.
+    """
+    names = ["manifest.json", "plan.json", *[f"{name}.json" for name in STRUCTURE_NAMES]]
+    payloads = {name: (temp / name).read_text(encoding="utf-8") for name in names}
+    created = False
+    try:
+        if final.exists():
+            _cleanup(final)
+        final.mkdir(parents=True, exist_ok=False)
+        created = True
+        for name, text in payloads.items():
+            (final / name).write_text(text, encoding="utf-8")
+    except Exception:
+        if created:
+            _cleanup(final)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -931,14 +1721,17 @@ def main(argv: list[str] | None = None) -> int:
                 "bad_underlying", "--underlying vazio", "informe o ticker do papel (ex.: PETR4)"
             )
 
-        health_before = read_health(HTTP_URL)
+        health_before = read_health(HTTP_URL, args.date)
         session = args.date or health_before["session"]
-        if session != health_before["session"]:
+
+        prices = read_prices(HTTP_URL, underlying, session)
+        if prices["anchor"] is None:
             raise BenchFailure(
-                "session_mismatch",
-                f"--date {session} difere da sessão do lake {health_before['session']}",
-                "o benchmark usa só a última sessão; ajuste --date ou atualize o lake",
+                str(prices["flag"]),
+                f"/api/t/{underlying}/prices não trouxe o fechamento D-1 em {session}",
+                "sem âncora D-1 não há seleção legítima; não cair para ATM do termo nem mediana",
             )
+        anchor, anchor_source = prices["anchor"], prices["anchor_source"]
 
         underlying_data = read_underlying(HTTP_URL, underlying, session)
         expiry, expiry_source = choose_expiry(underlying_data, session)
@@ -950,7 +1743,14 @@ def main(argv: list[str] | None = None) -> int:
             )
         chain = read_chain(HTTP_URL, underlying, session, expiry)
         plans, diagnostics = plan_structures(
-            underlying, session, chain, expiry, underlying_data.get("atm_strike_brl")
+            underlying,
+            session,
+            chain,
+            expiry,
+            anchor,
+            anchor_source,
+            prices["anchor_date"],
+            prices["flag"],
         )
         structures = {
             name: evaluate_structure(HTTP_URL, name, plans[name]) for name in STRUCTURE_NAMES
@@ -973,6 +1773,14 @@ def main(argv: list[str] | None = None) -> int:
             "expiry_source": expiry_source,
             "model_version": health_before["model_version"],
             "quantity_shares": QUANTITY,
+            "anchor": {
+                "source": anchor_source,
+                "value_brl": anchor,
+                "date": prices["anchor_date"],
+                "flag": prices["flag"],
+                "previous_close_brl": prices["anchor"],
+                "raw": prices["raw"],
+            },
             "diagnostics": diagnostics,
             "health": health_before,
             "structures": {
@@ -985,7 +1793,6 @@ def main(argv: list[str] | None = None) -> int:
         output_dir = args.output_dir.resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
         plan_file = _plan_path(output_dir, session, underlying)
-        _write_json(plan_file, base_plan)
 
         summary = {
             "session": session,
@@ -997,11 +1804,15 @@ def main(argv: list[str] | None = None) -> int:
             "plan": str(plan_file),
         }
         if not args.execute:
+            _write_json(plan_file, base_plan)
             print(json.dumps({"mode": "plan", **summary}, ensure_ascii=False, indent=2))
             return 0
 
         final = _final_dir(output_dir, session, underlying)
-        if _already_done(final, source_sha, health_before["model_version"]) and not args.force:
+        if (
+            _already_done(final, source_sha, health_before["model_version"], session, underlying)
+            and not args.force
+        ):
             print(
                 json.dumps(
                     {"mode": "skip", "already_published": str(final), **summary},
@@ -1011,17 +1822,26 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
 
+        if args.force and final.exists():
+            stamp = _now_iso().replace(":", "").replace("-", "")
+            backup = output_dir / f"{final.name}.backup-{stamp}"
+            backup.mkdir(parents=True, exist_ok=True)
+            for source in final.iterdir():
+                if source.is_file():
+                    (backup / source.name).write_text(
+                        source.read_text(encoding="utf-8"), encoding="utf-8"
+                    )
+
         temp = output_dir / f".tmp-structures-{session}-{underlying.lower()}-{os.getpid()}"
         _cleanup(temp)
         temp.mkdir(parents=True)
         try:
             accessed_at = _now_iso()
             obm = capture_obm(session, structures, accessed_at)
-            health_after = read_health(HTTP_URL)
-            if (
-                health_after["session"] != health_before["session"]
-                or health_after["model_version"] != health_before["model_version"]
-            ):
+            health_after = read_health(HTTP_URL, session)
+            before_ok = health_matches(health_before, session, health_before["model_version"])
+            after_ok = health_matches(health_after, session, health_before["model_version"])
+            if not before_ok or not after_ok:
                 raise BenchFailure(
                     "session_mismatch",
                     "o lake mudou durante a captura: "
@@ -1033,7 +1853,7 @@ def main(argv: list[str] | None = None) -> int:
             records: dict[str, Any] = {}
             for name in STRUCTURE_NAMES:
                 record = _structure_record(name, structures[name], obm["structures"][name])
-                record["sha256"] = _sha256(record)
+                record["sha256"] = _record_sha(record)
                 filename = f"{name}.json"
                 _write_json(temp / filename, record)
                 records[name] = {
@@ -1054,6 +1874,10 @@ def main(argv: list[str] | None = None) -> int:
                 if captured and captured.get("inputs") is not None:
                     records[name]["inputs"] = captured["inputs"]
                     records[name]["outputs"] = captured["outputs"]
+                recalc = ((captured or {}).get("outputs") or {}).get("recalc") or {}
+                records[name]["external_output_valid"] = bool(
+                    (recalc.get("validation") or {}).get("ok")
+                )
 
             manifest = {
                 "schema": "b3o-bench-structures/1",
@@ -1077,6 +1901,7 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 "health_before": health_before["raw"],
                 "health_after": health_after["raw"],
+                "anchor": base_plan["anchor"],
                 "diagnostics": diagnostics,
                 "obm_page": obm["page"],
                 "obm_responses": obm["responses"],
@@ -1085,9 +1910,7 @@ def main(argv: list[str] | None = None) -> int:
             }
             _write_json(temp / "manifest.json", manifest)
             _write_json(temp / "plan.json", base_plan)
-            if final.exists():
-                _cleanup(final)
-            os.replace(temp, final)
+            _publish(temp, final)
         except BaseException:
             _cleanup(temp)
             raise
@@ -1107,6 +1930,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except BenchFailure as exc:
         print(json.dumps({"error": exc.payload()}, ensure_ascii=False, indent=2), file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001 — borda: erro explícito, sem traceback
+        print(
+            json.dumps(
+                {
+                    "error": {
+                        "code": "unexpected_error",
+                        "message": f"{type(exc).__name__}: {exc}",
+                        "hint": "falha não prevista no mecanismo; nada foi publicado",
+                    }
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
         return 1
 
 

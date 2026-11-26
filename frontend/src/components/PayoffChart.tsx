@@ -7,6 +7,7 @@
 import { useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { brl, fmt } from '../lib/format'
 import { num, visuallyHidden } from '../lib/classes'
+import { usePresentation } from '../lib/presentation'
 
 export interface PayoffPoint {
   spot_brl: number
@@ -22,9 +23,10 @@ export function PayoffChart({
   breakevens?: number[]
   ariaLabel: string
 }) {
+  const p = usePresentation()
   const [active, setActive] = useState<number | null>(null)
   if (points.length < 2) {
-    return <p className="mx-0 my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">payoff indisponível</p>
+    return <p className="mx-0 my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('payoff', 'unavailable').label}</p>
   }
 
   const W = 320
@@ -97,8 +99,8 @@ export function PayoffChart({
   return (
     <div className="chart chart--payoff">
       <div className="chart__bounds lg:text-chart" aria-hidden="true">
-        <span>P&amp;L máx {brl(yHi)}</span>
-        <span>P&amp;L mín {brl(yLo)}</span>
+        <span>{p.copy('pnl', 'max').label} {brl(yHi)}</span>
+        <span>{p.copy('pnl', 'min').label} {brl(yLo)}</span>
       </div>
       <svg
         className="chart__svg"
@@ -164,22 +166,22 @@ export function PayoffChart({
         >
           <div className="chart__tip-head">Preço {brl(activePoint.spot_brl)}</div>
           <div className="chart__tip-row">
-            <span>P&amp;L</span>
+            <span>{p.copy('pnl', 'chart').label}</span>
             <span className={num}>{brl(activePoint.pnl_brl)}</span>
           </div>
         </div>
       )}
       <p className={visuallyHidden} aria-live="polite">
-        {activePoint != null ? `Preço ${brl(activePoint.spot_brl)}: P&L ${brl(activePoint.pnl_brl)}` : ''}
+        {activePoint != null ? `Preço ${brl(activePoint.spot_brl)}: ${p.copy('pnl', 'chart').label} ${brl(activePoint.pnl_brl)}` : ''}
       </p>
       <div className="chart__legend lg:text-chart">
         <span>
           <i className="chart__key" aria-hidden="true" />
-          P&amp;L no vencimento
+          {p.copy('pnl', 'chart').label}
         </span>
         <span className="chart__legend-note">eixo x: preço do papel (R$)</span>
         {breakevens.length > 0 && (
-          <span className="chart__legend-note">tracejado vertical: breakeven</span>
+          <span className="chart__legend-note">tracejado vertical: {p.copy('chart', 'breakeven').label}</span>
         )}
       </div>
     </div>

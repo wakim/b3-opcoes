@@ -8,7 +8,6 @@ import {
   fetchJournalCalibrationAll,
   fetchJournalDecision,
   type CalibrationData,
-  type DecisionType,
   type Envelope,
   type Health,
   type JournalDecision,
@@ -37,6 +36,7 @@ import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
 import { ScreenTable } from '../components/ScreenTable'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
+import { usePresentation, type PresentationApi } from '../lib/presentation'
 import { ErrorState, Loading } from '../components/State'
 import { TokenGate, useAppToken } from '../components/TokenGate'
 import { Button } from '../components/ui/button'
@@ -52,38 +52,11 @@ export const Route = createFileRoute('/diario')({
   component: Diario,
 })
 
-const TYPE_LABELS: Record<string, string> = {
-  no_entry: 'Não entrei',
-  entry: 'Entrada',
-  exit: 'Saída',
-  hold: 'Manter',
-  watch: 'Observação',
-  other: 'Outra',
-}
-
-const METRIC_LABELS: Record<string, string> = {
-  spot: 'Preço (spot / fechamento)',
-  iv_atm_30d: 'IV ATM 30d',
-  vrp: 'VRP',
-  rr25: 'RR25',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'pendente',
-  hit: 'acerto',
-  miss: 'erro',
-  void: 'sem dados',
-}
-
-const VOID_LABELS: Record<string, string> = {
-  metric_unavailable: 'métrica ausente na sessão',
-  unsupported_metric: 'métrica não suportada',
-  invalid_observation: 'observado inválido',
-  prediction_parent_missing: 'previsão sem pai válido',
-}
-
-function metricLabel(metric: string): string {
-  return METRIC_LABELS[metric] ?? metric
+/** Rótulo de métrica projetado pelo dicionário; código desconhecido permanece
+ *  visível como contrato, sem mapa local ao lado do dicionário. */
+function metricLabel(p: PresentationApi, metric: string): string {
+  const key = p.metric(metric)
+  return key ? p.copy(key).label : metric
 }
 
 function metricValue(value: number | null, unit: string | undefined): string {
@@ -98,11 +71,8 @@ function sessionsLabel(value: number): string {
   return `${value} ${value === 1 ? 'sessão' : 'sessões'}`
 }
 
-function decisionTypeLabel(type: DecisionType | string): string {
-  return TYPE_LABELS[type] ?? type
-}
-
 function Diario() {
+  const p = usePresentation()
   const auth = useAppToken()
   const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
@@ -182,7 +152,7 @@ function Diario() {
       <div className="flex flex-wrap items-start justify-between gap-[12px] max-sm:block">
         <div>
           <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>Diário</h1>
-          <p className={`${quietLine} lg:text-label`}>Decisões, previsões estruturadas e desfecho EOD</p>
+          <p className={`${quietLine} lg:text-label`}>Decisões, previsões estruturadas e desfecho {p.copy('eod').label}</p>
         </div>
         {auth.hasToken && (
           <div className="flex flex-wrap items-center gap-[12px] max-sm:mt-[12px]">
@@ -195,11 +165,11 @@ function Diario() {
                 setFormOpen(true)
               }}
             >
-              Nova decisão
+              {p.copy('action', 'new_decision').label}
             </Button>
             {auth.tokenRequired && (
               <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
-                Trocar token
+                {p.copy('token', 'change').label}
               </Button>
             )}
           </div>
@@ -231,7 +201,7 @@ function Diario() {
           Por métrica e horizonte. A taxa usa apenas acertos e erros; “sem dados” fica separado.
           Não há comparação com sinal nem recomendação.
         </p>
-        {calibration.isLoading && <Loading label="carregando calibração…" />}
+        {calibration.isLoading && <Loading label={p.copy('loading', 'calibration').label} />}
         {calibration.isError && (
           <ErrorState error={calibration.error} title="Calibração indisponível" />
         )}
@@ -247,7 +217,7 @@ function Diario() {
           </h2>
           <span className={`${blockCount} lg:text-label`}>{journal.data?.meta?.total ?? 0}</span>
         </div>
-        {journal.isLoading && <Loading label="carregando diário…" />}
+        {journal.isLoading && <Loading label={p.copy('loading', 'journal').label} />}
         {journal.isError && <ErrorState error={journal.error} title="Diário indisponível" />}
         {journal.data?.meta?.note && (
           <p className={`${notice} lg:text-label`} role="status">
@@ -276,8 +246,8 @@ function Diario() {
 
       <Dialog
         open={formOpen}
-        title="Nova decisão"
-        eyebrow="journal append-only"
+        title={p.copy('action', 'new_decision').label}
+        eyebrow={p.copy('append_only').label}
         onClose={closeForm}
         busy={formBusy}
         showCloseButton={false}
@@ -318,6 +288,7 @@ function CalibrationReport({
   data: CalibrationData
   onMetric: OpenMetric
 }) {
+  const p = usePresentation()
   const totals = data.totals
   return (
     <>
@@ -325,6 +296,7 @@ function CalibrationReport({
         <GlossaryMetric
           field="sample_n"
           label="Previsões avaliadas"
+          term={p.metric('sample_n') ?? undefined}
           value={fmt(totals.n, 0)}
           onOpen={onMetric}
         />
@@ -332,13 +304,13 @@ function CalibrationReport({
         <Metric label="Erros" value={fmt(totals.miss, 0)} />
         <GlossaryMetric
           field="void_count"
-          label="Sem dados"
+          term="void"
           value={fmt(totals.void, 0)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="personal_hit_rate"
-          label="Taxa de acerto pessoal"
+          term="personal_hit_rate"
           value={totals.hit_rate_pct == null ? '—' : `${fmt(totals.hit_rate_pct, 1)}%`}
           note={`n ${totals.n}`}
           onOpen={onMetric}
@@ -376,16 +348,16 @@ function CalibrationReport({
                       type="button"
                       variant="link"
                       size="sm"
-                      className="h-[44px] px-0 lg:text-label"
+                      className="h-[44px] min-w-[44px] px-0 lg:text-label"
                       onClick={() =>
                         onMetric(
                           group.metric,
-                          metricLabel(group.metric),
+                          metricLabel(p, group.metric),
                           metricValue(null, group.unit),
                         )
                       }
                     >
-                      {metricLabel(group.metric)}
+                      {metricLabel(p, group.metric)}
                     </Button>
                   </TableHead>
                   <TableCell className={`${num} px-2 py-2.5`}>{sessionsLabel(group.horizon_sessions)}</TableCell>
@@ -403,7 +375,7 @@ function CalibrationReport({
                       : group.void_reasons
                           .map(
                             (item) =>
-                              `${VOID_LABELS[item.reason] ?? item.reason}: ${item.count}`,
+                              `${p.copy('void', undefined, { reason: item.reason, code: item.reason }).label}: ${item.count}`,
                           )
                           .join(' · ')}
                   </TableCell>
@@ -423,6 +395,7 @@ function DecisionCard({
   decision: JournalDecision
   onMetric: OpenMetric
 }) {
+  const p = usePresentation()
   const prediction = decision.prediction
   return (
     <article className="min-w-0 rounded-[6px] border border-border bg-card p-[16px] max-sm:p-[12px]">
@@ -436,7 +409,7 @@ function DecisionCard({
             {decision.underlying}
           </Link>
           <span className="ml-[12px] text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
-            {decisionTypeLabel(decision.decision_type)}
+            {p.decisionType(decision.decision_type).label}
           </span>
         </div>
         <span className={`${quiet} lg:text-label`}>{dateBr(decision.session)}</span>
@@ -471,6 +444,7 @@ function PredictionOutcome({
   prediction: JournalPrediction
   onMetric: OpenMetric
 }) {
+  const p = usePresentation()
   const threshold = metricValue(prediction.value, prediction.unit)
   const observed = metricValue(prediction.observed, prediction.unit)
   return (
@@ -482,10 +456,10 @@ function PredictionOutcome({
             type="button"
             variant="link"
             size="sm"
-            className="h-[44px] px-0 lg:text-label"
-            onClick={() => onMetric(prediction.metric, metricLabel(prediction.metric), threshold)}
+            className="h-[44px] min-w-[44px] px-0 lg:text-label"
+            onClick={() => onMetric(prediction.metric, metricLabel(p, prediction.metric), threshold)}
           >
-            {metricLabel(prediction.metric)}
+            {metricLabel(p, prediction.metric)}
           </Button>{' '}
           {prediction.operator} {threshold} · {sessionsLabel(prediction.horizon_sessions)} · avaliar em{' '}
           {dateBr(prediction.evaluate_on)}
@@ -505,21 +479,21 @@ function PredictionOutcome({
             type="button"
             variant="link"
             size="sm"
-            className="h-[44px] px-0 lg:text-label"
+            className="h-[44px] min-w-[44px] px-0 lg:text-label"
             onClick={() =>
               onMetric(
                 'prediction_status',
                 'Desfecho da previsão',
-                STATUS_LABELS[prediction.status] ?? prediction.status,
+                p.predictionStatus(prediction.status, 'journal').label,
               )
             }
           >
-            {STATUS_LABELS[prediction.status] ?? prediction.status}
+            {p.predictionStatus(prediction.status, 'journal').label}
           </Button>
           {prediction.status === 'void' && prediction.void_reason && (
             <span className="text-[color:var(--text-2)]">
               {' '}
-              · {VOID_LABELS[prediction.void_reason] ?? prediction.void_reason}
+              · {p.copy('void', undefined, { reason: prediction.void_reason, code: prediction.void_reason }).label}
             </span>
           )}
         </span>

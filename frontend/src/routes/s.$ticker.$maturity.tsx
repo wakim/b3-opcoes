@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { apiGet, type SeriesDetail } from '../lib/api'
-import { brl, fmt } from '../lib/format'
+import { brl, dateBr, fmt } from '../lib/format'
 import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { Ruler } from '../components/Ruler'
@@ -10,6 +10,7 @@ import { LineChart } from '../components/LineChart'
 import { MetricModal } from '../components/MetricModal'
 import { ScreenTable } from '../components/ScreenTable'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
+import { usePresentation } from '../lib/presentation'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import {
   TableBody,
@@ -28,22 +29,8 @@ const IDT = 'text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:t
 const IDD = 'mt-[4px] text-[calc(12px*var(--font-scale))] text-foreground [overflow-wrap:anywhere] lg:text-detail'
 const IDD_NUM = `${IDD} font-mono tabular-nums`
 
-function sideLabel(side: string): string {
-  const code = side.trim().toUpperCase()
-  if (code.startsWith('C')) return 'Call'
-  if (code.startsWith('P')) return 'Put'
-  return side
-}
-
-function styleLabel(style: string | null): string {
-  if (!style) return '—'
-  const code = style.trim().toUpperCase()
-  if (code === 'E') return 'Europeia'
-  if (code === 'A') return 'Americana'
-  return style
-}
-
 function SeriesPage() {
+  const p = usePresentation()
   const { ticker, maturity } = Route.useParams()
   const [view, setView] = useState<'price' | 'iv'>('price')
   const [modal, setModal] = useState<ModalTarget | null>(null)
@@ -60,6 +47,26 @@ function SeriesPage() {
   const data = series.data.data
   const history = data.history
   const labels = history.map((point) => point.date.slice(5))
+  // `metrics_series` só tem dia com negócio: o eixo x é o pregão do lake, para
+  // que 10 negócios em 3 meses não pareçam uma curva diária contínua.
+  const sessionX = history.every((point) => point.session_index != null)
+    ? history.map((point) => point.session_index as number)
+    : undefined
+  const legChange = history.map(
+    (point, index) => index > 0 && point.leg_id != null && point.leg_id !== history[index - 1].leg_id,
+  )
+  const legEvents = legChange.flatMap((changed, index) => (changed ? [{ index, kind: 'leg' as const }] : []))
+  const sessionSpan = sessionX ? sessionX[sessionX.length - 1] - sessionX[0] + 1 : history.length
+  const historyDetails = history.map((point, index) => {
+    const parts: string[] = []
+    if (point.strike_brl != null) parts.push(`${p.copy('strike').label} ${brl(point.strike_brl)}`)
+    if (legChange[index]) parts.push(p.copy('chart', 'leg').label)
+    if (sessionX && index > 0) {
+      const idle = sessionX[index] - sessionX[index - 1] - 1
+      if (idle > 0) parts.push(`${idle} ${idle > 1 ? 'pregões' : 'pregão'} sem negócio antes`)
+    }
+    return parts.length ? parts.join(' · ') : null
+  })
 
   return (
     <>
@@ -70,10 +77,10 @@ function SeriesPage() {
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-border bg-border">
         <div className={IDC}><dt className={IDT}>Contrato</dt><dd className={IDD_NUM}>{data.ticker}</dd></div>
-        <div className={IDC}><dt className={IDT}>Lado / estilo</dt><dd className={IDD}>{sideLabel(data.side)} / {styleLabel(data.style)}</dd></div>
-        <div className={IDC}><dt className={IDT}>Preço de exercício</dt><dd className={IDD_NUM}>{brl(data.strike_brl)}</dd></div>
-        <div className={IDC}><dt className={IDT}>Vencimento</dt><dd className={IDD_NUM}>{data.maturity}</dd></div>
-        <div className={IDC}><dt className={IDT}>Perna</dt><dd className={IDD_NUM}>{data.leg_id}</dd></div>
+        <div className={IDC}><dt className={IDT}>Lado / estilo</dt><dd className={IDD}>{p.side(data.side)} / {data.style ? p.style(data.style) : p.copy('option_style', 'unknown').label}</dd></div>
+        <div className={IDC}><dt className={IDT}>{p.copy('strike', 'expanded').label}</dt><dd className={IDD_NUM}>{brl(data.strike_brl)}</dd></div>
+        <div className={IDC}><dt className={IDT}>{p.copy('maturity').label}</dt><dd className={IDD_NUM}>{data.maturity}</dd></div>
+        <div className={IDC}><dt className={IDT}>{p.copy('leg').label}</dt><dd className={IDD_NUM}>{data.leg_id}</dd></div>
       </dl>
 
       <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Último ponto · {data.last.date}</h2>
@@ -82,22 +89,20 @@ function SeriesPage() {
         <GlossaryMetric
           field="mid_brl"
           label="Preço"
-          hint="Preço usado na volatilidade implícita: o fechamento do negócio, não o meio do book."
+          term={p.metric('mid_brl') ?? 'spot'}
           value={brl(data.last.mid_brl ?? data.last.close_brl)}
           onOpen={openMetric}
           emphasis
         />
         <GlossaryMetric
           field="iv_pct"
-          label="Volatilidade implícita"
-          hint="Volatilidade que o preço da opção está pedindo, ao ano."
+          term="iv_pct"
           value={fmt(data.last.iv_pct)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="delta"
-          label="Delta"
-          hint="Quanto o prêmio muda para cada R$ 1 de variação da ação."
+          term="delta"
           value={fmt(data.last.delta, 3)}
           onOpen={openMetric}
           note={
@@ -107,28 +112,27 @@ function SeriesPage() {
               max={1}
               ticks={[-1, 0, 1]}
               format={(v) => fmt(v, 1)}
-              describe="Delta"
+              describe={p.copy('delta', 'ruler').label}
             />
           }
         />
         <GlossaryMetric
           field="gamma"
-          label="Gamma"
-          hint="Taxa de variação do delta."
+          term="gamma"
           value={fmt(data.gamma, 4)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="theta_brl"
-          label="Theta (por dia)"
-          hint="Quanto o prêmio perde por dia útil, só pela passagem do tempo."
+          term="theta"
+          variant="per_day"
           value={brl(data.theta_brl)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="vega_brl"
-          label="Vega (por ponto de vol.)"
-          hint="Quanto o prêmio muda para cada 1 ponto de volatilidade implícita."
+          term="vega"
+          variant="per_vol"
           value={brl(data.vega_brl)}
           onOpen={openMetric}
         />
@@ -153,7 +157,7 @@ function SeriesPage() {
             value="iv"
             className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
-            Volatilidade
+            {p.copy('iv_pct').label}
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -161,24 +165,33 @@ function SeriesPage() {
         labels={labels}
         series={[
           {
-            label: view === 'price' ? 'Preço' : 'Volatilidade implícita',
+            label: view === 'price' ? 'Preço' : p.copy('iv_pct').label,
             values: history.map((point) => (view === 'price' ? point.close_brl : point.iv_pct)),
           },
         ]}
         formatValue={(v) => (view === 'price' ? brl(v) : fmt(v, 1))}
-        ariaLabel={`Histórico de ${view === 'price' ? 'preço' : 'volatilidade implícita'} de ${data.ticker}`}
-        showPoints={false}
+        ariaLabel={`Histórico de ${view === 'price' ? 'preço' : p.copy('iv_pct').label} de ${data.ticker}`}
+        showPoints={history.length <= 30}
+        xValues={sessionX}
+        dashedGap={1}
+        gapLabel={p.copy('chart', 'no_trade_gap').label}
+        tipLabels={history.map((point) => dateBr(point.date))}
+        details={historyDetails}
+        breakBefore={legChange}
+        events={legEvents}
+        eventLabels={{ leg: p.copy('chart', 'leg').label }}
+        caption={`${history.length} pregões com negócio em ${sessionSpan} do lake · preço = último negócio do dia, não cotação${legEvents.length ? ' · a linha não liga pernas diferentes' : ''}`}
       />
-      {data.flags.length > 0 && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {data.flags.join(' · ')}</p>}
+      {data.flags.length > 0 && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {data.flags.map((code) => p.flag(code).label).join(' · ')}</p>}
 
       <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Últimos pregões</h2>
       <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
         <TableHeader>
             <TableRow>
               <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Data</TableHead>
-              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">Fechamento</TableHead>
-              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">Volatilidade implícita</TableHead>
-              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">Delta</TableHead>
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('spot', 'close').label}</TableHead>
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('iv_pct').label}</TableHead>
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('delta').label}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

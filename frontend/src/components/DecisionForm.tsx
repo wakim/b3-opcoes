@@ -12,6 +12,7 @@ import {
   type PredictionMetric,
 } from '../lib/api'
 import { ErrorState } from './State'
+import { usePresentation } from '../lib/presentation'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
 import { DialogClose } from './ui/dialog'
@@ -132,6 +133,7 @@ export function DecisionForm({
   onConflict: (clientDecisionId: string) => void | Promise<void>
   onBusyChange: (busy: boolean) => void
 }) {
+  const p = usePresentation()
   const [initialDraft] = useState(loadDraft)
   const [clientDecisionId] = useState(() => initialDraft?.clientDecisionId ?? newId())
   const [underlying, setUnderlying] = useState(initialDraft?.underlying ?? '')
@@ -325,7 +327,7 @@ export function DecisionForm({
               >
                 {TYPES.map((item) => (
                   <option key={item.value} value={item.value}>
-                    {item.label}
+                    {p.decisionType(item.value).label}
                   </option>
                 ))}
               </NativeSelect>
@@ -380,7 +382,7 @@ export function DecisionForm({
                   >
                     {METRICS.map((item) => (
                       <option key={item.value} value={item.value}>
-                        {item.label}
+                        {p.copy(item.value).label}
                       </option>
                     ))}
                   </NativeSelect>
@@ -457,10 +459,10 @@ export function DecisionForm({
               onClick={discard}
               disabled={create.isPending}
             >
-              Cancelar
+              {p.copy('action', 'cancel').label}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? 'registrando…' : 'Registrar decisão'}
+              {create.isPending ? p.copy('action', 'registering').label : p.copy('action', 'register_decision').label}
             </Button>
           </div>
         </fieldset>

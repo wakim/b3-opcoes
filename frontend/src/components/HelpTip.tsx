@@ -1,7 +1,27 @@
-/** Tooltip curto e acessível: hover, foco por teclado ou toque. */
+/** Tooltip curto e acessível: hover, foco por teclado ou toque.
+ *
+ * F9: `text` explícito continua valendo; na ausência dele a ajuda curta vem do
+ * dicionário pela chave semântica. Nenhuma lógica de perfil vive aqui.
+ */
 import { useEffect, useId, useRef, useState, type FocusEvent, type PointerEvent } from 'react'
+import { useCopy, type CopyParams, type PresentationKey } from '../lib/presentation'
 
-export function HelpTip({ label, text }: { label: string; text: string }) {
+export function HelpTip({
+  label,
+  text,
+  term,
+  variant,
+  params,
+}: {
+  label?: string
+  text?: string
+  term?: PresentationKey
+  variant?: string
+  params?: CopyParams
+}) {
+  const copy = useCopy(term ?? 'metric.generic', variant, { ...params, label: label ?? '' })
+  const resolvedText = text ?? copy.help ?? ''
+  const ariaLabel = label ?? copy.label ?? 'Ajuda'
   const id = useId()
   const [open, setOpen] = useState(false)
   const ignoreClickUntil = useRef(0)
@@ -58,7 +78,7 @@ export function HelpTip({ label, text }: { label: string; text: string }) {
       <button
         type="button"
         className="inline-flex size-[44px] shrink-0 cursor-help items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-[var(--text-2)] hover:bg-secondary hover:text-primary focus-visible:bg-secondary focus-visible:text-primary focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-        aria-label={label}
+        aria-label={ariaLabel}
         aria-describedby={id}
         aria-expanded={open}
         onMouseEnter={openTip}
@@ -78,7 +98,7 @@ export function HelpTip({ label, text }: { label: string; text: string }) {
         role="tooltip"
         data-open={open}
       >
-        {text}
+        {resolvedText}
       </span>
     </span>
   )

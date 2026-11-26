@@ -2,7 +2,10 @@
  *
  * O número continua visível no `Metric`; a régua só responde "onde ele está".
  * A agulha é o único branco-gelo fora do gráfico — não é cor decorativa.
+ * Os textos de acessibilidade vêm do dicionário; a geometria não muda.
  */
+import { usePresentation } from '../lib/presentation'
+
 export interface RulerProps {
   value: number | null
   min: number
@@ -18,16 +21,19 @@ export function Ruler({
   max,
   ticks,
   format = (v) => String(v),
-  describe = 'Posição',
+  describe,
 }: RulerProps) {
+  const p = usePresentation()
   const marks = ticks ?? [min, (min + max) / 2, max]
   const clamped = value != null && (value < min || value > max)
   const pct = value == null
     ? null
     : Math.max(0, Math.min(1, (value - min) / (max - min))) * 100
+  const subject = describe ?? p.copy('ruler', 'position').label
+  const range = `${p.copy('ruler', 'range').label} ${format(min)} a ${format(max)}`
   const aria = value == null
-    ? `${describe}: indisponível; faixa ${format(min)} a ${format(max)}`
-    : `${describe}: ${format(value)}; faixa ${format(min)} a ${format(max)}${clamped ? '; fora da faixa' : ''}`
+    ? `${subject}: ${p.copy('ruler', 'unavailable').label}; ${range}`
+    : `${subject}: ${format(value)}; ${range}${clamped ? `; ${p.copy('ruler', 'outside').label}` : ''}`
 
   return (
     <span className={`ruler${clamped ? ' ruler--clamped' : ''}`} role="img" aria-label={aria}>

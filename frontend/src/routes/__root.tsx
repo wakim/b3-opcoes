@@ -4,6 +4,8 @@ import { Link, Outlet, createRootRoute, useRouterState } from '@tanstack/react-r
 import { apiGet, type Health } from '../lib/api'
 import { ErrorState } from '../components/State'
 import { Stamp } from '../components/Stamp'
+import { LanguageProvider } from '../lib/language'
+import { LanguageToggle } from '../components/LanguageToggle'
 import {
   OfflineBanner,
   persistHealth,
@@ -35,7 +37,9 @@ const NAV = [
 function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell />
+      <LanguageProvider>
+        <AppShell />
+      </LanguageProvider>
     </QueryClientProvider>
   )
 }
@@ -66,12 +70,15 @@ function AppShell() {
         <span className="shrink-0 text-[calc(16px*var(--font-scale))] font-medium tracking-normal lg:text-block-title">
           Opções B3
         </span>
-        <Stamp
-          session={shownSession}
-          loading={health.isLoading && !offline}
-          ageSessions={ageSessions}
-          offline={offline}
-        />
+        <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-[12px]">
+          <LanguageToggle />
+          <Stamp
+            session={shownSession}
+            loading={health.isLoading && !offline}
+            ageSessions={ageSessions}
+            offline={offline}
+          />
+        </div>
       </header>
       <main className="mx-auto w-full max-w-[900px] flex-1 px-[16px] pb-[88px] pt-[16px] lg:max-w-[1334px]">
         <OfflineBanner offline={offline} session={knownSession} />

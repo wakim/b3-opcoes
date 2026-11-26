@@ -20,6 +20,7 @@ import {
   TableRow,
 } from '../components/ui/table'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
+import { usePresentation } from '../lib/presentation'
 
 export const Route = createFileRoute('/')({
   component: Hoje,
@@ -28,8 +29,9 @@ export const Route = createFileRoute('/')({
 const headClass = 'px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head'
 
 function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: boolean }) {
+  const p = usePresentation()
   if (rows.length === 0) {
-    return <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhum papel nesta seção do recorte</p>
+    return <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('empty', 'papers').label}</p>
   }
   return (
     <ScreenTable
@@ -46,9 +48,9 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
             <TableHead scope="col" className={`text-right ${headClass}`}>Fechamento</TableHead>
             {withOptions && (
               <>
-                <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita 30d</TableHead>
-                <InfoTip text="VRP = volatilidade implícita − realizada">
-                  <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Prêmio de volatilidade. VRP = volatilidade implícita − realizada">Prêmio de volatilidade</TableHead>
+                <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('iv_atm_30d').label}</TableHead>
+                <InfoTip term="vrp">
+                  <TableHead scope="col" className={`text-right ${headClass}`} aria-label={`${p.copy('vrp').label}. ${p.copy('vrp').help ?? ''}`}>{p.copy('vrp').label}</TableHead>
                 </InfoTip>
                 <TableHead scope="col" className={`text-right ${headClass}`}>Séries líquidas</TableHead>
                 <TableHead scope="col" className={`text-right ${headClass}`}>Vencimentos</TableHead>
@@ -74,12 +76,12 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
                 <>
                   <TableCell className="px-[8px] py-[10px]">{fmt(row.iv_atm_30d)}</TableCell>
                   {row.vrp != null && row.flags.includes('rv_shock_day') ? (
-                    <InfoTip text={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}>
+                    <InfoTip text={p.copy('rv_shock', 'help', { share: sharePct(row.rv_shock_share_pct), date: dateBr(row.rv_shock_date) }).label}>
                       <TableCell className="px-[8px] py-[10px]">
                         {fmt(row.vrp)}
                         <span
                           className="ml-[3px] cursor-help text-muted-foreground"
-                          aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
+                          aria-label={p.copy('rv_shock', 'marker', { date: dateBr(row.rv_shock_date) }).label}
                         >
                           †
                         </span>
@@ -92,7 +94,7 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
                   <TableCell className="px-[8px] py-[10px]">{row.n_expiries}</TableCell>
                 </>
               )}
-              <TableCell className="text-[color:var(--text-3)] px-[8px] py-[10px]">{row.exclusion ?? 'ok'}</TableCell>
+              <TableCell className="text-[color:var(--text-3)] px-[8px] py-[10px]">{p.exclusion(row.exclusion ?? 'ok').label}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -101,6 +103,7 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
 }
 
 function Hoje() {
+  const p = usePresentation()
   const [modal, setModal] = useState<ModalTarget | null>(null)
   const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
   const screen = useQuery({
@@ -118,7 +121,7 @@ function Hoje() {
   return (
     <>
       <h1 className="mb-[16px] mt-[4px] text-[calc(28px*var(--font-scale))] font-medium leading-normal tracking-[-0.02em] lg:text-screen-title lg:leading-title">Hoje</h1>
-      <p className="mb-[16px] text-[calc(12.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-lede lg:leading-body">Leitura descritiva da sessão. Nenhum número aqui é previsão.</p>
+      <p className="mb-[16px] text-[calc(12.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-lede lg:leading-body">{p.copy('descriptive_note').label}</p>
 
       <TickerSearch />
 
@@ -128,15 +131,15 @@ function Hoje() {
         <Metric label="Excluídos" value={summary.excluded} />
         <GlossaryMetric
           field="iv_atm_30d"
-          label="Volatilidade implícita mediana"
-          hint="Volatilidade implícita no dinheiro (ATM), padronizada para 30 dias."
+          term="iv_atm_30d"
+          variant="median"
           value={fmt(summary.iv_median)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="vrp"
-          label="Prêmio de volatilidade mediano"
-          hint="VRP = volatilidade implícita − realizada."
+          term="vrp"
+          variant="median"
           value={fmt(summary.vrp_median)}
           onOpen={openMetric}
         />
@@ -156,7 +159,7 @@ function Hoje() {
             variant="link"
             size="sm"
             className="h-[44px] justify-start rounded-none px-0 font-normal whitespace-normal text-foreground underline underline-offset-2 focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label"
-            onClick={() => openMetric('rv_shock_share_pct', 'Pregão dominante na RV', `${summary.rv_shock_count} papéis`)}
+            onClick={() => openMetric('rv_shock_share_pct', p.copy('rv', 'shock').label, `${summary.rv_shock_count} papéis`)}
           >
             O que é isso
           </Button>
@@ -167,14 +170,14 @@ function Hoje() {
 
       <section className="min-w-0 max-w-full">
         <h2 className="mb-[8px] mt-[24px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
-          Com opções <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withOptions.length} papéis</span>
+          {p.copy('search', 'with_options').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withOptions} withOptions />
       </section>
 
       <section className="mt-[8px] min-w-0 max-w-full">
         <h2 className="mb-[8px] mt-[24px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
-          Sem opções <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withoutOptions.length} papéis</span>
+          {p.copy('search', 'without_options').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withoutOptions.length} papéis</span>
         </h2>
         <PapersTable rows={withoutOptions} withOptions={false} />
       </section>

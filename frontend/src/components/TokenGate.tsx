@@ -5,6 +5,7 @@ import { APP_TOKEN_STORAGE_KEY, apiGet, type Health } from '../lib/api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { blockTitleBase, chainNote, field, fieldLabel, notice as noticeClass, note } from '../lib/classes'
+import { usePresentation } from '../lib/presentation'
 
 const APP_TOKEN_EVENT = 'b3o:app-token-change'
 
@@ -77,6 +78,7 @@ export function TokenGate({
   autoFocus?: boolean
   description?: string
 }) {
+  const p = usePresentation()
   const id = useId()
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -85,11 +87,11 @@ export function TokenGate({
     event.preventDefault()
     const token = value.trim()
     if (!token) {
-      setError('digite o token do aplicativo')
+      setError(p.copy('token', 'required_error').label)
       return
     }
     if (!writeStoredToken(token)) {
-      setError('não foi possível salvar o token neste navegador')
+      setError(p.copy('token', 'save_error').label)
       return
     }
     setValue('')
@@ -105,20 +107,18 @@ export function TokenGate({
       aria-labelledby={`${id}-title`}
     >
       <h2 className={`${blockTitleBase} lg:text-block-title lg:leading-title`} id={`${id}-title`}>
-        {title ?? (compact ? 'Token para fechar' : 'Liberar escritas')}
+        {title ?? p.copy('token', compact ? 'close' : 'unlock').label}
       </h2>
       <p className={`${chainNote} lg:text-label lg:leading-body`}>
         {description ??
-          (compact
-            ? 'O fechamento grava um evento no journal e exige o token de escrita.'
-            : 'A leitura é liberada na tailnet. O token libera apenas as escritas desta carteira.')}
+          p.copy('token', compact ? 'compact_description' : 'description').label}
       </p>
       <form
         className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-[8px] max-sm:grid-cols-[minmax(0,1fr)]"
         onSubmit={submit}
       >
         <label className={field} htmlFor={`${id}-token`}>
-          <span className={`${fieldLabel} lg:text-label`}>Token do aplicativo</span>
+          <span className={`${fieldLabel} lg:text-label`}>{p.copy('token', 'label').label}</span>
           <Input
             id={`${id}-token`}
             type="password"
@@ -133,7 +133,7 @@ export function TokenGate({
             autoFocus={autoFocus}
           />
         </label>
-        <Button type="submit">Salvar token</Button>
+        <Button type="submit">{p.copy('token', 'save').label}</Button>
       </form>
       {(notice || error) && (
         <p className={`${noticeClass} lg:text-label`} role="alert">
@@ -141,8 +141,7 @@ export function TokenGate({
         </p>
       )}
       <p className={`${note} lg:text-label`} id={`${id}-note`}>
-        Fica somente neste navegador e é enviado no cabeçalho das escritas. Não aparece na tela nem no
-        log.
+        {p.copy('token', 'note').label}
       </p>
     </section>
   )

@@ -1,59 +1,12 @@
-/** Rótulos e formatação de posição — apresentação, nunca cálculo financeiro. */
+/** Rótulos e formatação de posição — apresentação, nunca cálculo financeiro.
+ *
+ * Tipos, status, flags e desfechos vêm do dicionário único (`usePresentation`);
+ * aqui não resta mapa local. Números e unidades não são tocados.
+ */
 import { brl, fmt } from '../lib/format'
 import { numNeg, numPos, quiet } from '../lib/classes'
+import { usePresentation } from '../lib/presentation'
 import { InfoTip } from './InfoTip'
-
-const FLAG_LABELS: Record<string, string> = {
-  near_expiry: 'vencimento próximo',
-  itm: 'dentro do dinheiro',
-  delta_drift: 'delta mudou',
-  event_in_window: 'evento na janela',
-  thesis_failed: 'tese não confirmada',
-  capital_over: 'capital acima do limite',
-  one_sided: 'livro de um lado só',
-  mark_missing: 'marcação ausente',
-  gregas_parciais: 'gregas parciais',
-  unbounded_loss: 'perda ilimitada',
-  payoff_unavailable: 'payoff indisponível',
-  payoff_truncated: 'payoff truncado',
-  close_snapshot_missing: 'snapshot do fechamento ausente',
-}
-
-const KIND_LABELS: Record<string, string> = {
-  covered: 'cobertura',
-  bull_call_spread: 'trava de alta',
-  bear_put_spread: 'trava de baixa',
-  straddle: 'straddle',
-  strangle: 'strangle',
-  put_caixa: 'put caixa',
-  custom: 'estrutura',
-}
-
-export function positionKindLabel(kind: string): string {
-  return KIND_LABELS[kind] ?? kind
-}
-
-export function positionStatusLabel(status: string): string {
-  if (status === 'open') return 'aberta'
-  if (status === 'closed') return 'fechada'
-  return status
-}
-
-export function legTypeLabel(type: string, optionSide?: string | null): string {
-  if (type === 'stock') return 'ação'
-  if (type === 'call' || optionSide === 'C') return 'call'
-  if (type === 'put' || optionSide === 'P') return 'put'
-  if (type === 'option') return 'opção'
-  return type
-}
-
-export function predictionStatusLabel(status: string): string {
-  if (status === 'pending') return 'pendente'
-  if (status === 'hit') return 'confirmada'
-  if (status === 'miss') return 'não confirmada'
-  if (status === 'void') return 'sem avaliação'
-  return status
-}
 
 export function formatPnlBrl(value: number | null): string {
   if (value == null) return '—'
@@ -71,16 +24,18 @@ export function pnlTone(value: number | null): string | undefined {
   return value > 0 ? numPos : numNeg
 }
 
-export function PositionFlags({ flags, emptyLabel = 'sem flags' }: { flags: string[]; emptyLabel?: string }) {
+export function PositionFlags({ flags, emptyLabel }: { flags: string[]; emptyLabel?: string }) {
+  const p = usePresentation()
   const unique = [...new Set(flags)]
-  if (unique.length === 0) return <span className={`${quiet} min-w-0 lg:text-label`}>{emptyLabel}</span>
+  if (unique.length === 0) return <span className={`${quiet} min-w-0 lg:text-label`}>{emptyLabel ?? 'sem flags'}</span>
   return (
     <span className="position-flags min-w-0 lg:text-label">
-      {unique.map((flag) => {
-        const label = FLAG_LABELS[flag] ?? flag
+      {unique.map((code) => {
+        const copy = p.flag(code)
+        const help = [copy.help, `código ${code}`].filter(Boolean).join(' · ')
         return (
-          <InfoTip key={flag} text={`${label}; código ${flag}`}>
-            <span aria-label={`${label}; código ${flag}`}>{label}</span>
+          <InfoTip key={code} text={help}>
+            <span aria-label={help}>{copy.label}</span>
           </InfoTip>
         )
       })}

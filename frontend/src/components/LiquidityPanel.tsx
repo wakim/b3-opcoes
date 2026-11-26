@@ -8,6 +8,7 @@ import { InfoTip } from './InfoTip'
 import { ScreenTable } from './ScreenTable'
 import { Button } from './ui/button'
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group'
+import { usePresentation } from '../lib/presentation'
 import {
   TableBody,
   TableCell,
@@ -15,21 +16,6 @@ import {
   TableHeader,
   TableRow,
 } from './ui/table'
-
-function sideLabel(side: string): string {
-  const code = side.trim().toUpperCase()
-  if (code.startsWith('C')) return 'Call'
-  if (code.startsWith('P')) return 'Put'
-  return side
-}
-
-function styleLabel(style: string | null): string {
-  if (!style) return '—'
-  const code = style.trim().toUpperCase()
-  if (code === 'E') return 'Europeia'
-  if (code === 'A') return 'Americana'
-  return style
-}
 
 function spreadLabel(spreadPct: number | null, spreadBrl: number | null): string {
   return spreadPct != null ? `${fmt(spreadPct, 1)}%` : brl(spreadBrl)
@@ -41,6 +27,7 @@ const tabButtonClass =
 
 /** Descoberta descritiva: liquidez do papel e séries mais negociadas da sessão. */
 export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
+  const p = usePresentation()
   const [tab, setTab] = useState<'papers' | 'series'>('papers')
   const [showAll, setShowAll] = useState(false)
   const navigate = useNavigate()
@@ -101,7 +88,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-      <p className="mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">ordenado por liquidez; não é recomendação</p>
+      <p className="mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">{p.copy('liquidity', 'order_note').label}</p>
 
       {tab === 'papers' ? (
         ranked.length === 0 ? (
@@ -125,8 +112,8 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     <TableHead scope="col" className={`text-right ${headClass}`}>Séries líquidas</TableHead>
                     <TableHead scope="col" className={`text-right ${headClass}`}>Vencimentos</TableHead>
                     <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita 30d</TableHead>
-                    <InfoTip text="VRP = volatilidade implícita − realizada">
-                      <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Prêmio de volatilidade. VRP = volatilidade implícita − realizada">Prêmio de volatilidade</TableHead>
+                    <InfoTip term="vrp">
+                      <TableHead scope="col" className={`text-right ${headClass}`} aria-label={`${p.copy('vrp').label}. ${p.copy('vrp').help ?? ''}`}>Prêmio de volatilidade</TableHead>
                     </InfoTip>
                   </TableRow>
                 </TableHeader>
@@ -146,12 +133,12 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                       <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.n_expiries}</TableCell>
                       <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.iv_atm_30d)}</TableCell>
                       {row.vrp != null && row.flags.includes('rv_shock_day') ? (
-                        <InfoTip text={`${sharePct(row.rv_shock_share_pct)} da variância de 30 pregões veio de ${dateBr(row.rv_shock_date)}`}>
+                        <InfoTip text={p.copy('rv_shock', 'help', { share: sharePct(row.rv_shock_share_pct), date: dateBr(row.rv_shock_date) }).label}>
                           <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">
                             {fmt(row.vrp)}
                             <span
                               className="ml-[3px] cursor-help text-muted-foreground"
-                              aria-label={`realizada dominada por ${dateBr(row.rv_shock_date)}`}
+                              aria-label={p.copy('rv_shock', 'marker', { date: dateBr(row.rv_shock_date) }).label}
                             >
                               †
                             </span>
@@ -180,11 +167,11 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
           </>
         )
       ) : liquid.isLoading ? (
-        <Loading label="carregando séries…" />
+        <Loading label={p.copy('loading', 'series').label} />
       ) : liquid.isError ? (
         <ErrorState error={liquid.error} />
       ) : !liquid.data ? (
-        <Loading label="carregando séries…" />
+        <Loading label={p.copy('loading', 'series').label} />
       ) : liquid.data.data.rows.length === 0 ? (
         <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhuma série líquida nesta sessão</p>
       ) : (
@@ -210,11 +197,11 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                   <TableHead scope="col" className={`text-right ${headClass}`}>Lado / estilo</TableHead>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Strike</TableHead>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Vencimento</TableHead>
-                  <InfoTip text="Volume financeiro da sessão, em reais">
+                  <InfoTip term="volume">
                     <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Volume. Volume financeiro da sessão, em reais">Volume</TableHead>
                   </InfoTip>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Negócios</TableHead>
-                  <InfoTip text="Spread percentual do fechamento; reais quando não há percentual">
+                  <InfoTip term="spread">
                     <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Spread. Spread percentual do fechamento; reais quando não há percentual">Spread</TableHead>
                   </InfoTip>
                   <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita</TableHead>
@@ -234,7 +221,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                   >
                     <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.ticker}</TableCell>
                     <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.underlying}</TableCell>
-                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{sideLabel(row.side)} / {styleLabel(row.style)}</TableCell>
+                    <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{p.side(row.side)} / {row.style ? p.style(row.style) : p.copy('option_style', 'unknown').label}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{brl(row.strike_brl)}</TableCell>
                     <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{dateBr(row.maturity)}</TableCell>
                     <InfoTip text={`Volume financeiro: ${brl(row.volume_brl)}`}>

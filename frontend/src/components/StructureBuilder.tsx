@@ -8,6 +8,7 @@
 import { useState, type Dispatch, type SetStateAction } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { apiPost, type Structure, type StructureLegInput, type LegSide } from '../lib/api'
+import { usePresentation } from '../lib/presentation'
 import { brl, fmt } from '../lib/format'
 import { ErrorState } from './State'
 import { Metric, MetricGrid } from './Metric'
@@ -32,8 +33,6 @@ export interface BuilderLeg extends StructureLegInput {
 const MAX_LEGS = 60
 const DEFAULT_QUANTITY = 100
 
-const SIDE_LABEL: Record<LegSide, string> = { long: 'comprada', short: 'vendida' }
-
 export function StructureBuilder({
   underlying,
   date,
@@ -47,6 +46,7 @@ export function StructureBuilder({
   setLegs: Dispatch<SetStateAction<BuilderLeg[]>>
   nextId: () => number
 }) {
+  const p = usePresentation()
   const [stockSide, setStockSide] = useState<LegSide>('long')
   const [stockQuantity, setStockQuantity] = useState(String(DEFAULT_QUANTITY))
 
@@ -110,8 +110,8 @@ export function StructureBuilder({
 
       {legs.length === 0 ? (
         <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">
-          Expanda uma linha da cadeia e use <strong>Comprar</strong> ou <strong>Vender</strong>, ou
-          adicione a ação abaixo.
+          Expanda uma linha da cadeia e use <strong>{p.copy('action', 'buy').label}</strong> ou{' '}
+          <strong>{p.copy('action', 'sell').label}</strong>, ou adicione a ação abaixo.
         </p>
       ) : (
         <ul className="mb-[8px] overflow-hidden rounded-[6px] border border-border">
@@ -120,7 +120,7 @@ export function StructureBuilder({
               <span className="flex min-w-[92px] flex-[1_1_120px] flex-col">
                 <span className="font-mono tabular-nums text-primary">{leg.ticker}</span>
                 <span className="text-muted-foreground lg:text-label">
-                  {leg.kind === 'stock' ? 'ação' : 'opção'} · {SIDE_LABEL[leg.side]}
+                  {leg.kind === 'stock' ? 'ação' : 'opção'} · {p.copy('position_side', leg.side).label}
                 </span>
               </span>
               <label className="inline-flex items-center gap-[6px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
@@ -145,7 +145,7 @@ export function StructureBuilder({
                 aria-label={`Remover ${leg.ticker}`}
                 onClick={() => removeLeg(leg.id)}
               >
-                remover
+                {p.copy('action', 'remove').label}
               </Button>
             </li>
           ))}
@@ -162,8 +162,8 @@ export function StructureBuilder({
               aria-label="Lado da ação"
               onChange={(event) => setStockSide(event.target.value as LegSide)}
             >
-              <option value="long">comprada</option>
-              <option value="short">vendida</option>
+              <option value="long">{p.copy('position_side', 'long').label}</option>
+              <option value="short">{p.copy('position_side', 'short').label}</option>
             </NativeSelect>
           </label>
           <label className="flex min-w-0 flex-col gap-[4px]">
@@ -187,7 +187,7 @@ export function StructureBuilder({
             onClick={addStock}
             disabled={legs.length >= MAX_LEGS}
           >
-            Adicionar ação
+            {p.copy('action', 'add_stock').label}
           </Button>
         </div>
         <div className="flex flex-wrap items-center gap-[8px] min-[720px]:justify-end">
@@ -197,7 +197,7 @@ export function StructureBuilder({
             onClick={() => calc.mutate()}
             disabled={legs.length === 0 || calc.isPending}
           >
-            {calc.isPending ? 'calculando…' : `Calcular (${legs.length})`}
+            {calc.isPending ? p.copy('action', 'calculating').label : `${p.copy('action', 'calculate').label} (${legs.length})`}
           </Button>
           <Button
             type="button"
@@ -206,7 +206,7 @@ export function StructureBuilder({
             onClick={() => setLegs([])}
             disabled={legs.length === 0}
           >
-            Limpar
+            {p.copy('action', 'clear').label}
           </Button>
         </div>
       </div>
@@ -221,34 +221,34 @@ export function StructureBuilder({
         <div className="mt-[8px]">
           <MetricGrid>
             <Metric
-              label="Prêmio líquido"
+              term="net_premium"
               value={brl(result.net_premium_brl)}
               emphasis
-              hint="Positivo = débito pago; negativo = crédito recebido."
             />
             <Metric
               label="Breakevens"
+              term={p.metric('breakeven_brl') ?? undefined}
               value={result.breakeven_brl.length > 0 ? result.breakeven_brl.map((v) => brl(v)).join(' · ') : '—'}
             />
             <Metric
-              label="Perda máxima"
+              term="max_loss"
               value={unboundedLoss ? 'ilimitada' : brl(result.max_loss_brl)}
             />
             <Metric
-              label="Ganho máximo"
+              term="max_gain"
               value={unboundedGain ? 'ilimitado' : brl(result.max_gain_brl)}
             />
-            <Metric label="Capital comprometido" value={brl(result.capital_committed_brl)} />
-            <Metric label="Delta agregado" value={fmt(result.delta, 3)} />
-            <Metric label="Gamma agregado" value={fmt(result.gamma, 3)} />
-            <Metric label="Theta agregado" value={brl(result.theta_brl)} />
-            <Metric label="Vega agregado" value={brl(result.vega_brl)} />
+            <Metric term="capital" value={brl(result.capital_committed_brl)} />
+            <Metric term="delta" variant="aggregate" value={fmt(result.delta, 3)} />
+            <Metric term="gamma" variant="aggregate" value={fmt(result.gamma, 3)} />
+            <Metric term="theta" variant="aggregate" value={brl(result.theta_brl)} />
+            <Metric term="vega" variant="aggregate" value={brl(result.vega_brl)} />
           </MetricGrid>
 
           <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
-            {result.maturity ? `Vencimento ${result.maturity} · ` : ''}
-            estrutura {result.structure_version} · sessão {calc.data?.as_of_session ?? '—'}
-            {result.forward_brl != null && ` · forward ${brl(result.forward_brl)}`}
+            {result.maturity ? `${p.copy('maturity').label} ${result.maturity} · ` : ''}
+            {p.copy('structure').label} {result.structure_version} · sessão {calc.data?.as_of_session ?? '—'}
+            {result.forward_brl != null && ` · ${p.copy('forward').label} ${brl(result.forward_brl)}`}
           </p>
 
           {result.capital_over && (
@@ -257,7 +257,7 @@ export function StructureBuilder({
             </p>
           )}
           {result.flags.length > 0 && (
-            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {result.flags.join(' · ')}</p>
+            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {result.flags.map((code) => p.flag(code).label).join(' · ')}</p>
           )}
 
           <PayoffChart
@@ -268,10 +268,10 @@ export function StructureBuilder({
 
           {scenariosUnavailable ? (
             <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
-              Cenários indisponíveis
-              {result.flags.includes('no_iv') && ' (série sem volatilidade implícita)'}
+              {p.copy('scenarios', 'unavailable').label}
+              {result.flags.includes('no_iv') && ` (série sem ${p.copy('iv_pct').label})`}
               {result.flags.includes('no_rates') && ' (curva de juros ausente)'}
-              {result.flags.includes('forward_unavailable') && ' (forward ausente)'}
+              {result.flags.includes('forward_unavailable') && ` (${p.copy('forward').label} ausente)`}
               . O payoff no vencimento continua calculado.
             </p>
           ) : (
@@ -289,23 +289,24 @@ function ScenariosTable({
 }: {
   scenarios: NonNullable<Structure['scenarios']>
 }) {
+  const p = usePresentation()
   const zeroDay = scenarios.filter((row) => row.days_forward === 0)
   if (zeroDay.length === 0) {
-    return <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">sem cenários no dia 0</p>
+    return <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('empty', 'scenarios').label}</p>
   }
   const spots = [...new Set(zeroDay.map((row) => row.spot_brl))].sort((a, b) => a - b)
   const shifts = [...new Set(zeroDay.map((row) => row.iv_shift_pts))].sort((a, b) => a - b)
 
   return (
     <div className="mt-[12px]">
-      <p className="mt-[8px] mb-[6px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Cenários no dia 0 (spot e choque de IV do backend)</p>
+      <p className="mt-[8px] mb-[6px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('scenarios', 'day0').label}</p>
       <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
         <TableHeader>
             <TableRow>
               <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Preço</TableHead>
               {shifts.map((shift) => (
                 <TableHead key={shift} className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">
-                  IV {shift > 0 ? '+' : ''}
+                  {p.copy('iv_pct', 'shift').label} {shift > 0 ? '+' : ''}
                   {fmt(shift, 0)}
                 </TableHead>
               ))}

@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react'
 import { brl, fmt } from '../lib/format'
 import type { ChainData, ChainRow } from '../lib/api'
 import type { OpenMetric } from './metricKeys'
+import { usePresentation } from '../lib/presentation'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 
@@ -82,12 +83,13 @@ function SideDetail({
   onMetric: OpenMetric
   onAddLeg?: (row: ChainRow, side: 'long' | 'short', quantity: number) => void
 }) {
+  const p = usePresentation()
   const [quantity, setQuantity] = useState('100')
   if (!row) {
     return (
       <div>
         <div className="mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">{title}</div>
-        <div className="mt-[8px] text-[calc(10.5px*var(--font-scale))] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">sem série neste lado</div>
+        <div className="mt-[8px] text-[calc(10.5px*var(--font-scale))] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">{p.copy('empty', 'series').label}</div>
       </div>
     )
   }
@@ -101,23 +103,23 @@ function SideDetail({
       <div className="mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
         {title} <span className="font-mono text-muted-foreground">{row.ticker}</span>
       </div>
-      <DetailRow label="Volatilidade implícita" value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
+      <DetailRow label={p.copy('iv_pct').label} value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
       <DetailRow
-        label="Diferença bid/ask"
+        label={p.copy('spread', 'bid_ask').label}
         value={`${brl(row.spread_brl)} · ${fmt(row.spread_pct, 1)}%`}
         field="spread_brl"
         onMetric={onMetric}
       />
-      <DetailRow label="Delta (por R$ 1)" value={fmt(row.delta, 3)} field="delta" onMetric={onMetric} />
+      <DetailRow label={p.copy('delta', 'per_real').label} value={fmt(row.delta, 3)} field="delta" onMetric={onMetric} />
       <DetailRow
         label="Preço"
         value={brl(row.mid_brl ?? row.close_brl)}
         field="mid_brl"
         onMetric={onMetric}
       />
-      <DetailRow label="Ofertas (bid/ask)" value={book} field="bid_brl" onMetric={onMetric} />
+      <DetailRow label={p.copy('bid_ask').label} value={book} field="bid_brl" onMetric={onMetric} />
       <div className="mt-[8px] text-[calc(10.5px*var(--font-scale))] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">
-        {row.flags.length > 0 ? row.flags.join(' · ') : 'sem flags'}
+        {row.flags.length > 0 ? row.flags.map((code) => p.flag(code).label).join(' · ') : 'sem flags'}
       </div>
       {onAddLeg && (
         <div className="mt-[10px] flex flex-wrap items-center gap-[8px] border-t border-border pt-[10px]">
@@ -143,7 +145,7 @@ function SideDetail({
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'long', parsed)}
           >
-            Comprar
+            {p.copy('action', 'buy').label}
           </Button>
           <Button
             type="button"
@@ -153,7 +155,7 @@ function SideDetail({
             disabled={!canAdd}
             onClick={() => onAddLeg(row, 'short', parsed)}
           >
-            Vender
+            {p.copy('action', 'sell').label}
           </Button>
         </div>
       )}
@@ -172,12 +174,13 @@ export function Chain({
   onMetric: OpenMetric
   onAddLeg?: (row: ChainRow, side: 'long' | 'short', quantity: number) => void
 }) {
+  const p = usePresentation()
   const [open, setOpen] = useState<string | null>(null)
   const rows = maturity ? data.rows.filter((row) => row.maturity === maturity) : data.rows
   const groups = useMemo(() => group(rows), [rows])
 
   if (groups.length === 0) {
-    return <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhuma série neste recorte</p>
+    return <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('empty', 'chain').label}</p>
   }
 
   return (
@@ -186,15 +189,15 @@ export function Chain({
         <section className="mb-[20px]" key={groupRow.maturity}>
           <header className="flex justify-between gap-[8px] rounded-t-[4px] border border-b-0 border-border bg-muted px-[12px] py-[8px] font-mono text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
             <span>{groupRow.maturity}</span>
-            <span className="font-mono tabular-nums">{groupRow.strikes.length} strikes</span>
+            <span className="font-mono tabular-nums">{groupRow.strikes.length} {p.copy('strike', 'plural').label}</span>
           </header>
           <div
             className="grid grid-cols-[1fr_1fr_1fr] gap-[8px] border border-b-0 border-border px-[12px] py-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground [&>span:last-child]:text-right [&>span:nth-child(2)]:text-center lg:text-label"
             aria-hidden="true"
           >
-            <span>Put</span>
-            <span>Preço de exercício</span>
-            <span>Call</span>
+            <span>{p.copy('put').label}</span>
+            <span>{p.copy('strike', 'expanded').label}</span>
+            <span>{p.copy('call').label}</span>
           </div>
           {groupRow.strikes.map((pair, index) => {
             const id = `${groupRow.maturity}:${pair.strike.toFixed(2)}`
@@ -213,8 +216,8 @@ export function Chain({
                 </button>
                 {expanded && (
                   <div className="grid grid-cols-2 gap-[12px] rounded-b-[6px] border border-t-0 border-border bg-card p-[12px]">
-                    <SideDetail title="Put" row={pair.put} onMetric={onMetric} onAddLeg={onAddLeg} />
-                    <SideDetail title="Call" row={pair.call} onMetric={onMetric} onAddLeg={onAddLeg} />
+                    <SideDetail title={p.copy('put').label} row={pair.put} onMetric={onMetric} onAddLeg={onAddLeg} />
+                    <SideDetail title={p.copy('call').label} row={pair.call} onMetric={onMetric} onAddLeg={onAddLeg} />
                   </div>
                 )}
               </div>

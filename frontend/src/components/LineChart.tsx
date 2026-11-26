@@ -14,6 +14,7 @@
  */
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { num, visuallyHidden } from '../lib/classes'
+import { usePresentation } from '../lib/presentation'
 
 export interface ChartSeries {
   label: string
@@ -47,6 +48,22 @@ export interface LineChartProps {
   tipLabels?: string[]
   /** Linha quieta extra no tooltip (ex.: séries líquidas e forward). */
   details?: Array<string | null>
+  /** Marcas verticais tipadas (índice do ponto); a legenda lista só os tipos presentes. */
+  events?: ChartEvent[]
+  /** Rótulo de legenda por tipo de marca. */
+  eventLabels?: Partial<Record<ChartEventKind, string>>
+  /** `true` no índice = o traço não liga o ponto anterior a este (ex.: troca de perna). */
+  breakBefore?: boolean[]
+  /** Texto da legenda do tracejado de lacuna (default: copy genérica). */
+  gapLabel?: string
+}
+
+/** Marca vertical tipada: evento societário, resultado, salto ou troca de perna. */
+export type ChartEventKind = 'corporate' | 'earnings' | 'jump' | 'leg'
+
+export interface ChartEvent {
+  index: number
+  kind: ChartEventKind
 }
 
 type Point = { i: number; x: number; y: number }
@@ -67,7 +84,12 @@ export function LineChart({
   gapStyle = 'dashed',
   tipLabels,
   details = [],
+  events = [],
+  eventLabels = {},
+  breakBefore,
+  gapLabel,
 }: LineChartProps) {
+  const p = usePresentation()
   const [active, setActive] = useState<number | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -76,7 +98,7 @@ export function LineChart({
     .filter((v): v is number => v != null && Number.isFinite(v))
 
   if (labels.length < 2 || finite.length < 2) {
-    return <p className="mx-0 my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">sem pontos suficientes para desenhar</p>
+    return <p className="mx-0 my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('chart', 'no_data').label}</p>
   }
 
   const W = 320
@@ -120,6 +142,11 @@ export function LineChart({
         continue
       }
       const prev = points[k - 1]
+      if (breakBefore?.[point.i]) {
+        if (run.length > 1) solid.push(run)
+        run = [point]
+        continue
+      }
       const step = timeAxis ? xValues[point.i] - xValues[prev.i] : point.i - prev.i
       const broken = connectAll
         ? false
@@ -304,6 +331,18 @@ export function LineChart({
             />
           )
         })}
+        {events
+          .filter((event) => event.index >= 0 && event.index < labels.length)
+          .map((event) => (
+            <line
+              key={`event-${event.kind}-${event.index}`}
+              className={`chart__mark chart__mark--${event.kind}`}
+              x1={x(event.index)}
+              x2={x(event.index)}
+              y1={PAD - 2}
+              y2={H - PAD + 2}
+            />
+          ))}
         {activePoint != null && (
           <line
             className="chart__cross"
@@ -363,7 +402,7 @@ export function LineChart({
             className="chart__band-tag lg:text-chart"
             style={{ left: `${((band.x1 + band.x2) / 2 / W) * 100}%` }}
           >
-            sem IV
+            {p.copy('chart', 'no_iv').label}
           </span>
         )
       })}
@@ -394,16 +433,24 @@ export function LineChart({
             {s.label}
           </span>
         ))}
-        {marks.length > 0 && <span className="chart__legend-note">tracejado vertical: ajuste</span>}
+        {marks.length > 0 && <span className="chart__legend-note">tracejado vertical: {p.copy('chart', 'adjustment').label}</span>}
         {series.some((s) => s.hollow?.some(Boolean)) && (
-          <span className="chart__legend-note">ponto vazado: ATM sem série líquida</span>
+          <span className="chart__legend-note">{p.copy('chart', 'hollow').label}</span>
         )}
         {dashedGap != null && gapStyle === 'band' && (
-          <span className="chart__legend-note">faixa: intervalo sem IV</span>
+          <span className="chart__legend-note">{p.copy('chart', 'band').label}</span>
         )}
-        {dashedGap != null && gapStyle === 'dashed' && (
-          <span className="chart__legend-note">traço tracejado: intervalo sem IV</span>
+        {dashedGap != null && gapStyle === 'dashed' && series.some((s) => segmentsOf(s.values).gap.length > 0) && (
+          <span className="chart__legend-note">{gapLabel ?? p.copy('chart', 'dashed').label}</span>
         )}
+        {(['corporate', 'earnings', 'jump', 'leg'] as const)
+          .filter((kind) => eventLabels[kind] && events.some((event) => event.kind === kind))
+          .map((kind) => (
+            <span className="chart__legend-note" key={`legend-${kind}`}>
+              <i className={`chart__key chart__key--${kind}`} aria-hidden="true" />
+              {eventLabels[kind]}
+            </span>
+          ))}
       </div>
       {caption && <p className="chart__caption lg:text-chart">{caption}</p>}
     </div>

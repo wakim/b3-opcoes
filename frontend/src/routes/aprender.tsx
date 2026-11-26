@@ -9,6 +9,7 @@ import {
 } from '../lib/api'
 import { ErrorBox, Loading } from '../lib/ui'
 import { note } from '../lib/classes'
+import { usePresentation } from '../lib/presentation'
 import {
   Accordion,
   AccordionContent,
@@ -70,6 +71,7 @@ function EntryRow({
   open: boolean
 }): ReactNode {
   const panelId = useId()
+  const p = usePresentation()
   return (
     <AccordionItem value={entry.key} className="contents">
       <AccordionHeader asChild>
@@ -80,7 +82,7 @@ function EntryRow({
           >
             <span className="inline-flex min-w-0 items-baseline gap-[10px]">
               <span>{entry.title}</span>
-              <span className="font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">nível {entry.level}</span>
+              <span className="font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('learn', 'level', { n: entry.level }).label}</span>
             </span>
             <span className="shrink-0 font-mono text-[calc(16px*var(--font-scale))] leading-none text-muted-foreground lg:text-metric" aria-hidden="true">
               {open ? '−' : '+'}
@@ -104,6 +106,7 @@ function EntryRow({
 }
 
 function Aprender() {
+  const p = usePresentation()
   const [open, setOpen] = useState<Set<string>>(() => new Set())
   const list = useQuery({
     queryKey: ['glossary'],
@@ -119,9 +122,7 @@ function Aprender() {
       <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">
         Aprender
       </h1>
-      <p className={`${note} lg:text-label`}>
-        Toque num verbete para abrir a ficha. Vários podem ficar abertos.
-      </p>
+      <p className={`${note} lg:text-label`}>{p.copy('learn', 'intro').label}</p>
 
       <Accordion
         type="multiple"

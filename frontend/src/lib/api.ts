@@ -349,6 +349,11 @@ export interface SeriesPoint {
   mid_brl: number | null
   iv_pct: number | null
   delta: number | null
+  /** Posição no calendário do lake desde o 1º ponto: salto = pregões sem negócio. */
+  session_index: number | null
+  /** Perna e strike da data (o strike muda no meio da vida; armadilha 2). */
+  leg_id: string | null
+  strike_brl: number | null
 }
 
 export interface SeriesDetail {
@@ -392,6 +397,60 @@ export interface Events {
   next_earnings: EarningsEvent | null
   notes: string[]
   counts: { maturities: number; strike_events: number; earnings: number }
+}
+
+/** Uma sessão do lake no gráfico do papel; `null` = o papel não negociou. */
+export interface PricePoint {
+  date: string
+  close_brl: number | null
+  open_brl: number | null
+  adj_factor: number
+  traded: boolean
+}
+
+export interface PriceMark {
+  date: string
+  kind: 'dividend' | 'scale' | 'indeterminate' | 'earnings' | 'gap' | string
+  value: number | null
+  detail: string | null
+}
+
+export interface PricesData {
+  ticker: string
+  points: PricePoint[]
+  marks: PriceMark[]
+  flags: string[]
+  notes: string[]
+}
+
+/** Todas as páginas de `/api/t/{ticker}/prices` (60 pontos por resposta). */
+export async function fetchPricesAll(
+  ticker: string,
+  days: number,
+  signal?: AbortSignal,
+): Promise<Envelope<PricesData>> {
+  const base = `/api/t/${encodeURIComponent(ticker)}/prices?days=${days}`
+  const first = await apiGet<PricesData>(`${base}&offset=0`, signal)
+  const total = first.meta?.total ?? first.data.points.length
+  const step = first.meta?.returned || 60
+  const offsets: number[] = []
+  for (let offset = step; offset < total; offset += step) offsets.push(offset)
+  const pages = await Promise.all(
+    offsets.map((offset) => apiGet<PricesData>(`${base}&offset=${offset}`, signal)),
+  )
+  const points = [...first.data.points, ...pages.flatMap((page) => page.data.points)]
+  return {
+    ...first,
+    data: { ...first.data, points },
+    meta: {
+      ...(first.meta ?? { total, returned: points.length, truncated: false }),
+      total,
+      returned: points.length,
+      truncated: points.length < total,
+      offset: 0,
+      next_offset: null,
+    },
+  }
 }
 
 export interface Structure {

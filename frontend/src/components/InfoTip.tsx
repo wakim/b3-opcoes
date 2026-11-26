@@ -12,20 +12,33 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './ui/tooltip'
+import { useCopy, type CopyParams, type PresentationKey } from '../lib/presentation'
 
 /** Ajuda curta por hover, foco e toque. O painel é portal para não alterar a
- * geometria do gatilho; Escape fecha só a dica, mesmo dentro de um diálogo. */
+ * geometria do gatilho; Escape fecha só a dica, mesmo dentro de um diálogo.
+ *
+ * F9: `text` explícito continua valendo; sem ele, a ajuda vem do dicionário
+ * pela chave semântica. Comportamento de toque/foco/Escape permanece intacto.
+ */
 export function InfoTip({
   text,
   children,
   side = 'bottom',
   align = 'start',
+  term,
+  variant,
+  params,
 }: {
-  text: string
+  text?: string
   children: ReactElement
   side?: 'top' | 'right' | 'bottom' | 'left'
   align?: 'start' | 'center' | 'end'
+  term?: PresentationKey
+  variant?: string
+  params?: CopyParams
 }) {
+  const copy = useCopy(term ?? 'metric.generic', variant, term ? params : { ...params, label: '' })
+  const resolvedText = text ?? copy.help ?? ''
   const [open, setOpen] = useState(false)
   const suppressCloseUntil = useRef(0)
   const preserveTouchOpen = useRef(false)
@@ -91,7 +104,7 @@ export function InfoTip({
             close()
           }}
         >
-          {text}
+          {resolvedText}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>

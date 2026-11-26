@@ -8,12 +8,14 @@ import { ErrorState, Loading } from '../components/State'
 import { GlossaryMetric, MetricGrid } from '../components/Metric'
 import { Ruler } from '../components/Ruler'
 import { LineChart } from '../components/LineChart'
+import { PriceChart } from '../components/PriceChart'
 import { Chain } from '../components/Chain'
 import { MetricModal } from '../components/MetricModal'
 import { InfoTip } from '../components/InfoTip'
 import { StructureBuilder, type BuilderLeg } from '../components/StructureBuilder'
 import { ScreenTable } from '../components/ScreenTable'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
+import { usePresentation } from '../lib/presentation'
 import { Button } from '../components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '../components/ui/toggle-group'
 import { NativeSelect } from '../components/ui/native-select'
@@ -30,6 +32,7 @@ export const Route = createFileRoute('/t/$ticker')({
 })
 
 function TickerPage() {
+  const p = usePresentation()
   const { ticker } = Route.useParams()
   const [pickedMaturity, setPickedMaturity] = useState<string | null>(null)
   const [filter, setFilter] = useState<'strict' | 'all'>('strict')
@@ -105,36 +108,34 @@ function TickerPage() {
       <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{ticker}</h1>
       <p className="mb-[16px] font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
         {data.counts.term} vencimentos · {data.counts.smile}{' '}
-        <InfoTip text="preços de exercício"><abbr className="underline decoration-dotted" aria-label="strikes: preços de exercício">strikes</abbr></InfoTip> · {data.counts.history} dias de histórico
+        <InfoTip term="strike" variant="expanded"><abbr className="underline decoration-dotted" aria-label={`${p.copy('strike').label}: ${p.copy('strike', 'expanded').label}`}>{p.copy('strike', 'plural').label}</abbr></InfoTip> · {data.counts.history} dias de histórico
       </p>
 
       <MetricGrid>
         <GlossaryMetric
           field="spot_brl"
-          label="Fechamento"
-          hint="Último preço negociado da ação na sessão; o painel é sempre D-1."
+          term="spot"
+          variant="close"
           value={brl(summary?.spot_brl)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="iv_atm_30d"
-          label="Volatilidade implícita 30d"
-          hint="Volatilidade implícita no dinheiro (ATM), padronizada para 30 dias."
+          term="iv_atm_30d"
           value={fmt(summary?.iv_atm_30d)}
           onOpen={openMetric}
           emphasis
         />
         <GlossaryMetric
           field="vrp"
-          label="Prêmio de volatilidade"
-          hint="VRP = volatilidade implícita − realizada."
+          term="vrp"
           value={fmt(summary?.vrp)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="iv_rank_252"
-          label="Posição da volatilidade (12m)"
-          hint="Onde a volatilidade implícita de hoje está nos últimos 252 pregões (0 = mínimo, 100 = máximo)."
+          term="iv_rank"
+          variant="ruler"
           value={fmt(summary?.iv_rank_252, 0)}
           onOpen={openMetric}
           note={
@@ -144,14 +145,14 @@ function TickerPage() {
               max={100}
               ticks={[0, 50, 100]}
               format={(v) => fmt(v, 0)}
-              describe="Posição da volatilidade em 12 meses"
+              describe={p.copy('iv_rank', 'ruler').label}
             />
           }
         />
         <GlossaryMetric
           field="vrp_z_252"
-          label="Desvios-padrão do prêmio"
-          hint="Quantos desvios-padrão o prêmio de volatilidade de hoje está da própria média de 252 sessões."
+          term="vrp_z"
+          variant="ruler"
           value={fmt(summary?.vrp_z_252)}
           onOpen={openMetric}
           note={
@@ -161,14 +162,13 @@ function TickerPage() {
               max={3}
               ticks={[-3, 0, 3]}
               format={(v) => fmt(v, 1)}
-              describe="Desvios-padrão do prêmio de volatilidade"
+              describe={p.copy('vrp_z', 'ruler').label}
             />
           }
         />
         <GlossaryMetric
           field="days_to_liquidate"
-          label="Dias para liquidar"
-          hint="Quantos pregões seriam necessários para desmontar a posição média da série ao ritmo atual."
+          term="days_to_liquidate"
           value={fmt(summary?.days_to_liquidate)}
           onOpen={openMetric}
           note={
@@ -178,14 +178,14 @@ function TickerPage() {
               max={10}
               ticks={[0, 5, 10]}
               format={(v) => fmt(v, 0)}
-              describe="Dias para liquidar"
+              describe={p.copy('days_to_liquidate').label}
             />
           }
         />
         <GlossaryMetric
           field="rv_shock_share_pct"
-          label="Pregão dominante na realizada"
-          hint="O pregão que mais pesa na oscilação dos últimos 30 pregões e quanto da variância ele explica sozinho."
+          term="rv"
+          variant="shock"
           value={
             summary?.rv_shock_date
               ? `${dateBr(summary.rv_shock_date)} · ${sharePct(summary.rv_shock_share_pct)}`
@@ -208,6 +208,13 @@ function TickerPage() {
         <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label" key={note}>{note}</p>
       ))}
 
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('chart', 'price_title').label}</h2>
+      <PriceChart
+        ticker={ticker}
+        shockDate={summary?.rv_shock_date}
+        shockSharePct={summary?.rv_shock_share_pct}
+      />
+
       <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita por vencimento</h2>
       {withIv.length >= 2 ? (
         <LineChart
@@ -218,58 +225,58 @@ function TickerPage() {
           gapStyle="band"
           tipLabels={termWindow.map((point) => dateBr(point.maturity))}
           details={termWindow.map((point) =>
-            `${point.n_liquid_strikes} ${point.n_liquid_strikes === 1 ? 'série líquida' : 'séries líquidas'}${
-              point.forward_brl != null ? ` · forward ${brl(point.forward_brl)}` : ''
+            `${point.n_liquid_strikes} ${p.copy('liquid_series').label}${
+              point.forward_brl != null ? ` · ${p.copy('forward').label} ${brl(point.forward_brl)}` : ''
             }`,
           )}
           series={[{
-            label: 'Volatilidade implícita',
+            label: p.copy('iv_pct').label,
             values: termWindow.map((point) => point.iv_atm),
             hollow: termWindow.map((point) => point.n_liquid_strikes === 0),
           }]}
           formatValue={(v) => fmt(v, 1)}
-          ariaLabel={`Volatilidade implícita por vencimento de ${ticker}`}
-          caption={`Volatilidade implícita em ${withIv.length} de ${term.length} vencimentos${illiquidAtm > 0 ? ` · ${illiquidAtm} com ATM sem série líquida` : ''} · eixo x proporcional ao tempo`}
+          ariaLabel={`${p.copy('iv_pct').label} por vencimento de ${ticker}`}
+          caption={`${p.copy('iv_pct').label} em ${withIv.length} de ${term.length} ${p.copy('maturity').label}${illiquidAtm > 0 ? ` · ${illiquidAtm} com ${p.copy('atm').label} sem ${p.copy('liquid_series').label}` : ''} · eixo x proporcional ao tempo`}
         />
       ) : (
-        <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">Volatilidade implícita indisponível nos vencimentos desta sessão</p>
+        <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('chart', 'no_iv').label}</p>
       )}
       {withIv.length > 0 && (
         <div className="mt-[8px]">
           <p className="mt-[12px] mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
-            Vencimentos com IV <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withIv.length}</span>
+            Vencimentos com {p.copy('iv_pct', 'column').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withIv.length}</span>
           </p>
           <TermTable rows={withIv} />
           <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
-            IV é a do strike de |Δ| mais próximo de 0,5; Líquidas = séries líquidas no vencimento.
+            {p.copy('iv_pct', 'column').label} é a do {p.copy('strike').label} de |{p.copy('delta').label}| mais próximo de 0,5; {p.copy('liquid_series').label} = séries líquidas no vencimento.
           </p>
         </div>
       )}
       {withoutIv.length > 0 && (
         <details className="mt-[6px]">
-          <summary className="flex min-h-[44px] cursor-pointer items-center text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] marker:text-muted-foreground lg:text-label">Ver os {withoutIv.length} vencimentos sem IV</summary>
+          <summary className="flex min-h-[44px] cursor-pointer items-center text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] marker:text-muted-foreground lg:text-label">Ver os {withoutIv.length} vencimentos sem {p.copy('iv_pct', 'column').label}</summary>
           <TermTable rows={withoutIv} className="mt-[4px] mb-[8px]" />
         </details>
       )}
 
-      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita vs realizada</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('iv_pct').label} vs {p.copy('rv', 'd30').label}</h2>
       <LineChart
         compact
         labels={history.map((point) => point.date.slice(5))}
         tipLabels={history.map((point) => dateBr(point.date))}
-        details={history.map((point) => (point.vrp != null ? `VRP ${fmt(point.vrp)}` : null))}
+        details={history.map((point) => (point.vrp != null ? `${p.copy('vrp').label} ${fmt(point.vrp)}` : null))}
         series={[
-          { label: 'Volatilidade implícita', values: history.map((point) => point.iv_atm_30d) },
-          { label: 'Realizada 30d', values: history.map((point) => point.rv30), dashed: true },
+          { label: p.copy('iv_pct').label, values: history.map((point) => point.iv_atm_30d) },
+          { label: p.copy('rv', 'd30').label, values: history.map((point) => point.rv30), dashed: true },
         ]}
         formatValue={(v) => fmt(v, 1)}
-        ariaLabel={`Volatilidade implícita e realizada de ${ticker}`}
+        ariaLabel={`${p.copy('iv_pct').label} e ${p.copy('rv', 'd30').label} de ${ticker}`}
         showPoints={false}
       />
 
-      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Vencimento</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('maturity').label}</h2>
       {term.length > 0 && (
-        <div className="mb-[8px] flex items-stretch gap-[6px]" role="group" aria-label="Vencimento">
+        <div className="mb-[8px] flex items-stretch gap-[6px]" role="group" aria-label={p.copy('maturity').label}>
           <Button
             type="button"
             variant="ghost"
@@ -290,7 +297,7 @@ function TickerPage() {
             {term.map((point) => (
               <option key={point.maturity} value={point.maturity}>
                 {dateBr(point.maturity)}
-                {point.iv_atm == null ? ' · sem IV' : ` · IV ${fmt(point.iv_atm, 1)}`}
+                {point.iv_atm == null ? ` · ${p.copy('chart', 'no_iv').label}` : ` · ${p.copy('iv_pct', 'column').label} ${fmt(point.iv_atm, 1)}`}
               </option>
             ))}
           </NativeSelect>
@@ -321,27 +328,28 @@ function TickerPage() {
             value="strict"
             className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
-            Líquidas
+            {p.copy('action', 'liquid').label}
           </ToggleGroupItem>
           <ToggleGroupItem
             value="all"
             className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
-            Todas
+            {p.copy('action', 'all').label}
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
       <p className="mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
-        Put = opção de venda · Call = opção de compra · Strike = preço de exercício · números em
-        volatilidade implícita ao ano.
+        {p.copy('put').label} = opção de venda · {p.copy('call').label} = opção de compra ·{' '}
+        {p.copy('strike').label} = {p.copy('strike', 'expanded').label} · números em{' '}
+        {p.copy('iv_pct').label} ao ano.
       </p>
-      {chain.isLoading && <Loading label="carregando cadeia…" />}
+      {chain.isLoading && <Loading label={p.copy('loading', 'chain').label} />}
       {chain.isError && <ErrorState error={chain.error} />}
       {chain.data && (
         <>
           {chain.data.meta?.truncated && (
             <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
-              A cadeia foi cortada em {chain.data.meta.returned} de {chain.data.meta.total} linhas.
+              {p.copy('notice', 'truncated_chain', { returned: chain.data.meta.returned, total: chain.data.meta.total }).label}
             </p>
           )}
           <Chain data={chain.data.data} maturity={activeMaturity} onMetric={openMetric} onAddLeg={addLeg} />
@@ -363,6 +371,7 @@ function TickerPage() {
 
 /** Tabela curta dos vencimentos (IV do ATM e séries líquidas) — sem forward. */
 function TermTable({ rows, className }: { rows: Term[]; className?: string }) {
+  const p = usePresentation()
   return (
     <ScreenTable
       wrapperClassName={`overflow-x-auto rounded-[6px] border border-border${className ? ` ${className}` : ''}`}
@@ -371,12 +380,12 @@ function TermTable({ rows, className }: { rows: Term[]; className?: string }) {
     >
       <TableHeader>
           <TableRow>
-            <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Vencimento</TableHead>
-            <InfoTip text="Volatilidade implícita do strike de |Δ| mais próximo de 0,5">
-              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" aria-label="IV. Volatilidade implícita do strike de |Δ| mais próximo de 0,5">IV</TableHead>
+            <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('maturity').label}</TableHead>
+            <InfoTip term="iv_pct" variant="column">
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" aria-label={`${p.copy('iv_pct', 'column').label}. ${p.copy('iv_pct', 'column').help ?? ''}`}>{p.copy('iv_pct', 'column').label}</TableHead>
             </InfoTip>
-            <InfoTip text="Séries líquidas no vencimento">
-              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" aria-label="Líquidas. Séries líquidas no vencimento">Líquidas</TableHead>
+            <InfoTip term="liquid_series">
+              <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head" aria-label={`${p.copy('liquid_series').label}. ${p.copy('liquid_series').help ?? ''}`}>{p.copy('liquid_series').label}</TableHead>
             </InfoTip>
           </TableRow>
         </TableHeader>

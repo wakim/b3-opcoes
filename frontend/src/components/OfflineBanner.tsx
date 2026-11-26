@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiGet, type Health } from '../lib/api'
 import { num } from '../lib/classes'
+import { usePresentation } from '../lib/presentation'
 
 const STORAGE_KEY = 'b3o:last-health'
 
@@ -85,17 +86,18 @@ export function useConnectivity(): boolean {
 }
 
 export function OfflineBanner({ offline, session }: { offline: boolean; session: string | null }) {
+  const p = usePresentation()
   if (!offline) return null
-  return (
-    <p className="lg:text-label" role="status">
-      sem rede —{' '}
-      {session ? (
-        <>
-          última sessão <strong className={`${num} whitespace-nowrap`}>{session}</strong>
-        </>
-      ) : (
-        'sessão indisponível'
-      )}
-    </p>
-  )
+  const text = p.copy('offline', 'banner', { session: session ?? p.copy('stamp', 'unavailable').label }).label
+  if (session && text.includes(session)) {
+    const [before, after] = text.split(session)
+    return (
+      <p className="lg:text-label" role="status">
+        {before}
+        <strong className={`${num} whitespace-nowrap`}>{session}</strong>
+        {after}
+      </p>
+    )
+  }
+  return <p className="lg:text-label" role="status">{text}</p>
 }

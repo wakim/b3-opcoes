@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { ErrorStatus } from '../components/State'
+import { usePresentation } from './presentation'
 import { note } from './classes'
 
 export function ErrorBox({ error }: { error: Error | null }): ReactNode {
@@ -8,5 +9,6 @@ export function ErrorBox({ error }: { error: Error | null }): ReactNode {
 }
 
 export function Loading(): ReactNode {
-  return <p data-note="" className={`${note} lg:text-label`}>carregando…</p>
+  const p = usePresentation()
+  return <p data-note="" className={`${note} lg:text-label`}>{p.copy('loading', 'generic').label}</p>
 }

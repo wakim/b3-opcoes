@@ -7,7 +7,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiGet, type GlossaryDetail } from '../lib/api'
 import { num } from '../lib/classes'
-import { glossaryKey, type ModalTarget } from './metricKeys'
+import { useCopy } from '../lib/presentation'
+import { glossaryKey, presentationKeyForField, type ModalTarget } from './metricKeys'
 import { ErrorState } from './State'
 import { InlineMd } from './InlineMd'
 import { Dialog } from './Dialog'
@@ -39,6 +40,15 @@ export function MetricModal({
   onClose: () => void
 }) {
   const key = target ? glossaryKey(target.field) : null
+  // O slug é sempre de `metricKeys.ts`; a chave semântica só decide texto.
+  const semantic = target ? (target.term ?? presentationKeyForField(target.field)) : null
+  const copy = useCopy(semantic ?? 'metric.generic', target?.variant ?? undefined, target?.params)
+  const title = target?.label ?? copy.label
+  const help = semantic ? copy.help : undefined
+  const eyebrow = useCopy('glossary', 'eyebrow').label
+  const loadingLabel = useCopy('glossary', 'loading').label
+  const errorLabel = useCopy('glossary', 'error').label
+  const missingLabel = useCopy('glossary', 'missing').label
   const entry = useQuery({
     queryKey: ['glossary', key],
     queryFn: ({ signal }) => apiGet<GlossaryDetail>(`/api/glossary/${key}`, signal),
@@ -50,13 +60,14 @@ export function MetricModal({
   const definition = section(body, 'O que é')
   const mistake = section(body, 'Erro comum')
   const source = entry.data?.data.title
+  const sourceCopy = useCopy('glossary', 'source', { title: source ?? '' })
 
   return (
     <Dialog
       open={Boolean(target)}
-      title={target?.label ?? ''}
-      eyebrow="verbete"
-      description={source && source !== target?.label ? `glossário: ${source}` : undefined}
+      title={title}
+      eyebrow={eyebrow}
+      description={source && source !== title ? sourceCopy.label : undefined}
       onClose={onClose}
       initialFocus="close"
       size="wide"
@@ -66,14 +77,15 @@ export function MetricModal({
           <div className="grid gap-1 rounded-[6px] border border-border bg-muted/30 p-4">
             <span className="lg:text-label text-muted-foreground">no painel</span>
             <span className={`${num} lg:text-metric`}>{target.value}</span>
+            {help && <span className="lg:text-label text-muted-foreground">{help}</span>}
           </div>
-          {entry.isError && <ErrorState error={entry.error} title="Verbeto indisponível" />}
-          {entry.isLoading && <p className="lg:text-label text-muted-foreground">carregando verbete…</p>}
+          {entry.isError && <ErrorState error={entry.error} title={errorLabel} />}
+          {entry.isLoading && <p className="lg:text-label text-muted-foreground">{loadingLabel}</p>}
           <Block title="O que é" text={definition} />
           <Block title="Erro comum" text={mistake} />
           {!key && (
             <p className="lg:text-label text-muted-foreground">
-              esta métrica ainda não tem verbete no glossário.
+              {missingLabel}
             </p>
           )}
         </div>

@@ -394,6 +394,8 @@ Gráficos recebem pontos já reduzidos (≤ 70).
 
 Mobile-first (412 px), breakpoints `≥ 600` (tablet, 2 colunas) e `≥ 1024` (desktop, menu lateral + tabela completa da cadeia).
 
+**Linguagem:** o PWA tem perfil global **Expert × Leigo**, default **Expert**. A preferência fica em `localStorage` (`b3o:language`, valores `expert`/`leigo`), sobrevive a reload/offline e não altera queries ou payloads. O seletor acessível fica no header de todas as rotas. Um dicionário único de apresentação resolve rótulo, ajuda curta e slug do glossário; no Leigo, o termo aparece expandido antes da sigla. A ficha completa continua vindo exclusivamente de `docs/glossario.md` via `/api/glossary`. Os três níveis do glossário não são perfis de idioma.
+
 Ticker e Série **não são destinos** — são navegação. Ficam fora da barra inferior, com botão de voltar, e a barra passa a ter quatro itens de verdade:
 
 | Destino (bottom nav) | Conteúdo |
@@ -401,7 +403,7 @@ Ticker e Série **não são destinos** — são navegação. Ficam fora da barra
 | **Hoje** | busca · tabela descritiva do universo (com opções / sem opções), em ordem alfabética, com motivo de exclusão · medianas · aviso de pregão dominante na RV (ADR-035). **Sem** filtro por classe, candidatos ou ranking (ADR-024) |
 | **Carteira** | posições abertas · agregados (capital, P&L, Δ/Θ/ν líquidos) · tese vs realidade |
 | **Diário** | lista de decisões · **formulário de registro** · previsão estruturada · desfecho |
-| **Aprender** | glossário em **três níveis** (o 1 visível de saída), com ficha por métrica; a mesma ficha abre numa *sheet* ao tocar em qualquer métrica das outras telas |
+| **Aprender** | glossário em **três níveis** (o 1 visível de saída), com ficha por métrica; a mesma ficha abre num **modal** ao tocar em qualquer métrica das outras telas |
 
 | Drill-down (push, com voltar) | Conteúdo |
 |---|---|

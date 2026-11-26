@@ -12,6 +12,7 @@ import {
   type PositionPredictionInput,
 } from '../lib/api'
 import { ErrorState } from './State'
+import { usePresentation } from '../lib/presentation'
 import { HelpTip } from './HelpTip'
 import { Button } from './ui/button'
 import { Checkbox } from './ui/checkbox'
@@ -135,6 +136,7 @@ export function PositionForm({
   onUnauthorized: () => void
   onBusyChange: (busy: boolean) => void
 }) {
+  const p = usePresentation()
   const [initialDraft] = useState(loadDraft)
   const nextId = useRef(initialDraft ? Math.max(...initialDraft.legs.map((leg) => leg.id)) + 1 : 1)
   const [clientPositionId] = useState(
@@ -422,8 +424,8 @@ export function PositionForm({
             <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
               Pernas
               <HelpTip
-                label="O que é uma perna?"
-                text="Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade. Uma coberta, por exemplo, tem duas pernas: a ação comprada e a call vendida."
+                label={`O que é ${p.copy('leg').label}?`}
+                text={p.copy('leg').help ?? 'Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade.'}
               />
             </legend>
             <p className={`${chainNote} lg:text-label lg:leading-body`}>
@@ -458,8 +460,8 @@ export function PositionForm({
                         onChange={(event) => changeKind(leg.id, event.target.value as LegKind)}
                         aria-label={`Tipo da perna ${index + 1}`}
                       >
-                        <option value="option">opção</option>
-                        <option value="stock">ação</option>
+                        <option value="option">{p.copy('leg_type', 'option').label}</option>
+                        <option value="stock">{p.copy('leg_type', 'stock').label}</option>
                       </NativeSelect>
                     </label>
                     <label className={field}>
@@ -492,8 +494,8 @@ export function PositionForm({
                         }
                         aria-label={`Lado da perna ${index + 1}`}
                       >
-                        <option value="long">comprada</option>
-                        <option value="short">vendida</option>
+                        <option value="long">{p.copy('position_side', 'long').label}</option>
+                        <option value="short">{p.copy('position_side', 'short').label}</option>
                       </NativeSelect>
                     </label>
                     <label className={field}>
@@ -522,7 +524,7 @@ export function PositionForm({
                 onClick={() => addLeg('option')}
                 disabled={legs.length >= MAX_LEGS}
               >
-                Adicionar opção
+                {p.copy('action', 'add_option').label}
               </Button>
               <Button
                 type="button"
@@ -530,7 +532,7 @@ export function PositionForm({
                 onClick={() => addLeg('stock')}
                 disabled={legs.length >= MAX_LEGS}
               >
-                Adicionar ação
+                {p.copy('action', 'add_stock').label}
               </Button>
               <span className={`${blockCountBase} ml-auto lg:text-label`}>
                 {legs.length}/{MAX_LEGS}
@@ -639,10 +641,10 @@ export function PositionForm({
               onClick={discardDraft}
               disabled={create.isPending}
             >
-              Cancelar
+              {p.copy('action', 'cancel').label}
             </Button>
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? 'registrando…' : 'Registrar posição'}
+              {create.isPending ? p.copy('action', 'registering').label : p.copy('action', 'register_position').label}
             </Button>
           </div>
         </fieldset>

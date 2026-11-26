@@ -9,9 +9,11 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { apiGet, type TickerData } from '../lib/api'
 import { ErrorState } from './State'
+import { usePresentation } from '../lib/presentation'
 import { Input } from './ui/input'
 
 export function TickerSearch() {
+  const p = usePresentation()
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
 
@@ -34,7 +36,7 @@ export function TickerSearch() {
   return (
     <div className="mb-[16px] min-w-0 max-w-full">
       <label className="mb-[4px] block text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" htmlFor="ticker-search">
-        Buscar papel
+        {p.copy('search', 'label').label}
       </label>
       <Input
         id="ticker-search"
@@ -45,25 +47,25 @@ export function TickerSearch() {
         onKeyDown={(event) => {
           if (event.key === 'Escape') setQuery('')
         }}
-        placeholder="ticker ou nome (ex.: PETR4)"
+        placeholder={p.copy('search', 'placeholder').label}
         autoComplete="off"
         spellCheck={false}
-        aria-label="Buscar papel por ticker ou nome"
+        aria-label={p.copy('search', 'aria').label}
       />
 
       {debounced.length > 0 && (
         <div className="mt-[6px]" aria-live="polite">
-          {search.isLoading && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">buscando…</p>}
+          {search.isLoading && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('loading', 'search').label}</p>}
           {search.isError && <ErrorState error={search.error} title="Busca indisponível" />}
           {search.data && rows.length === 0 && (
-            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">nenhum papel para “{debounced}”</p>
+            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('search', 'empty', { q: debounced }).label}</p>
           )}
           {search.data && rows.length > 0 && (
             <>
               <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
                 {rows.length < total
-                  ? `mostrando ${rows.length} de ${total} papéis`
-                  : `${total} ${total === 1 ? 'papel' : 'papéis'}`}
+                  ? p.copy('search', 'showing', { returned: rows.length, total }).label
+                  : p.copy(total === 1 ? 'search' : 'search', total === 1 ? 'total_one' : 'total_many', { total }).label}
               </p>
               <ul className="mb-0 mt-[4px] list-none overflow-hidden rounded-[6px] border border-border p-0">
                 {rows.map((row, index) => (
@@ -76,8 +78,8 @@ export function TickerSearch() {
                       <span className="font-mono font-medium tabular-nums text-primary lg:text-search">{row.ticker}</span>
                       <span className="min-w-0 flex-[1_1_150px] overflow-hidden text-ellipsis whitespace-nowrap text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-search">{row.corp_name}</span>
                       <span className="basis-full text-[calc(10.5px*var(--font-scale))] text-muted-foreground lg:text-search-meta">
-                        {row.in_universe ? 'no universo' : 'fora do universo'} ·{' '}
-                        {row.has_options ? 'com opções' : 'sem opções'}
+                        {p.copy(row.in_universe ? 'search' : 'search', row.in_universe ? 'in_universe' : 'out_universe').label} ·{' '}
+                        {p.copy('search', row.has_options ? 'with_options' : 'without_options').label}
                       </span>
                     </Link>
                   </li>

@@ -684,6 +684,22 @@ Em qualquer outro caso: adote o default, registre, siga.
 - **Consequência:** nenhum número exibido ou contrato muda. A aprovação visual final continua com o dono; se pedir outro valor, altera-se somente `--font-scale` e atualizam-se os valores documentados.
 - **Revisar em:** retorno do dono sobre a legibilidade em uso real.
 
+---
+
+## ADR-049 — F9: apresentação Expert × Leigo com persistência local
+
+- **Data:** 2026-11-25 · **Status:** provisória — implementada, salvo ratificação do dono · **Custo de reverter:** baixo (contexto/dicionário/seletor)
+- **Contexto:** o dono pediu um perfil global de linguagem no PWA. A tradução não pode mudar números, campos, fórmulas, ordem, API, journal ou `model_version`; a ficha completa também não pode ser duplicada no frontend.
+- **Decisão:**
+  1. `LanguageProvider` em `frontend/src/lib/language.tsx`, acima do `AppShell`, com chave `b3o:language` e valores exatos `expert`/`leigo`; ausente, inválido, corrompido ou storage bloqueado cai para **Expert**.
+  2. `frontend/src/lib/presentation.ts` é o único dicionário de apresentação: rótulo Expert, rótulo Leigo, ajuda curta, variantes nomeadas e `glossaryKey` opcional. Não há `if (mode === 'leigo')` espalhado pelas rotas.
+  3. `LanguageToggle` usa o `ToggleGroup` já validado, seleção única, ignora valor vazio, fica no header e não invalida/refaz queries.
+  4. `Metric`/`GlossaryMetric`/`MetricModal` recebem chave semântica opcional e retraterocompatível; o slug continua vindo de `metricKeys.ts`, nunca do rótulo visível. `HelpTip` e `InfoTip` resolvem ajuda pelo dicionário sem ganhar lógica de perfil.
+  5. Gráficos recebem textos já resolvidos; legendas internas vêm do dicionário sem mudar geometria, eixos, pontos ou cálculo.
+- **Por quê:** atende ao pedido de leitura mais simples sem criar segunda fonte de verdade ou acoplar apresentação a dado. A persistência é por aparelho, sem conta, backend ou sincronização.
+- **Consequência:** nenhum número, unidade, payload, rota, journal ou `model_version` muda; segue **2**. A F9 não retoma o sinal F1b nem marca F6/F7 como aceitas. A ratificação do dono continua pendente.
+- **Revisar em:** primeiro uso real dos dois perfis ou se o dono pedir sincronização entre aparelhos.
+
 ## ADR-050 — gráfico do papel e eixo de pregão no gráfico da série
 
 - **Data:** 2026-11-25 · **Status:** provisória — implementada a pedido do dono, salvo ratificação · **Custo de reverter:** baixo (rota de leitura + componente)

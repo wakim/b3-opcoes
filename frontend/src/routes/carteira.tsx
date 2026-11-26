@@ -18,10 +18,9 @@ import {
   formatPnlBrl,
   formatPnlPct,
   pnlTone,
-  positionKindLabel,
-  positionStatusLabel,
   PositionFlags,
 } from '../components/PositionBits'
+import { usePresentation } from '../lib/presentation'
 import { PositionForm } from '../components/PositionForm'
 import { ErrorState, Loading } from '../components/State'
 import { TokenGate, useAppToken } from '../components/TokenGate'
@@ -50,6 +49,7 @@ export const Route = createFileRoute('/carteira')({
 })
 
 function Carteira() {
+  const p = usePresentation()
   const auth = useAppToken()
   const queryClient = useQueryClient()
   const [formOpen, setFormOpen] = useState(false)
@@ -117,11 +117,11 @@ function Carteira() {
                 setFormOpen(true)
               }}
             >
-              Nova posição
+              {p.copy('action', 'new_position').label}
             </Button>
             {auth.tokenRequired && (
               <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
-                Trocar token
+                {p.copy('token', 'change').label}
               </Button>
             )}
           </div>
@@ -132,7 +132,7 @@ function Carteira() {
         <TokenGate notice={tokenNotice} onUnlock={() => setTokenNotice(null)} />
       )}
 
-      {portfolio.isLoading && <Loading label="carregando carteira…" />}
+      {portfolio.isLoading && <Loading label={p.copy('loading', 'wallet').label} />}
       {portfolio.isError && <ErrorState error={portfolio.error} title="Carteira indisponível" />}
 
       {writeNotice && (
@@ -165,11 +165,11 @@ function Carteira() {
           {portfolio.data.data.positions.length === 0 &&
           (portfolio.data.meta?.total ?? 0) === 0 ? (
             <div className="rounded-[6px] border border-dashed border-input bg-card px-[16px] py-[24px]">
-              <p className="mb-[4px]">Nenhuma posição aberta.</p>
+              <p className="mb-[4px]">{p.copy('empty', 'positions').label}</p>
               <p className={`${noteBase} lg:text-label`}>
                 {auth.hasToken
-                  ? 'Use “Nova posição” para registrar pernas e a marcação de entrada.'
-                  : 'Salve o token acima e use “Nova posição” para registrar pernas e a marcação de entrada.'}
+                  ? `Use “${p.copy('action', 'new_position').label}” para registrar pernas e a marcação de entrada.`
+                  : `Salve o token acima e use “${p.copy('action', 'new_position').label}” para registrar pernas e a marcação de entrada.`}
               </p>
             </div>
           ) : portfolio.data.data.positions.length === 0 ? (
@@ -195,8 +195,8 @@ function Carteira() {
 
       <Dialog
         open={formOpen}
-        title="Nova posição"
-        eyebrow="journal append-only"
+        title={p.copy('action', 'new_position').label}
+        eyebrow={p.copy('append_only').label}
         onClose={closeForm}
         busy={formBusy}
         showCloseButton={false}
@@ -240,48 +240,54 @@ function PositionTotalsGrid({
         <Metric label="Posições abertas" value={fmt(totals.open_positions, 0)} />
         <GlossaryMetric
           field="capital_committed_brl"
-          label="Capital comprometido"
+          term="capital"
           value={brl(totals.capital_committed_brl)}
           onOpen={onMetric}
         />
         <Metric
-          label="P&L"
+          term="pnl"
           value={<span className={pnlTone(totals.pnl_brl)}>{formatPnlBrl(totals.pnl_brl)}</span>}
           emphasis
         />
         <GlossaryMetric
           field="pnl_pct"
-          label="P&L %"
+          term="pnl"
+          variant="pct"
           value={formatPnlPct(totals.pnl_pct)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="delta"
-          label="Delta"
+          term="delta"
+          variant="aggregate"
           value={fmt(totals.delta, 3)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="delta_exposure_brl"
-          label="Delta em R$"
+          term="delta"
+          variant="exposure"
           value={brl(totals.delta_exposure_brl)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="gamma"
-          label="Gamma"
+          term="gamma"
+          variant="aggregate"
           value={fmt(totals.gamma, 3)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="theta_brl"
-          label="Theta (R$/dia)"
+          term="theta"
+          variant="brl_day"
           value={brl(totals.theta_brl)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="vega_brl"
-          label="Vega (R$/ponto)"
+          term="vega"
+          variant="brl_point"
           value={brl(totals.vega_brl)}
           onOpen={onMetric}
         />
@@ -301,6 +307,7 @@ function PositionCard({
   position: PositionSummary
   onMetric: OpenMetric
 }) {
+  const p = usePresentation()
   const breakevens = position.breakeven_brl
 
   return (
@@ -314,9 +321,9 @@ function PositionCard({
           >
             {position.underlying}
           </Link>
-          <span className="ml-[12px] text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">{positionKindLabel(position.kind)}</span>
+          <span className="ml-[12px] text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">{p.positionKind(position.kind).label}</span>
         </div>
-        <span className={`${quiet} lg:text-label`}>{positionStatusLabel(position.status)}</span>
+        <span className={`${quiet} lg:text-label`}>{p.positionStatus(position.status)}</span>
       </header>
 
       <div className="mb-[12px] flex flex-wrap gap-x-[16px] gap-y-[4px] font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground tabular-nums lg:text-label">
@@ -328,31 +335,34 @@ function PositionCard({
 
       <MetricGrid inCard>
         <Metric
-          label="P&L"
+          term="pnl"
           value={<span className={pnlTone(position.pnl_brl)}>{formatPnlBrl(position.pnl_brl)}</span>}
           emphasis
         />
         <GlossaryMetric
           field="pnl_pct"
-          label="P&L %"
+          term="pnl"
+          variant="pct"
           value={formatPnlPct(position.pnl_pct)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="delta"
-          label="Delta"
+          term="delta"
           value={fmt(position.delta, 3)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="theta_brl"
-          label="Theta (R$/dia)"
+          term="theta"
+          variant="brl_day"
           value={brl(position.theta_brl)}
           onOpen={onMetric}
         />
         <GlossaryMetric
           field="vega_brl"
-          label="Vega (R$/ponto)"
+          term="vega"
+          variant="brl_point"
           value={brl(position.vega_brl)}
           onOpen={onMetric}
         />
@@ -383,7 +393,7 @@ function PositionCard({
         to="/carteira/$positionId"
         params={{ positionId: position.id }}
       >
-        Abrir posição <span className="font-mono text-[calc(18px*var(--font-scale))] leading-none text-muted-foreground" aria-hidden="true">›</span>
+        {p.copy('action', 'open_position').label} <span className="font-mono text-[calc(18px*var(--font-scale))] leading-none text-muted-foreground" aria-hidden="true">›</span>
       </Link>
     </article>
   )

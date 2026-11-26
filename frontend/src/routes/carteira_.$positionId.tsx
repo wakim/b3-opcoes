@@ -17,13 +17,10 @@ import { PayoffChart } from '../components/PayoffChart'
 import {
   formatPnlBrl,
   formatPnlPct,
-  legTypeLabel,
   pnlTone,
-  positionKindLabel,
-  positionStatusLabel,
-  predictionStatusLabel,
   PositionFlags,
 } from '../components/PositionBits'
+import { usePresentation } from '../lib/presentation'
 import { ErrorState, Loading } from '../components/State'
 import { HelpTip } from '../components/HelpTip'
 import { ScreenTable } from '../components/ScreenTable'
@@ -70,6 +67,7 @@ function percentPoints(value: number | null): string {
 }
 
 function PositionDetailPage() {
+  const p = usePresentation()
   const { positionId } = Route.useParams()
   const auth = useAppToken()
   const queryClient = useQueryClient()
@@ -130,9 +128,9 @@ function PositionDetailPage() {
     if (auth.forgetToken()) setTokenNotice(null)
   }
 
-  if (position.isLoading) return <Loading label="carregando posição…" />
+  if (position.isLoading) return <Loading label={p.copy('loading', 'position').label} />
   if (position.isError) return <ErrorState error={position.error} title="Posição indisponível" />
-  if (!position.data) return <Loading label="carregando posição…" />
+  if (!position.data) return <Loading label={p.copy('loading', 'position').label} />
 
   const data = position.data.data
   const isOpen = data.status === 'open'
@@ -148,7 +146,7 @@ function PositionDetailPage() {
         <div>
           <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>{data.underlying}</h1>
           <p className={`${quietLine} lg:text-label`}>
-            {positionKindLabel(data.kind)} · {positionStatusLabel(data.status)} · sessão{' '}
+            {p.positionKind(data.kind).label} · {p.positionStatus(data.status)} · sessão{' '}
             {position.data.as_of_session ?? '—'}
           </p>
         </div>
@@ -173,43 +171,48 @@ function PositionDetailPage() {
 
       <MetricGrid>
         <Metric
-          label="P&L"
+          term="pnl"
           value={<span className={pnlTone(data.pnl_brl)}>{formatPnlBrl(data.pnl_brl)}</span>}
           emphasis
         />
         <GlossaryMetric
           field="pnl_pct"
-          label="P&L %"
+          term="pnl"
+          variant="pct"
           value={formatPnlPct(data.pnl_pct)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="delta"
-          label="Delta"
+          term="delta"
           value={fmt(data.delta, 3)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="theta_brl"
-          label="Theta (R$/dia)"
+          term="theta"
+          variant="brl_day"
           value={brl(data.theta_brl)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="vega_brl"
-          label="Vega (R$/ponto)"
+          term="vega"
+          variant="brl_point"
           value={brl(data.vega_brl)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="days_to_expiry"
           label="Sessões até vencimento"
+          term={p.metric('days_to_expiry') ?? undefined}
           value={fmt(data.days_to_expiry, 0)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="breakeven_brl"
           label="Breakevens"
+          term="breakeven"
           value={
             data.breakeven_brl.length > 0
               ? data.breakeven_brl.map((value) => brl(value)).join(' · ')
@@ -219,17 +222,15 @@ function PositionDetailPage() {
         />
         <GlossaryMetric
           field="entry_iv_atm_30d"
-          label="Volatilidade implícita 30d na entrada"
+          term="iv_atm_30d"
+          variant="entry"
           value={percentPoints(data.entry_iv_atm_30d)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="current_iv_atm_30d"
-          label={
-            isOpen
-              ? 'Volatilidade implícita 30d na sessão'
-              : 'Volatilidade implícita 30d no fechamento'
-          }
+          term="iv_atm_30d"
+          variant={isOpen ? 'session' : 'close'}
           value={percentPoints(data.current_iv_atm_30d)}
           onOpen={openMetric}
         />
@@ -260,7 +261,7 @@ function PositionDetailPage() {
           </div>
           <div className={identityCell}>
             <dt className={identityDt}>Status</dt>
-            <dd className={identityDd}>{positionStatusLabel(data.status)}</dd>
+            <dd className={identityDd}>{p.positionStatus(data.status)}</dd>
           </div>
         </dl>
         {data.notes && <p className="mt-[12px] text-[calc(13px*var(--font-scale))] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{data.notes}</p>}
@@ -270,8 +271,8 @@ function PositionDetailPage() {
         <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-legs-title">
           Pernas registradas
           <HelpTip
-            label="O que é uma perna?"
-            text="Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade. Uma coberta, por exemplo, tem duas pernas: a ação comprada e a call vendida."
+            label={`O que é ${p.copy('leg').label}?`}
+            text={p.copy('leg').help ?? 'Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade.'}
           />
         </h2>
         <ScreenTable
@@ -300,8 +301,8 @@ function PositionDetailPage() {
               {data.legs.map((leg) => (
                 <TableRow key={leg.id}>
                   <TableCell className="px-2 py-2.5">{leg.ticker}</TableCell>
-                  <TableCell className="px-2 py-2.5">{legTypeLabel(leg.type, leg.option_side)}</TableCell>
-                  <TableCell className="px-2 py-2.5">{leg.side === 'long' ? 'comprada' : 'vendida'}</TableCell>
+                  <TableCell className="px-2 py-2.5">{p.legType(leg.type, leg.option_side)}</TableCell>
+                  <TableCell className="px-2 py-2.5">{p.copy('position_side', leg.side).label}</TableCell>
                   <TableCell className="px-2 py-2.5">{fmt(leg.qty, 0)}</TableCell>
                   <TableCell className="px-2 py-2.5">{dateBr(leg.maturity)}</TableCell>
                   <TableCell className="px-2 py-2.5">{brl(leg.entry_price_brl)}</TableCell>
@@ -330,13 +331,13 @@ function PositionDetailPage() {
                 <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
                 <TableHead className="font-normal lg:text-table-head">Marca</TableHead>
                 <TableHead className="font-normal lg:text-table-head">Strike vigente</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Volatilidade implícita</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Delta</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Gamma</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Theta</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Vega</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Spread</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Spread %</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('iv_pct', 'column').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('delta').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('gamma').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('theta').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('vega').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('spread').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('spread', 'pct').label}</TableHead>
                 <TableHead className="font-normal lg:text-table-head">Um lado</TableHead>
                 <TableHead className="font-normal lg:text-table-head">Flags</TableHead>
               </TableRow>
@@ -374,7 +375,10 @@ function PositionDetailPage() {
             <dl className={identityGrid}>
               <div className={identityCell}>
                 <dt className={identityDt}>Métrica</dt>
-                <dd className={identityNumDd}>{data.prediction.metric}</dd>
+                <dd className={identityNumDd}>{(() => {
+                  const key = p.metric(data.prediction.metric)
+                  return key ? p.copy(key).label : data.prediction.metric
+                })()}</dd>
               </div>
               <div className={identityCell}>
                 <dt className={identityDt}>Condição</dt>
@@ -392,7 +396,7 @@ function PositionDetailPage() {
               </div>
               <div className={identityCell}>
                 <dt className={identityDt}>Status</dt>
-                <dd className={identityDd}>{predictionStatusLabel(data.prediction.status)}</dd>
+                <dd className={identityDd}>{p.predictionStatus(data.prediction.status, 'position').label}</dd>
               </div>
               <div className={identityCell}>
                 <dt className={identityDt}>Observado</dt>
@@ -430,11 +434,11 @@ function PositionDetailPage() {
               onClick={openConfirmation}
               disabled={!auth.hasToken}
             >
-              Fechar posição
+              {p.copy('action', 'close_position').label}
             </Button>
             {auth.hasToken && auth.tokenRequired && (
               <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
-                Trocar token
+                {p.copy('token', 'change').label}
               </Button>
             )}
           </div>
@@ -445,8 +449,8 @@ function PositionDetailPage() {
 
       <Dialog
         open={confirmOpen}
-        title="Fechar posição"
-        eyebrow="evento append-only"
+        title={p.copy('action', 'close_position').label}
+        eyebrow={p.copy('append_only').label}
         description="O fechamento usa a marcação EOD e acrescenta um evento que não pode ser desfeito."
         onClose={closeConfirm}
         busy={close.isPending}
@@ -482,14 +486,14 @@ function PositionDetailPage() {
                 onClick={closeConfirm}
                 disabled={close.isPending}
               >
-                Cancelar
+                {p.copy('action', 'cancel').label}
               </Button>
               <Button
                 type="button"
                 onClick={() => close.mutate(closeDate ? { date: closeDate } : {})}
                 disabled={close.isPending}
               >
-                {close.isPending ? 'fechando…' : 'Confirmar fechamento'}
+                {close.isPending ? p.copy('action', 'closing').label : p.copy('action', 'confirm_close').label}
               </Button>
             </div>
           </>

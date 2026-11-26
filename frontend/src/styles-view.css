@@ -125,6 +125,32 @@
   stroke-dasharray: 2 3;
 }
 
+/* Marcas tipadas (gráfico do papel e da série): só traço e cinza, sem matiz.
+   corporate/leg = tracejado do ajuste de strike; earnings = pontilhado fino;
+   jump = sólido claro (salto ≥ 40% sem evento do B2 ou pregão dominante). */
+.chart__mark--earnings {
+  stroke: var(--text-3);
+  stroke-dasharray: 1 3;
+}
+
+.chart__mark--jump {
+  stroke: var(--text-2);
+  stroke-dasharray: none;
+}
+
+.chart__key--corporate,
+.chart__key--leg {
+  border-top: 1px dashed var(--line-strong);
+}
+
+.chart__key--earnings {
+  border-top: 1px dotted var(--text-3);
+}
+
+.chart__key--jump {
+  border-top: 1px solid var(--text-2);
+}
+
 .chart__line {
   stroke: var(--accent);
   stroke-width: 1.5;

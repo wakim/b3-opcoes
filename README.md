@@ -117,6 +117,11 @@ reabra o app pelo ícone; o shell deve abrir com “sem rede — última sessão
 carimbo `offline`, sem `D-n`. Desligue o Tailscale do celular para confirmar que a
 URL não abre fora da tailnet.
 
+O header tem o seletor **Expert / Leigo**. O padrão é Expert; a escolha fica salva apenas
+naquele navegador (`b3o:language`) e sobrevive a reload, atualização e uso offline. No Leigo,
+os termos aparecem por extenso antes da sigla e ganham ajuda curta; a ficha completa continua
+no glossário do app.
+
 `b3o struct` (e `POST /api/structure` / tool `structure_eval`) **avalia a estrutura dada** —
 payoff, breakevens, prêmio líquido, perda/ganho máximo, capital comprometido, gregas e 45
 cenários. É cálculo, não gravação: não vira posição nem journal, e **não sugere, compara ou

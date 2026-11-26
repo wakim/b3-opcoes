@@ -3,13 +3,28 @@
  * O slug é o que `b3o.api.glossary.slugify` produz (minúsculas, sem acento,
  * pontuação → `-`). Se a resposta de `/api/glossary/{key}` der 404, a chave
  * está errada: corrija aqui, não no componente. Nenhum número nasce aqui.
+ *
+ * F9: `term`/`variant`/`params` são opcionais e retrocompatíveis. O slug
+ * continua saindo de `KEYS`, nunca do rótulo visível.
  */
-export type OpenMetric = (field: string, label: string, value: string) => void
+import type { CopyParams, PresentationKey } from '../lib/presentation'
+
+export type OpenMetric = (
+  field: string,
+  label: string,
+  value: string,
+  term?: PresentationKey,
+  variant?: string,
+  params?: CopyParams,
+) => void
 
 export interface ModalTarget {
   field: string
   label: string
   value: string
+  term?: PresentationKey
+  variant?: string
+  params?: CopyParams
 }
 
 const KEYS: Record<string, string> = {
@@ -87,4 +102,80 @@ const KEYS: Record<string, string> = {
 
 export function glossaryKey(field: string): string | null {
   return KEYS[field] ?? null
+}
+
+/** Campo da API → chave semântica do dicionário de apresentação (F9).
+ *
+ * Não altera `KEYS`: o slug do glossário e a chave de rótulo são eixos
+ * independentes. Código desconhecido devolve `null` e o chamador cai no
+ * fallback explícito.
+ */
+const FIELD_PRESENTATION: Record<string, PresentationKey> = {
+  spot_brl: 'spot',
+  spot: 'spot',
+  close_brl: 'spot',
+  mid_brl: 'spot',
+  bid_brl: 'bid_ask',
+  ask_brl: 'bid_ask',
+  spread_brl: 'spread',
+  spread_pct: 'spread',
+  strike_brl: 'strike',
+  entry_strike_brl: 'strike',
+  current_strike_brl: 'strike',
+  maturity: 'maturity',
+  iv_pct: 'iv_pct',
+  entry_iv_pct: 'iv_pct',
+  exp_move_1s: 'atm',
+  exp_move_1s_30d: 'atm',
+  delta: 'delta',
+  net_premium_brl: 'net_premium',
+  payoff: 'payoff',
+  breakeven_brl: 'breakeven',
+  legs: 'leg',
+  iv_atm_30d: 'iv_atm_30d',
+  iv_atm: 'iv_atm_30d',
+  entry_iv_atm_30d: 'iv_atm_30d',
+  current_iv_atm_30d: 'iv_atm_30d',
+  iv_rank_252: 'iv_rank',
+  iv_pct_252: 'iv_rank',
+  rv20: 'rv',
+  rv30: 'rv',
+  rv60: 'rv',
+  rv_shock_share_pct: 'rv_shock',
+  rv_shock_date: 'rv_shock',
+  vrp: 'vrp',
+  vrp_z_252: 'vrp_z',
+  rr25: 'rr25',
+  bfly25: 'bfly25',
+  ts_slope_30_90: 'structure',
+  max_loss_brl: 'max_loss',
+  max_gain_brl: 'max_gain',
+  capital_committed_brl: 'capital',
+  capital_limit_brl: 'capital_limit',
+  pnl_brl: 'pnl',
+  pnl_pct: 'pnl',
+  delta_exposure_brl: 'delta',
+  days_to_expiry: 'sessions_to_expiry',
+  scenarios: 'scenarios',
+  volume: 'volume',
+  days_to_liquidate: 'days_to_liquidate',
+  decision_type: 'decision',
+  horizon_sessions: 'horizon',
+  observed: 'observed',
+  prediction_status: 'prediction_status_journal',
+  sample_n: 'sample_n',
+  void_count: 'void',
+  personal_hit_rate: 'personal_hit_rate',
+  theta_brl: 'theta',
+  vega_brl: 'vega',
+  gamma: 'gamma',
+  forward_brl: 'forward',
+  forward_30d: 'forward',
+  df: 'df',
+  implied_div_yield_30d: 'forward',
+  style: 'option_style',
+}
+
+export function presentationKeyForField(field: string): PresentationKey | null {
+  return FIELD_PRESENTATION[field] ?? null
 }

@@ -25,7 +25,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. **F5 entregue e aceito**: PWA (Hoje, Ticker, Série, Aprender, builder de estrutura, liquidez) servido pelo FastAPI, instalado no celular via `tailscale serve` 8443 (só tailnet) e offline pelo service worker. **F6 implementado e validado** (ADR-041/045): journal PostgreSQL append-only, carteira com marcação EOD, P&L, gregas, alertas e payoff; aceitação no uso real (ADR-047). **F7 implementado e validado** (ADR-042): Diário de decisões com previsão estruturada, avaliação automática no lote EOD e calibração pessoal; aceitação no uso real (ADR-047). **F8 entregue e aceita** (ADR-043/044/046/047): interface em shadcn + Tailwind, CSS global reduzido a tokens, base e as exceções da ADR-046; avaliação manual do dono aprovada em 25/11/2026. |
 | Retomar em | **F8 aceita; começar a usar F6/F7 (ADR-047).** (1) **Diário todo pregão**: uma decisão real por sessão na app da 8083/8443 (inclusive "não entrei"), com previsão estruturada quando houver tese — a aceitação F7 conta 30 sessões consecutivas e ≥ 10 previsões avaliadas pelo lote. (2) **Duas posições reais** registradas na Carteira na data da execução, e o P&L conferido com o extrato da corretora (F6.6). A F9 está implementada, com validação final pendente; defeito achado no uso vira correção pontual. |
 | Novo pedido | **F9 — níveis de linguagem Expert/Leigo**, pedido do dono em 24/11/2026. Implementação concluída; validação final pendente. É apresentação, não altera dado, cálculo ou a aceitação de uso de F6/F7. |
-| Benchmark externo | **F10 — benchmark de métricas**, pedido do dono em 25/11/2026, revisado em 26/11 para cobrir **todas** as métricas de mercado. **F10.1 verificado** (skew do OBM pendente), **serviço `bench` concluído** (`826690e`) e mecanismos P3/P4/P5/P7/P6 em construção, sem captura, comparação ou relatório final. Fontes: OBM, opcoes.net.br e a calculadora do B3Lab; a execução futura exige a mesma sessão do lake. |
+| Benchmark externo | **F10 — benchmark de métricas**, pedido do dono em 25/11/2026, revisado em 26/11 para cobrir **todas** as métricas de mercado. **F10.1 verificado** (skew do OBM pendente), **serviço `bench` concluído** (`826690e`) e mecanismos P3/P4/P5/P6/P7 construídos e validados estaticamente, sem captura, comparação ou relatório final. Fontes: OBM, opcoes.net.br e a calculadora do B3Lab; a execução futura exige a mesma sessão do lake. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -716,10 +716,11 @@ sites. Fontes investigadas no navegador em 26/11/2026 (sessão 25/11 nos sites e
   opcoes.net.br usa `quotesMode=UP`, `#vAAAA-MM-DD` e espera do DataTable. A definição de
   `skew_25d_30d_ratio` continua pendente e a captura futura deve preservar `fields[]` do agregado.
   Evidência: `data/bench/f10_1-verificacoes.md`.
-- **F10.2 concluído somente na infraestrutura:** serviço `bench` isolado, `Dockerfile.bench` e
-  Playwright 1.65.2, commit `826690e`. O mecanismo de captura ainda não existe.
-- **Mecanismos em construção/pausados:** P3/P4/P5/P7 foram despachados e pausados; a auditoria desta
-  retomada não encontrou arquivos parciais. P6 não foi iniciado.
+- **F10.2 concluído:** serviço `bench` isolado, `Dockerfile.bench` e Playwright 1.65.2
+  (`826690e`), mais o mecanismo de captura P3 (`608bf57`).
+- **Mecanismos construídos e validados estaticamente:** P7 (`278e239`), P5 (`9c668e6`),
+  P4 (`4934f41`) e P6 (`3dcd884`). Todos passaram por `py_compile`, `--help`, `ruff`,
+  `git diff --check` e conferência sintética independente; nenhum foi executado sobre o lake.
 - **Nenhuma captura externa, comparação numérica ou relatório final de benchmark foi executado.**
   Nenhum item da **Aceitação F10** está marcado.
 
@@ -819,11 +820,11 @@ fonte publica equivalente — verificação por recontagem interna) e `signal_cl
 |---|---|---|
 | P1 / F10.1 | `data/bench/f10_1-verificacoes.md` | Verificações concluídas; `skew_25d_30d_ratio` pendente |
 | P2 / F10.2 (infra) | `compose.yaml`, `Dockerfile.bench` | Concluído e commitado (`826690e`) |
-| P3 | `backend/scripts/bench_capture.py` | Em construção; execução futura, proibida nesta retomada |
-| P4 | `backend/scripts/bench_b3lab.py` | Em construção; execução futura, proibida nesta retomada |
-| P5 | `backend/scripts/bench_structures.py` | Em construção; execução futura, proibida nesta retomada |
-| P7 | `backend/scripts/bench_recalc.py` | Em construção; somente funções puras e validação estática |
-| P6 | `backend/scripts/bench_compare.py` | Não iniciado; depende de P3/P4/P5/P7 e produz só JSON intermediário |
+| P3 | `backend/scripts/bench_capture.py` | Construído e validado estaticamente (`608bf57`); captura futura proibida nesta retomada |
+| P4 | `backend/scripts/bench_b3lab.py` | Construído e validado estaticamente (`4934f41`); captura futura proibida nesta retomada |
+| P5 | `backend/scripts/bench_structures.py` | Construído e validado estaticamente (`9c668e6`); captura futura proibida nesta retomada |
+| P7 | `backend/scripts/bench_recalc.py` | Construído e validado estaticamente (`278e239`); funções puras, sem `b3o` |
+| P6 | `backend/scripts/bench_compare.py` | Construído e validado estaticamente (`3dcd884`); produz só JSON intermediário |
 | Captura e relatório | `data/bench/`, `data/out/` | Não executados; fora do escopo desta retomada |
 
 **Aceitação F10**

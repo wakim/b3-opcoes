@@ -352,6 +352,11 @@ def create_app() -> FastAPI:
         """Vencimentos, eventos de ajuste de strike e calendário de resultados."""
         return payloads.events_payload(_service(), ticker)
 
+    @app.get("/api/t/{ticker}/prices")
+    def api_prices(ticker: str, days: int = 250, offset: int = 0) -> dict[str, Any]:
+        """Fechamento do papel por sessão (escala do B2 aplicada) + marcas de evento."""
+        return payloads.prices_payload(_service(), ticker, days=days, offset=offset)
+
     @app.get("/api/liquid")
     def api_liquid(
         date: str | None = None,

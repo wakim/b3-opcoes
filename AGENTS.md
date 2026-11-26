@@ -363,6 +363,15 @@ Medido nesta máquina em 22/11/2026 — não redescubra:
 - **Enter via `Input.dispatchKeyEvent` bruto não é prova confiável neste Edge headless.** O evento chega ao foco, mas não sintetiza o clique nativo do botão. Use o navegador real para Enter; no script CDP, abra o Accordion com Espaço e mantenha Tab entre triggers. Não marcar `toggle_group_enter` como prova de ativação sem medir a mudança de estado.
 - **`min-h-[44px]` não garante alvo quadrado.** Links de ticker e “‹ Hoje” tinham 44 px de altura, mas 31–38,5 px de largura. `tickerLink` e `back` agora usam `min-w-[44px]`; o link de Ticker reutiliza `back` em vez de duplicar classes. A auditoria final varre `a/button/input/select/textarea/[role]` visíveis nas rotas principais.
 
+### Gráficos de preço (ADR-050, medidos em 25/11/2026)
+
+- **`metrics_series` só tem linha em dia com negócio** (3.078.026 linhas de 2026, todas com `trades > 0` no raw). Plotar o histórico da série pelo índice do ponto transforma 10 negócios em 3 meses numa curva diária. O eixo certo é `session_index` (posição no calendário do lake); PETRL44 18/12: **55 pregões com negócio em 111**.
+- **A série troca de perna no meio da vida em 23% dos casos** (51.463 de 224.567 em 2026). A linha não pode ligar `leg_id` diferentes: PETRL44 passa de K 44,35 (`|0`) para 43,16 (`|1`).
+- **Preço alto de call OTM no gráfico pode ser real**: PETRL44 a R$ 16,48 em 23/10/2026 é com PETR4 a **58,68** (antes do choque de 26/10). Confira o spot antes de chamar de bug.
+- **`/api/t/{t}/prices` aplica escala, não provento.** SBSP3 sai contínua em 29/04 (×0,2 para trás); sem o ajuste seria −80%. Papel sem opção na janela não tem cobertura do B2 → `no_event_coverage` (BKNG34: salto 0,039× em 06/04/2026). Marcas `gap` de 26/10 (B3SA3 0,500×, SIMH3 0,500×) são o choque real, não erro.
+- **Referência independente:** PETR4 fecha **42,67** em 19/11/2026 pelo `prices` — o mesmo número do F0.11/F2.
+- **`npm run build` recria `frontend/dist` (`rm -rf`) e solta o bind de um container que montou `./frontend/dist`** (a rota passa a responder 503 `frontend_missing`). Depois de rebuildar, `podman restart` no container que serve o `dist`.
+
 ---
 
 ## Armazenamento

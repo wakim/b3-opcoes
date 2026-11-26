@@ -683,3 +683,18 @@ Em qualquer outro caso: adote o default, registre, siga.
 - **Por quê:** um fator único atende ao pedido e permite ajustar a densidade depois sem procurar tamanhos espalhados.
 - **Consequência:** nenhum número exibido ou contrato muda. A aprovação visual final continua com o dono; se pedir outro valor, altera-se somente `--font-scale` e atualizam-se os valores documentados.
 - **Revisar em:** retorno do dono sobre a legibilidade em uso real.
+
+## ADR-050 — gráfico do papel e eixo de pregão no gráfico da série
+
+- **Data:** 2026-11-25 · **Status:** provisória — implementada a pedido do dono, salvo ratificação · **Custo de reverter:** baixo (rota de leitura + componente)
+- **Contexto:** o dono perguntou se fazia sentido ter gráfico de cotação da opção e do papel. Medição no lake de 2026 (vencimentos já expirados): a mediana de pregões com negócio por série é 10–14 (PETR4, VALE3, BBAS3, BOVA11, MGLU3); os 20 contratos de maior volume por papel negociam em 56% (BBAS3) a 96% (VALE3) dos pregões; 51.463 de 224.567 séries de 2026 (23%) trocam de `leg_id` no meio da vida. O gráfico da série existente usava o índice do ponto como eixo e ligava pernas diferentes.
+- **Decisão:**
+  1. `GET /api/t/{t}/prices` (só HTTP, mesma `QueryService`): fechamento `010` nas últimas `days` sessões **do calendário do lake** (sessão sem negócio = `null`, não some). Desdobramento/grupamento do B2 aplicado às barras anteriores ao evento (mesma regra da RV); **provento não é descontado** — o preço mostrado é o negociado, e a data ex vira marca.
+  2. Marcas: `dividend`/`scale`/`indeterminate` (B2), `earnings` (CVM) e `gap` = abertura ≥ 40% acima/abaixo do fechamento anterior, sem evento do B2 no dia, com piso de R$ 1 e negócio na sessão anterior. O pregão dominante da RV (`rv_shock_date`) é marcado pela tela a partir do `summary`.
+  3. Papel sem nenhuma opção do ISIN na janela sai com `no_event_coverage`: o B2 não enxerga desdobramento dele (BKNG34 06/04/2026, razão 0,039, é exatamente esse caso).
+  4. Série: cada ponto ganha `session_index` (posição no calendário do lake desde o 1º ponto), `leg_id` e `strike_brl` da data. A tela usa o pregão como eixo, tracejado nas lacunas, **quebra a linha** na troca de perna e marca a troca.
+  5. Sem candle, média móvel ou indicador técnico: o painel é descritivo (ADR-023/024).
+- **Por quê:** contexto visual do que a tela já mostra (choque de 26/10, proventos, resultados) sem número novo; a escala é aplicada porque sem ela SBSP3 mostraria queda de 80% em 29/04/2026 que não aconteceu.
+- **Consequência:** nenhuma fórmula muda; `model_version` segue **2**. Cada página de `prices` custa ~1,6 s (leituras pequenas do lake); a tela faz 5 páginas com `staleTime` de 10 min. Não há tool MCP `prices` nesta versão.
+- **Revisar em:** se o dono quiser o preço ajustado por provento (retorno total) ou a série de preço no MCP.
+

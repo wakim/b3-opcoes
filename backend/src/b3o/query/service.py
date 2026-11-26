@@ -819,6 +819,12 @@ SHOCK_LOOKBACK_EXTRA = 15
 FLAG_RV_SHOCK_DAY = "rv_shock_day"
 """Um pregão responde por ≥ 50% da variância de 30 pregões (ADR-035)."""
 
+GAP_MIN_MOVE = 0.40
+"""Salto de abertura que vira marca `gap` no gráfico do papel (|razão − 1| ≥ 40%)."""
+
+GAP_PRICE_FLOOR_BRL = 1.0
+"""Piso do fechamento anterior para a marca `gap` (`2 ¢ → 3 ¢` é +50% e não é nada)."""
+
 
 @dataclass(frozen=True, slots=True)
 class ScreenRow:
@@ -1239,13 +1245,23 @@ class CalibrationReport:
 
 @dataclass(frozen=True, slots=True)
 class SeriesPoint:
-    """Um dia de uma série (F3.2): preço em R$/ação, IV em % a.a."""
+    """Um dia de uma série (F3.2): preço em R$/ação, IV em % a.a.
+
+    `metrics_series` só tem linha em dia **com negócio**. `session_index` é a
+    posição da data no calendário do lake a partir do primeiro ponto do
+    histórico devolvido (0, 1, …): saltos no índice são pregões sem negócio.
+    `leg_id`/`strike_brl` são os da data — o strike muda no meio da vida
+    (armadilha 2), e preço de pernas diferentes não se compara.
+    """
 
     date: date
     close_brl: float | None
     mid_brl: float | None
     iv_pct: float | None
     delta: float | None
+    session_index: int | None = None
+    leg_id: str | None = None
+    strike_brl: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1302,6 +1318,53 @@ class EventsDetail:
     strike_events: list[StrikeEventRow]
     earnings: list[EarningsEventRow]
     next_earnings: EarningsEventRow | None
+    notes: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class PricePoint:
+    """Uma sessão do lake na janela do gráfico do papel (mercado `010`).
+
+    `close_brl`/`open_brl` já estão na **escala da última sessão** (fator de
+    desdobramento/grupamento do B2 aplicado às barras anteriores ao evento);
+    proventos **não** são descontados. `adj_factor` é o multiplicador aplicado
+    (1,0 sem evento de escala depois da data). Sessão sem negócio no papel:
+    preços `None` e `traded=False` — a lacuna é dado, não zero.
+    """
+
+    date: date
+    close_brl: float | None
+    open_brl: float | None
+    adj_factor: float
+    traded: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PriceMark:
+    """Marca no gráfico do papel: evento do B2, resultado da CVM ou salto sem evento.
+
+    `kind`: `dividend` (`value` = provento por ação em R$, medido no strike),
+    `scale` (`value` = fator de preço), `indeterminate` (`value` None),
+    `earnings` (`value` None; `detail` = `actual`/`estimated`) e `gap`
+    (`value` = razão abertura ÷ fechamento anterior, já na mesma escala).
+    """
+
+    date: date
+    kind: str
+    value: float | None
+    detail: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PricesDetail:
+    """Fechamentos do papel nas últimas `days` sessões do lake + marcas (`prices`)."""
+
+    ticker: str
+    as_of_session: date
+    model_version: int
+    points: list[PricePoint]
+    marks: list[PriceMark]
+    flags: list[str]
     notes: list[str]
 
 
@@ -2408,6 +2471,16 @@ class QueryService:
         if not rows:
             self._series_failure(code, maturity, paths)
         last = rows[-1]
+        window = rows[-int(days) :] if days > 0 else []
+        index_of: dict[date, int] = {}
+        if window:
+            first = window[0][0]
+            years = range(first.year, last[0].year + 1)
+            calendar = sorted(
+                day for year in years for day in self.lake_calendar(year)
+                if first <= day <= last[0]
+            )
+            index_of = {day: position for position, day in enumerate(calendar)}
 
         def point(row: tuple) -> SeriesPoint:
             return SeriesPoint(
@@ -2416,9 +2489,11 @@ class QueryService:
                 mid_brl=float(row[1]) / 100.0,
                 iv_pct=None if row[2] is None else float(row[2]),
                 delta=None if row[3] is None else float(row[3]),
+                session_index=index_of.get(row[0]),
+                leg_id=str(row[12]),
+                strike_brl=float(row[11]) / 100.0,
             )
 
-        window = rows[-int(days) :] if days > 0 else []
         points = [point(row) for row in window]
         return SeriesDetail(
             ticker=code,
@@ -2487,6 +2562,136 @@ class QueryService:
             strike_events=strike_events,
             earnings=earnings_all,
             next_earnings=next_earnings,
+            notes=notes,
+        )
+
+    def prices(self, ticker: str, days: int = 250) -> PricesDetail:
+        """Fechamento do papel nas últimas `days` sessões do lake, com marcas.
+
+        - A janela é o **calendário do lake** (sessão sem negócio no papel entra
+          com preço `None`, não some do eixo).
+        - Desdobramento/grupamento do B2 é aplicado às barras **anteriores** ao
+          evento (mesma regra da RV: `event_factor_series`); flag `scale_adjusted`.
+        - Provento não é descontado (flag `dividends_not_adjusted`): o preço
+          mostrado é o negociado, e a data ex aparece como marca.
+        - O B2 só enxerga evento de papel **com opção**: sem nenhuma série de
+          opção do ISIN na janela, a flag `no_event_coverage` avisa que um
+          desdobramento não teria sido ajustado.
+        - Salto de abertura ≥ 40% (para cima ou para baixo) sem evento do B2 no
+          dia vira marca `gap`, com piso de R$ 1 e negócio na sessão anterior
+          (AGENTS: o limiar sozinho é ruído de centavo e de série parada).
+        """
+        paper = _clean_ticker(ticker)
+        session = self._session(None)
+        self._require_underlying(paper)
+        calendar: list[date] = []
+        first_year = self._first_year(session)
+        year = session.year
+        # Lê só os anos necessários, do mais recente para trás (~250 sessões/ano).
+        while days > 0 and year >= first_year and len(calendar) < days:
+            calendar = [d for d in self.lake_calendar(year) if d <= session] + calendar
+            year -= 1
+        window = calendar[-int(days) :] if days > 0 else []
+        notes: list[str] = []
+        flags: list[str] = ["dividends_not_adjusted"]
+        if not window:
+            return PricesDetail(
+                ticker=paper,
+                as_of_session=session,
+                model_version=self._model_version_for(),
+                points=[],
+                marks=[],
+                flags=flags,
+                notes=["prices: janela vazia"],
+            )
+        start, stop = window[0], window[-1]
+        paths = [
+            path for year in range(start.year, stop.year + 1) for path in self._partitions(year)
+        ]
+        fetched = self._fetch_named(
+            "SELECT refdate, open, close, isin_underlying FROM ("
+            "  SELECT refdate, open, close, isin_underlying, row_number() OVER ("
+            "    PARTITION BY refdate ORDER BY volume DESC) AS rn"
+            "  FROM read_parquet($raw)"
+            "  WHERE tpmerc = '010' AND ticker = $ticker AND refdate BETWEEN $start AND $stop"
+            ") WHERE rn = 1 ORDER BY refdate",
+            {"raw": [str(path) for path in paths], "ticker": paper, "start": start, "stop": stop},
+        )
+        bars = {row[0]: (int(row[1]), int(row[2])) for row in fetched}
+        isins = sorted({str(row[3]) for row in fetched if row[3]})
+        if not bars:
+            notes.append(f"{paper} não negociou no mercado à vista (010) na janela")
+
+        events = [event for event in self.strike_events() if event.underlying == paper]
+        factors = scale_factors(events).get(paper, {})
+        adj = event_factor_series(window, factors)
+        if any(adj[day] != 1.0 for day in bars):
+            flags.append("scale_adjusted")
+
+        has_options = bool(isins) and bool(
+            self._fetch_named(
+                "SELECT 1 FROM read_parquet($raw) WHERE tpmerc IN ('070', '080')"
+                " AND refdate BETWEEN $start AND $stop"
+                " AND isin_underlying IN (SELECT unnest($isins::VARCHAR[])) LIMIT 1",
+                {
+                    "raw": [str(path) for path in paths],
+                    "start": start,
+                    "stop": stop,
+                    "isins": isins,
+                },
+            )
+        )
+        if not has_options:
+            flags.append("no_event_coverage")
+            notes.append(
+                f"{paper} não tem opção na janela: o B2 não detecta desdobramento "
+                "nem provento deste papel, e um salto pode ser evento sem ajuste"
+            )
+
+        points: list[PricePoint] = []
+        for day in window:
+            bar = bars.get(day)
+            factor = adj[day]
+            if bar is None:
+                points.append(PricePoint(day, None, None, factor, False))
+            else:
+                points.append(
+                    PricePoint(day, bar[1] * factor / 100.0, bar[0] * factor / 100.0, factor, True)
+                )
+
+        marks: list[PriceMark] = []
+        event_days: set[date] = set()
+        for event in events:
+            if not start <= event.date <= stop:
+                continue
+            event_days.add(event.date)
+            if event.kind == "dividend":
+                value = None if event.delta_strike is None else event.delta_strike / 100.0
+            elif event.kind == "scale":
+                value = event.factor
+            else:
+                value = None
+            marks.append(PriceMark(event.date, event.kind, value))
+        for row in self.earnings_rows():
+            if row.ticker == paper and start <= row.date <= stop:
+                marks.append(PriceMark(row.date, "earnings", None, row.kind))
+        for prev, cur in zip(points, points[1:], strict=False):
+            if not (prev.traded and cur.traded) or cur.date in event_days:
+                continue
+            assert prev.close_brl is not None and cur.open_brl is not None
+            if prev.close_brl < GAP_PRICE_FLOOR_BRL or prev.close_brl <= 0:
+                continue
+            ratio = cur.open_brl / prev.close_brl
+            if ratio >= 1.0 + GAP_MIN_MOVE or ratio <= 1.0 - GAP_MIN_MOVE:
+                marks.append(PriceMark(cur.date, "gap", ratio))
+        marks.sort(key=lambda mark: (mark.date, mark.kind))
+        return PricesDetail(
+            ticker=paper,
+            as_of_session=session,
+            model_version=self._model_version_for(),
+            points=points,
+            marks=marks,
+            flags=flags,
             notes=notes,
         )
 

@@ -26,6 +26,8 @@ No primeiro acesso, o site mostra só o nível 1. Os outros dois aparecem quando
 
 **No painel** — `PETR4 41,18 · −1,04%` é o fechamento de 19/11. A tela diz `sessão 19/11 · D-1` justamente para você não confundir com hoje.
 
+O gráfico "Fechamento do papel" mostra esse número pregão a pregão. Desdobramento e grupamento são ajustados para trás (senão a SBSP3 pareceria cair 80% em 29/04/2026); provento **não** é descontado — a data ex aparece como marca, e o degrau no preço é real.
+
 ## Prêmio, bid e ask
 
 **O que é** — o prêmio é quanto custa a opção. `bid` é o que o mercado paga por ela; `ask` é o que o mercado pede. O **mid** é a média dos dois.

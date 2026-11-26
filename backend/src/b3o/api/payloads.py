@@ -490,6 +490,48 @@ def events_payload(service: QueryService, ticker: str) -> dict[str, Any]:
     )
 
 
+def prices_payload(
+    service: QueryService,
+    ticker: str,
+    days: int = 250,
+    offset: int = 0,
+) -> dict[str, Any]:
+    """Fechamentos do papel por sessão do lake, paginados como o `screen`.
+
+    A janela é das últimas `days` sessões (crescente); cada chamada devolve até
+    60 pontos a partir de `offset` e declara `meta.offset`/`meta.next_offset`.
+    `marks`, `flags` e `notes` valem para a janela inteira e vêm em toda página.
+    """
+    if days < 0 or days > 750:
+        raise request_error(
+            f"days fora da faixa ({days})",
+            "use days entre 0 e 750 sessões (cerca de 3 anos de lake)",
+        )
+    start = max(0, int(offset))
+    detail = service.prices(ticker, days=days)
+    page = detail.points[start : start + MAX_ROWS]
+    data = {
+        "ticker": detail.ticker,
+        "points": [jsonable(point) for point in page],
+        "marks": [jsonable(mark) for mark in detail.marks[:MAX_ROWS]],
+        "flags": list(detail.flags),
+        "notes": list(detail.notes),
+    }
+    payload = envelope(
+        data,
+        as_of_session=detail.as_of_session,
+        model_version=detail.model_version,
+        list_key="points",
+        total=len(detail.points),
+        counts={"marks": len(detail.marks)},
+    )
+    meta = payload["meta"]
+    next_offset = start + int(meta["returned"])
+    meta["offset"] = start
+    meta["next_offset"] = next_offset if next_offset < len(detail.points) else None
+    return payload
+
+
 STRUCTURE_KEYS = frozenset({"underlying", "date", "legs", "capital", "scenarios"})
 """Campos aceitos no corpo do `POST /api/structure` (contrato onda-j §2)."""
 

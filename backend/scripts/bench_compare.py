@@ -1,0 +1,3207 @@
+"""Comparador offline do benchmark F10 (pacote P6) — só JSON intermediário.
+
+Este módulo **não** captura, **não** abre navegador, **não** escreve relatório e
+**não** conclui o F10. Ele lê o bruto gravado por P3/P4/P5, consulta o nosso lado
+**somente pela API HTTP** (a mesma `QueryService` do produto), normaliza unidades
+de forma explícita e grava `b3o-bench-compare/1` para o relatório futuro
+(F10.6). O relatório em Markdown e a classificação de divergência ficam para
+outra sessão (PLAN.md F10, estado da retomada de 26/11/2026).
+
+Regras não negociáveis
+----------------------
+* Python calcula, agente interpreta, humano decide (AGENTS.md, regra 1). Todo
+  número aqui vem de bruto ou de ``bench_recalc`` (P7) — nenhum nasce de LLM.
+* O lado interno vem só de ``/api/health``, ``/api/screen`` (paginado),
+  ``/api/t/{ticker}?sections=summary,term,smile,history&days=252`` e
+  ``/api/s/{ticker}/{maturity}``. Nunca DuckDB/Parquet, nunca ``b3o``.
+* A API não expõe rho: a linha traz ``internal_api_missing_rho`` e ``null``;
+  nada é inventado para igualar o externo.
+* Ausência é ``null`` + motivo, nunca zero silencioso (AGENTS.md, regra 5).
+  Fonte ausente/corrompida/mismatch vira seção ``unavailable``.
+* Strike é atributo da linha: conversão para centavos com ``Decimal``, nunca
+  leitura do ticker (armadilha 1 e 2 do AGENTS.md). Casamento por 4 chaves;
+  fallback ``fallback_unique`` só com um candidato de cada lado.
+* ``vi_ratio``/IV bruta do opcoes.net.br são fração (×100); campos já em
+  porcentagem não multiplicam. Gamma mantém bruto **e** candidato ×100 sem
+  corrigir o backend (caso PETRX449, 25/11). Theta/vega só comparados quando a
+  base é confirmada, senão ``unit_unknown``.
+* ``skew_25d_30d_ratio`` do OBM é registrado **bruto**, nunca comparado como
+  RR25 enquanto ``fields[]`` não definir a fórmula (F10.1 pendente).
+
+Uso (tudo em container, pela raiz do repositório, serviço ``test``)::
+
+    podman compose run --rm test python scripts/bench_compare.py --help
+    podman compose run --rm test python scripts/bench_compare.py \
+        --date 2026-11-25
+
+Sem rede externa: somente ``B3_HTTP_URL`` (default ``http://app:8080``).
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import math
+import os
+import re
+import sys
+import unicodedata
+from collections import defaultdict
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlencode, urlparse
+from urllib.request import Request, urlopen
+
+import bench_recalc as recalc
+
+SCHEMA = "b3o-bench-compare/1"
+DEFAULT_HTTP_URL = os.environ.get("B3_HTTP_URL", "http://app:8080")
+DATA_DIR = os.environ.get("B3_DATA_DIR", "/data")
+DEFAULT_INPUT_DIR = Path(DATA_DIR) / "bench"
+DEFAULT_OUTPUT = Path(DATA_DIR) / "out"
+PAGE_SIZE = 60
+MAX_SCREEN_PAGES = 200
+HTTP_TIMEOUT = 60.0
+METRICS: tuple[str, ...] = ("price", "iv", "delta", "gamma", "theta", "vega", "rho")
+
+DATE_ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+NUMBER_LINE = re.compile(r"[+\-\u2212\u2013]?\d[\d.,]*")
+PRECO_LINE = re.compile(r"R\$\s*([+\-\u2212\u2013]?\d[\d.,]*)")
+
+# Fração confirmada vs. já porcentagem (docs/glossario.md: "Volatilidade
+# implícita (IV)"). Qualquer campo fora destas listas fica `unit_unknown`.
+FRACTION_FIELDS: frozenset[str] = frozenset(
+    {
+        "viratio",
+        "ivratio",
+        "ivratiopctsource",
+        "ivatm30dratio",
+        "ivatm60dratio",
+        "ivatm90dratio",
+    }
+)
+PCT_FIELDS: frozenset[str] = frozenset(
+    {"iv", "ivpct", "ivatm30d", "ivatm60d", "ivatm90d", "volimplicitav"}
+)
+
+OBM_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+    "ticker": ("ticker", "TckrSymb", "codigo", "codigoNegociacao", "ativo", "symbol"),
+    "maturity": ("maturity", "vencimento", "expiration", "expiryDate", "dataVencimento"),
+    "strike": ("strike", "strike_brl", "strikePrice", "precoExercicio", "k"),
+    "side": ("side", "optionSide", "tipo", "type", "callPut"),
+    "price": ("premio", "premium", "price", "last", "close", "ultimo"),
+    "bid": ("bid", "bestBid"),
+    "ask": ("ask", "bestAsk"),
+    "iv": ("vi_ratio", "iv_ratio", "iv", "vi", "volImplícita"),
+    "delta": ("delta", "delta_ratio"),
+    "gamma": ("gamma", "gamma_ratio"),
+    "theta": ("theta", "theta_ratio"),
+    "vega": ("vega", "vega_ratio"),
+    "rho": ("rho", "rho_ratio"),
+    "volume": ("volume", "volume_financial", "trades_count", "negocios"),
+    "oi": ("oi", "openInterest", "posicoesAbertas"),
+}
+
+DIVIDEND_TICKER_ALIASES: tuple[str, ...] = (
+    "ticker",
+    "TckrSymb",
+    "codigo",
+    "underlying",
+    "ativo",
+)
+
+OPCOES_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+    "ticker": ("ticker", "codigo", "ativo", "opcao", "código da opção"),
+    "side": ("tipo", "lado", "call/put", "c/p", "operação"),
+    "style": ("mod.", "mod", "estilo", "style"),
+    "strike": ("strike", "preço de exercício", "preco de exercicio", "exercicio"),
+    "maturity": ("vencimento", "venc", "maturity"),
+    "price": ("último", "ultimo", "last", "fechamento"),
+    "iv": ("iv", "vol. implícita", "volatilidade implícita", "vi"),
+    "delta": ("delta", "δ"),
+    "gamma": ("gamma", "γ"),
+    "theta": ("theta", "θ", "theta r$"),
+    "vega": ("vega", "ν"),
+    "volume": ("volume", "vol"),
+    "trades": ("negócios", "negocios", "trades"),
+}
+
+UNDERLYING_FIELDS: tuple[str, ...] = (
+    "iv_atm_30d",
+    "iv_rank_252",
+    "iv_pct_252",
+    "rv20",
+    "rv30",
+    "rv60",
+    "vrp",
+    "vrp_z_252",
+    "rr25",
+    "bfly25",
+    "ts_slope_30_90",
+    "exp_move_1s_30d",
+    "implied_div_yield_30d",
+    "forward_30d",
+    "days_to_liquidate",
+    "spot_brl",
+    "rv_shock_share_pct",
+)
+
+OBM_AGGREGATE_ALIASES: dict[str, tuple[str, ...]] = {
+    "iv_atm_30d": ("iv_atm_30d_ratio", "ivAtm30dRatio", "iv_atm_30d"),
+    "iv_atm_60d": ("iv_atm_60d_ratio", "ivAtm60dRatio", "iv_atm_60d"),
+    "iv_atm_90d": ("iv_atm_90d_ratio", "ivAtm90dRatio", "iv_atm_90d"),
+    "skew_25d_30d_ratio": ("skew_25d_30d_ratio", "skew25d30dRatio"),
+    "iv_rank_252": ("iv_rank", "rank", "ivRank", "iv_rank_252"),
+    "iv_pct_252": (
+        "percentil",
+        "iv_percentile",
+        "ivPercentil",
+        "iv_pct_252",
+        "iv_percentile_252",
+    ),
+}
+
+GAMMA_NOTE = (
+    "PETRX449 em 2026-11-25: API 0.001012; diferença finita Black-76 "
+    "0.101164403; API×100 = 0.1012. Nenhuma das duas é gravada como correção "
+    "do backend — `gamma_internal_x100` é candidato explícito."
+)
+RHO_NOTE = "A API não expõe rho; rho externo fica bruto e o interno é null com flag."
+SKEW_NOTE = (
+    "skew_25d_30d_ratio do OBM fica bruto: F10.1 não definiu fields[]/fórmula, "
+    "então não é comparado como rr25."
+)
+
+
+class CompareError(Exception):
+    """Falha explícita no formato ``{code, message, hint}`` do projeto."""
+
+    def __init__(self, code: str, message: str, hint: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.hint = hint
+
+    def payload(self) -> dict[str, str]:
+        return {"code": self.code, "message": self.message, "hint": self.hint}
+
+
+# --------------------------------------------------------------------------- #
+# Helpers puros — nenhum I/O, nenhum número inventado                          #
+# --------------------------------------------------------------------------- #
+
+
+def canonical(value: Any) -> str:
+    """JSON canônico para SHA; sem arredondar número nenhum."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def sha256_hex(body: bytes) -> str:
+    return hashlib.sha256(body).hexdigest()
+
+
+def canonical_sha(value: Any) -> str:
+    return sha256_hex(canonical(value).encode("utf-8"))
+
+
+def now_iso() -> str:
+    """ISO com offset do ``TZ=America/Sao_Paulo`` do container."""
+    return datetime.now(UTC).astimezone().isoformat(timespec="seconds")
+
+
+def is_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def as_float(value: Any) -> float | None:
+    return float(value) if is_number(value) else None
+
+
+def key_of(value: Any) -> str:
+    """Chave de alias/cabeçalho: sem acento, caixa baixa, só alfanumérico."""
+    text = unicodedata.normalize("NFKD", str(value))
+    plain = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]", "", plain.lower())
+
+
+def alias_get(
+    record: Mapping[str, Any], aliases: Sequence[str]
+) -> tuple[Any, str | None]:
+    """Primeiro alias explícito presente; ``(None, None)`` quando ausente."""
+    normalized = {key_of(name): (name, value) for name, value in record.items()}
+    for alias in aliases:
+        wanted = key_of(alias)
+        if not wanted:
+            continue
+        exact = normalized.get(wanted)
+        if exact is not None:
+            return exact[1], exact[0]
+        partial = next(
+            (
+                pair
+                for norm, pair in normalized.items()
+                if len(wanted) >= 3 and (wanted in norm or norm in wanted)
+            ),
+            None,
+        )
+        if partial is not None:
+            return partial[1], partial[0]
+    return None, None
+
+
+def column_index(columns: Sequence[Any], aliases: Sequence[str]) -> int | None:
+    """Índice da coluna pelo **cabeçalho**, nunca por posição fixa."""
+    normalized = [key_of(column) for column in columns]
+    for alias in aliases:
+        wanted = key_of(alias)
+        if not wanted:
+            continue
+        exact = next((i for i, name in enumerate(normalized) if name == wanted), None)
+        if exact is not None:
+            return exact
+        partial = next(
+            (
+                i
+                for i, name in enumerate(normalized)
+                if name and len(wanted) >= 3 and (wanted in name or name in wanted)
+            ),
+            None,
+        )
+        if partial is not None:
+            return partial
+    return None
+
+
+def decimal_from(value: Any) -> Decimal | None:
+    """Decimal de número ou texto pt-BR (vírgula decimal, ponto de milhar)."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, (int, float)):
+        return Decimal(str(value)) if math.isfinite(float(value)) else None
+    if not isinstance(value, str):
+        return None
+    text = value.replace("R$", "").replace("\xa0", "").strip()
+    if "," in text and "." in text:
+        text = text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        text = text.replace(",", ".")
+    try:
+        return Decimal(text)
+    except InvalidOperation:
+        return None
+
+
+def ptbr_float(value: Any) -> float | None:
+    """Número de texto pt-BR/sinal Unicode; ``None`` quando ilegível."""
+    if is_number(value):
+        return float(value)
+    if not isinstance(value, str):
+        return None
+    text = value.strip().replace("\u2212", "-").replace("\u2013", "-")
+    if "," in text and "." in text:
+        text = text.replace(".", "").replace(",", ".")
+    elif "," in text:
+        text = text.replace(",", ".")
+    if not NUMBER_LINE.fullmatch(text):
+        return None
+    try:
+        number = float(text)
+    except ValueError:
+        return None
+    return number if math.isfinite(number) else None
+
+
+def strike_to_cents(value: Any) -> tuple[int | None, float | None, list[str]]:
+    """Strike da **linha** para centavos (Decimal), nunca do ticker."""
+    flags: list[str] = []
+    number = decimal_from(value)
+    if number is None or number <= 0:
+        return None, None, ["invalid_strike"]
+    cents = int((number * Decimal(100)).to_integral_value(rounding=ROUND_HALF_UP))
+    if cents <= 0:
+        return None, None, ["invalid_strike"]
+    return cents, float(number), flags
+
+
+def side_code(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = key_of(value)
+    if text in {"c", "call", "callamericana", "callEuropeia", "calle"}:
+        return "C"
+    if text in {"p", "put", "puteuropeia", "putamericana"}:
+        return "P"
+    if "put" in text:
+        return "P"
+    if "call" in text:
+        return "C"
+    return None
+
+
+def normalize_iv(
+    value: Any, field: str, *, known_fraction: bool = False
+) -> tuple[float | None, list[str]]:
+    """IV em pontos percentuais: fração ×100; campo já pct intacto."""
+    number = as_float(value)
+    if number is None:
+        return None, ["invalid_iv"]
+    normalized_field = key_of(field)
+    if known_fraction or normalized_field in FRACTION_FIELDS:
+        return number * 100.0, []
+    if normalized_field in PCT_FIELDS:
+        return number, []
+    return None, ["unit_unknown"]
+
+
+def normalize_price(value: Any, *, unit: str | None) -> tuple[float | None, list[str]]:
+    """Preço em R$/ação; fonte externa só normaliza com unidade confirmada."""
+    number = as_float(value)
+    if number is None:
+        return None, ["invalid_price"]
+    if unit in {"brl_per_share", "brl", "reais_por_acao"}:
+        return number, []
+    return None, ["unit_unknown"]
+
+
+def gamma_variants(value: Any) -> dict[str, Any]:
+    """Gamma bruto da API e candidato ×100 — os dois preservados (sem correção)."""
+    number = as_float(value)
+    if number is None:
+        return {
+            "gamma_internal_raw": None,
+            "gamma_internal_x100": None,
+            "flags": ["invalid_gamma"],
+        }
+    return {
+        "gamma_internal_raw": number,
+        "gamma_internal_x100": number * 100.0,
+        "flags": ["gamma_scale_candidate_x100"],
+    }
+
+
+def normalize_theta(
+    value: Any, inputs: Mapping[str, Any] | None
+) -> tuple[float | None, list[str], str | None]:
+    """Theta em R$/ação/dia útil (docs/glossario.md: "Theta")."""
+    number = as_float(value)
+    if number is None:
+        return None, ["invalid_theta"], None
+    data = dict(inputs or {})
+    basis = data.get("day_basis")
+    if basis is None and "business_days" in data:
+        basis = "business_day"
+    if basis is None and "calendar_days" in data:
+        basis = "calendar_day"
+    if basis == "business_day":
+        return number, [], "brl_per_share_per_business_day"
+    if basis == "calendar_day":
+        return (
+            number * 365.0 / 252.0,
+            ["theta_calendar_to_business_candidate"],
+            "brl_per_share_per_business_day",
+        )
+    return None, ["unit_unknown"], None
+
+
+def normalize_vega(
+    value: Any, inputs: Mapping[str, Any] | None
+) -> tuple[float | None, list[str], str | None]:
+    """Vega em R$/ação/ponto de vol; 1% de σ é 1 ponto."""
+    number = as_float(value)
+    if number is None:
+        return None, ["invalid_vega"], None
+    data = dict(inputs or {})
+    basis = data.get("vega_basis")
+    if basis is None and data.get("sigma_pct") is not None:
+        basis = "per_pct"
+    if basis == "per_pct":
+        return number, [], "brl_per_share_per_vol_point"
+    if basis == "per_unit":
+        return number / 100.0, ["vega_per_unit_to_point_candidate"], "brl_per_share_per_vol_point"
+    return None, ["unit_unknown"], None
+
+
+def median(values: Sequence[float]) -> float:
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2.0
+
+
+def quantile_linear(values: Sequence[float], q: float) -> float:
+    """P90 explícito: posição ``(n−1)·q`` com interpolação linear."""
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    position = (len(ordered) - 1) * q
+    low = math.floor(position)
+    high = math.ceil(position)
+    if low == high:
+        return ordered[low]
+    weight = position - low
+    return ordered[low] + weight * (ordered[high] - ordered[low])
+
+
+def difference_stats(differences: Sequence[float]) -> dict[str, Any]:
+    """Estatística por fonte/métrica: ``externo_normalizado − interno_normalizado``."""
+    if not differences:
+        return {
+            "n": 0,
+            "median_abs": None,
+            "p90_abs": None,
+            "max_abs": None,
+            "median_signed": None,
+            "min_signed": None,
+            "max_signed": None,
+        }
+    absolute = [abs(value) for value in differences]
+    signed = sorted(differences)
+    return {
+        "n": len(differences),
+        "median_abs": median(absolute),
+        "p90_abs": quantile_linear(absolute, 0.9),
+        "max_abs": max(absolute),
+        "median_signed": median(signed),
+        "min_signed": signed[0],
+        "max_signed": signed[-1],
+    }
+
+
+def match_rows(
+    internal: Sequence[Mapping[str, Any]], external: Sequence[Mapping[str, Any]]
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Casa por (ticker, vencimento, strike em centavos, lado).
+
+    Fallback **único** por (ticker, vencimento, lado) só quando sobra exatamente
+    um candidato de cada lado; duplicidade vira ``ambiguous_match`` e é pulada.
+    """
+    matches: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    used_internal: set[int] = set()
+    used_external: set[int] = set()
+    exact_internal: dict[tuple[Any, ...], list[int]] = defaultdict(list)
+    exact_external: dict[tuple[Any, ...], list[int]] = defaultdict(list)
+    for index, row in enumerate(internal):
+        exact_internal[row["match_key"]].append(index)
+    for index, row in enumerate(external):
+        exact_external[row["match_key"]].append(index)
+
+    def emit(i: int, e: int, method: str, flags: list[str]) -> None:
+        used_internal.add(i)
+        used_external.add(e)
+        matches.append(
+            {
+                "internal": internal[i],
+                "external": external[e],
+                "match_method": method,
+                "match": dict(internal[i]["match_key_raw"]),
+                "flags": list(flags),
+            }
+        )
+
+    for match_key in sorted(set(exact_internal) & set(exact_external), key=str):
+        inside, outside = exact_internal[match_key], exact_external[match_key]
+        if len(inside) == 1 and len(outside) == 1:
+            emit(inside[0], outside[0], "exact", [])
+        else:
+            skipped.append(
+                {
+                    "match_key": list(match_key),
+                    "reason": "ambiguous_match",
+                    "n_internal": len(inside),
+                    "n_external": len(outside),
+                }
+            )
+
+    partial_internal: dict[tuple[Any, ...], list[int]] = defaultdict(list)
+    partial_external: dict[tuple[Any, ...], list[int]] = defaultdict(list)
+    for index, row in enumerate(internal):
+        if index not in used_internal:
+            partial_internal[row["partial_key"]].append(index)
+    for index, row in enumerate(external):
+        if index not in used_external:
+            partial_external[row["partial_key"]].append(index)
+    for partial_key in sorted(set(partial_internal) & set(partial_external), key=str):
+        inside, outside = partial_internal[partial_key], partial_external[partial_key]
+        if len(inside) == 1 and len(outside) == 1:
+            emit(
+                inside[0],
+                outside[0],
+                "fallback_unique",
+                ["fallback_unique", "strike_mismatch_preserved"],
+            )
+        else:
+            skipped.append(
+                {
+                    "match_key": list(partial_key),
+                    "reason": "ambiguous_match",
+                    "n_internal": len(inside),
+                    "n_external": len(outside),
+                }
+            )
+    for index, row in enumerate(external):
+        if index not in used_external:
+            skipped.append(
+                {
+                    "match_key": list(row["match_key"]),
+                    "reason": "unmatched_external",
+                }
+            )
+    for index, row in enumerate(internal):
+        if index not in used_internal:
+            skipped.append(
+                {
+                    "match_key": list(row["match_key"]),
+                    "reason": "unmatched_internal",
+                }
+            )
+    return matches, skipped
+
+
+def make_match_row(
+    *,
+    ticker: str,
+    maturity: str | None,
+    strike_value: Any,
+    side: str | None,
+) -> dict[str, Any]:
+    """Linha normalizada de casamento: strike em centavos com ``Decimal``."""
+    cents, strike_brl, flags = strike_to_cents(strike_value)
+    normalized_side = side_code(side) if isinstance(side, str) else side
+    return {
+        "ticker": str(ticker).strip().upper() if ticker else None,
+        "maturity": maturity,
+        "side": normalized_side,
+        "strike_brl": strike_brl,
+        "strike_cents": cents,
+        "flags": list(flags),
+        "match_key": (str(ticker).strip().upper(), maturity, cents, normalized_side),
+        "partial_key": (str(ticker).strip().upper(), maturity, normalized_side),
+        "match_key_raw": {
+            "ticker": str(ticker).strip().upper() if ticker else None,
+            "maturity": maturity,
+            "strike_cents": cents,
+            "side": normalized_side,
+        },
+    }
+
+
+# --------------------------------------------------------------------------- #
+# API local — única fonte do lado interno                                      #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class ApiClient:
+    """Cliente stdlib sobre ``B3_HTTP_URL``; erros no envelope do projeto."""
+
+    base_url: str
+
+    def get(self, path: str, params: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        query = urlencode(dict(params or {}))
+        url = f"{self.base_url.rstrip('/')}{path}" + (f"?{query}" if query else "")
+        request = Request(
+            url,
+            headers={"Accept": "application/json", "User-Agent": "b3o-bench-compare/1"},
+            method="GET",
+        )
+        try:
+            with urlopen(request, timeout=HTTP_TIMEOUT) as response:  # noqa: S310 - URL local
+                raw = response.read()
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", "replace")[:1000]
+            try:
+                error = json.loads(body).get("error", {})
+            except (ValueError, AttributeError):
+                error = {}
+            raise CompareError(
+                str(error.get("code") or "http_error"),
+                str(error.get("message") or f"HTTP {exc.code} em {url}"),
+                str(error.get("hint") or "confira B3_HTTP_URL e se a app está no ar"),
+            ) from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            raise CompareError(
+                "http_unavailable",
+                f"não foi possível acessar {url}: {exc}",
+                "use B3_HTTP_URL e `podman compose up -d app`; nada vem do relógio",
+            ) from exc
+        try:
+            payload = json.loads(raw)
+        except ValueError as exc:
+            raise CompareError(
+                "bad_payload", f"resposta não JSON de {url}", "confira se aponta para /api"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise CompareError(
+                "bad_payload", f"resposta inesperada de {url}", "esperado objeto JSON"
+            )
+        if isinstance(payload.get("error"), dict):
+            error = payload["error"]
+            raise CompareError(
+                str(error.get("code", "api_error")),
+                str(error.get("message", "")),
+                str(error.get("hint", "confira os parâmetros e a sessão do lake")),
+            )
+        return payload
+
+
+def fetch_health(client: ApiClient) -> dict[str, Any]:
+    payload = client.get("/api/health")
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    session = payload.get("as_of_session") or data.get("last_session")
+    if not isinstance(session, str) or not DATE_ISO.match(session):
+        raise CompareError(
+            "health_incomplete",
+            f"/api/health não declarou sessão utilizável: {session!r}",
+            "rode `b3o prepare` e confira /api/health antes de comparar",
+        )
+    return {
+        "session": session,
+        "last_session": data.get("last_session"),
+        "model_version": payload.get("model_version"),
+        "raw": payload,
+    }
+
+
+def fetch_screen_all(client: ApiClient, session: str) -> dict[str, Any]:
+    """`/api/screen` paginado por ``offset``; nenhuma lista passa de 60 linhas."""
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    total: int | None = None
+    pages = 0
+    while pages < MAX_SCREEN_PAGES:
+        payload = client.get(
+            "/api/screen", {"date": session, "max_rows": PAGE_SIZE, "offset": offset}
+        )
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        page_rows = data.get("rows") if isinstance(data.get("rows"), list) else []
+        rows.extend(row for row in page_rows if isinstance(row, dict))
+        meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+        total = meta.get("total") if is_number(meta.get("total")) else len(rows)
+        pages += 1
+        next_offset = meta.get("next_offset")
+        if next_offset is None or not is_number(next_offset):
+            break
+        offset = int(next_offset)
+    return {"rows": rows, "total": total, "pages": pages}
+
+
+def fetch_underlying(client: ApiClient, ticker: str, session: str) -> dict[str, Any]:
+    payload = client.get(
+        f"/api/t/{quote(ticker, safe='')}",
+        {"date": session, "sections": "summary,term,smile,history", "days": 252},
+    )
+    if payload.get("as_of_session") != session:
+        raise CompareError(
+            "session_mismatch",
+            f"{ticker}: /api/t trouxe {payload.get('as_of_session')!r}, esperado {session}",
+            "a comparação exige a mesma sessão do health",
+        )
+    return payload
+
+
+def fetch_series(client: ApiClient, ticker: str, maturity: str) -> dict[str, Any]:
+    payload = client.get(
+        f"/api/s/{quote(ticker, safe='')}/{quote(maturity, safe='')}"
+    )
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    return {"payload": payload, "data": data}
+
+
+# --------------------------------------------------------------------------- #
+# Manifestos e integridade                                                     #
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class SourceInfo:
+    """Estado de uma fonte — ausência sempre com motivo."""
+
+    name: str
+    status: str = "unavailable"
+    reason: str | None = "not_discovered"
+    manifest: str | None = None
+    reference_date: str | None = None
+    sha256: str | None = None
+    url: str | None = None
+    accessed_at: str | None = None
+    payload: dict[str, Any] = field(default_factory=dict)
+    artifacts: list[dict[str, Any]] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)
+
+    def unavailable(self, reason: str, **kwargs: Any) -> None:
+        self.status = "unavailable"
+        self.reason = reason
+        for key, value in kwargs.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "status": self.status,
+            "reason": self.reason,
+            "manifest": self.manifest,
+            "reference_date": self.reference_date,
+            "sha256": self.sha256,
+            "url": self.url,
+            "accessed_at": self.accessed_at,
+            "flags": sorted(set(self.flags)),
+            "counts": {
+                "artifacts": len(self.artifacts),
+                "ok": sum(1 for item in self.artifacts if item.get("status") == "ok"),
+            },
+        }
+
+
+def read_json(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise CompareError(
+            f"{label}_unreadable", f"não foi possível ler {path}: {exc}", "confira --input-dir"
+        ) from exc
+    except ValueError as exc:
+        raise CompareError(
+            f"{label}_bad_json", f"JSON inválido em {path}: {exc}", "o bruto foi corrompido?"
+        ) from exc
+    if not isinstance(value, dict):
+        raise CompareError(
+            f"{label}_bad_json", f"{path} não é um objeto JSON", "manifesto inválido"
+        )
+    return value
+
+
+def discover_manifests(input_dir: Path, notes: list[str]) -> dict[str, Any]:
+    """Achata manifests recursivamente; classifica por posição/nome."""
+    found: dict[str, Any] = {"capture": None, "b3lab": None, "structures": []}
+    if not input_dir.is_dir():
+        notes.append(f"input_dir_ausente: {input_dir}")
+        return found
+    for path in sorted(input_dir.rglob("manifest.json")):
+        try:
+            relative = path.parent.relative_to(input_dir).as_posix()
+        except ValueError:
+            relative = str(path.parent)
+        if relative == ".":
+            found["capture"] = path
+        elif path.parent.name == "b3lab":
+            found["b3lab"] = path
+        elif path.parent.name.startswith("structures-"):
+            found["structures"].append(path)
+        else:
+            notes.append(f"manifesto_ignorado: {relative}/manifest.json")
+    return found
+
+
+def verify_capture(path: Path | None, session: str) -> SourceInfo:
+    """P3: manifesto, data de referência e SHA do bruto **e** do meta_file."""
+    info = SourceInfo("obm+opcoes_net")
+    if path is None:
+        info.unavailable("manifest_missing", reason="manifest P3 não encontrado")
+        return info
+    info.manifest = str(path)
+    try:
+        manifest = read_json(path, "capture_manifest")
+    except CompareError as exc:
+        info.unavailable(exc.code, reason=exc.message)
+        return info
+    info.payload = manifest
+    declared = [
+        value
+        for value in (manifest.get("session"), manifest.get("requested_date"))
+        if isinstance(value, str) and value
+    ]
+    if declared and any(value != session for value in declared):
+        info.unavailable(
+            "session_mismatch",
+            reason=f"manifesto P3 declara {declared}, pedido {session}",
+        )
+        return info
+    if manifest.get("status") != "complete":
+        info.unavailable(
+            "capture_incomplete",
+            reason=f"status={manifest.get('status')!r}",
+            reference_date=manifest.get("session"),
+        )
+        return info
+    info.reference_date = manifest.get("session") or manifest.get("requested_date")
+    info.sha256 = manifest.get("sha256")
+    info.flags.extend(str(flag) for flag in manifest.get("flags") or [])
+    for entry in manifest.get("artifacts") or []:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("artifact") or "")
+        raw_path = path.parent / name
+        record: dict[str, Any] = {
+            "artifact": name,
+            "source": entry.get("source"),
+            "kind": entry.get("kind"),
+            "ticker": entry.get("ticker"),
+            "maturity": entry.get("maturity"),
+            "url": entry.get("url"),
+            "accessed_at": entry.get("accessed_at"),
+            "reference_date": entry.get("reference_date"),
+            "declared_sha256": entry.get("sha256"),
+            "meta_file": entry.get("meta_file"),
+            "status": "ok",
+            "reason": None,
+        }
+        if not name or not raw_path.is_file():
+            record["status"] = "unavailable"
+            record["reason"] = "artifact_missing"
+        else:
+            body = raw_path.read_bytes()
+            record["bytes"] = len(body)
+            record["sha256"] = sha256_hex(body)
+            expected = entry.get("sha256")
+            if isinstance(expected, str) and record["sha256"] != expected:
+                record["status"] = "unavailable"
+                record["reason"] = "sha256_mismatch"
+            if (
+                isinstance(entry.get("reference_date"), str)
+                and entry["reference_date"] != session
+            ):
+                record["status"] = "unavailable"
+                record["reason"] = "reference_date_mismatch"
+        meta_name = entry.get("meta_file")
+        if isinstance(meta_name, str) and meta_name:
+            meta_path = path.parent / meta_name
+            if not meta_path.is_file():
+                record["status"] = "unavailable"
+                record["reason"] = "meta_file_missing"
+            else:
+                try:
+                    wrapper = read_json(meta_path, "meta_file")
+                    expected_raw = wrapper.get("raw_sha256")
+                    if isinstance(expected_raw, str) and expected_raw != record.get("sha256"):
+                        record["status"] = "unavailable"
+                        record["reason"] = "raw_sha256_mismatch"
+                    record["meta"] = wrapper
+                except CompareError as exc:
+                    record["status"] = "unavailable"
+                    record["reason"] = exc.code
+        info.artifacts.append(record)
+    ok_sources = sorted(
+        {
+            str(item["source"])
+            for item in info.artifacts
+            if item["status"] == "ok" and item["source"]
+        }
+    )
+    info.status = "ok" if ok_sources else "unavailable"
+    if info.status == "unavailable":
+        info.reason = "no_usable_artifacts"
+    return info
+
+
+def split_capture(verified: SourceInfo, source: str, name: str) -> SourceInfo:
+    """Deriva uma fonte independente do verificador P3 (``obm``/``opcoes_net``)."""
+    info = SourceInfo(name)
+    info.manifest = verified.manifest
+    info.reference_date = verified.reference_date
+    info.sha256 = verified.sha256
+    info.flags = list(verified.flags)
+    info.artifacts = [
+        item for item in verified.artifacts if item.get("source") == source
+    ]
+    if verified.manifest is None:
+        info.unavailable("manifest_missing", reason="manifesto P3 não encontrado")
+    elif verified.status != "ok":
+        info.unavailable(
+            f"capture_{verified.reason or 'unavailable'}",
+            reason=verified.reason,
+            manifest=verified.manifest,
+        )
+    elif not any(item.get("status") == "ok" for item in info.artifacts):
+        info.unavailable(
+            f"no_usable_{source}_artifacts", manifest=verified.manifest
+        )
+    else:
+        info.status = "ok"
+        info.reason = None
+    return info
+
+
+def verify_b3lab(path: Path | None, session: str) -> SourceInfo:
+    """P4: manifesto, sessão, arquivos por série e SHA declarado."""
+    info = SourceInfo("b3lab")
+    if path is None:
+        info.unavailable("manifest_missing", reason="manifesto P4 não encontrado")
+        return info
+    info.manifest = str(path)
+    try:
+        manifest = read_json(path, "b3lab_manifest")
+    except CompareError as exc:
+        info.unavailable(exc.code, reason=exc.message)
+        return info
+    info.payload = manifest
+    info.url = manifest.get("url")
+    info.accessed_at = manifest.get("accessed_at")
+    info.sha256 = manifest.get("sha256")
+    info.flags.extend(str(flag) for flag in manifest.get("flags") or [])
+    reference = manifest.get("reference_date")
+    if reference != session:
+        info.unavailable(
+            "session_mismatch", reason=f"P4 declara {reference!r}, pedido {session}"
+        )
+        return info
+    info.reference_date = reference
+    series = manifest.get("series") if isinstance(manifest.get("series"), list) else []
+    raw_records: list[Any] = []
+    for item in series:
+        if not isinstance(item, dict):
+            continue
+        filename = str(item.get("file") or "")
+        series_path = path.parent / filename
+        record: dict[str, Any] = {"file": filename, "status": "ok", "reason": None}
+        if not filename or not series_path.is_file():
+            record["status"] = "unavailable"
+            record["reason"] = "series_file_missing"
+        else:
+            try:
+                body = json.loads(series_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                record["status"] = "unavailable"
+                record["reason"] = "series_file_unreadable"
+                body = None
+            if isinstance(body, dict):
+                if body.get("reference_date") not in (None, session):
+                    record["status"] = "unavailable"
+                    record["reason"] = "reference_date_mismatch"
+                raw_records.append(body)
+                record["sha256"] = canonical_sha(body)
+                # O corpo bruto é guardado: `parse_b3lab` lê só `entry["record"]`.
+                record["record"] = body
+                record["inputs"] = body.get("inputs")
+                b3lab_body = body.get("b3lab")
+                record["outputs"] = (
+                    b3lab_body.get("outputs") if isinstance(b3lab_body, dict) else None
+                )
+        info.artifacts.append(record)
+    declared_sha = manifest.get("sha256")
+    if isinstance(declared_sha, str) and len(raw_records) == len(info.artifacts) and raw_records:
+        if canonical_sha(raw_records) != declared_sha:
+            info.flags.append("manifest_sha256_mismatch")
+            info.unavailable(
+                "sha256_mismatch", reason="SHA do manifest não bate com os brutos das séries"
+            )
+            return info
+    info.status = "ok" if any(item["status"] == "ok" for item in info.artifacts) else "unavailable"
+    if info.status == "unavailable":
+        info.reason = "no_usable_series"
+    return info
+
+
+def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> SourceInfo:
+    """P5: cada record évalido pelo SHA canônico **sem o próprio sha256**."""
+    info = SourceInfo("structures")
+    if not paths:
+        info.unavailable("manifest_missing", reason="manifesto P5 não encontrado")
+        return info
+    for manifest_path in paths:
+        try:
+            manifest = read_json(manifest_path, "structures_manifest")
+        except CompareError as exc:
+            info.flags.append(f"{manifest_path.name}:{exc.code}")
+            continue
+        reference = manifest.get("reference_date") or manifest.get("session")
+        if reference != session:
+            info.flags.append(f"{manifest_path.name}:session_mismatch")
+            continue
+        if info.reference_date is None:
+            info.reference_date = reference
+            info.manifest = str(manifest_path)
+            info.sha256 = manifest.get("sha256")
+            info.accessed_at = manifest.get("accessed_at")
+            info.flags.extend(str(flag) for flag in manifest.get("flags") or [])
+        files = manifest.get("files") if isinstance(manifest.get("files"), dict) else {}
+        for name, filename in sorted(files.items()):
+            record_path = manifest_path.parent / str(filename)
+            entry: dict[str, Any] = {
+                "structure": name,
+                "file": str(filename),
+                "status": "ok",
+                "reason": None,
+            }
+            if not record_path.is_file():
+                entry["status"] = "unavailable"
+                entry["reason"] = "structure_file_missing"
+            else:
+                try:
+                    record = json.loads(record_path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    record = None
+                if not isinstance(record, dict):
+                    entry["status"] = "unavailable"
+                    entry["reason"] = "structure_file_unreadable"
+                else:
+                    declared = record.get("sha256")
+                    without_sha = {key: value for key, value in record.items() if key != "sha256"}
+                    entry["sha256"] = canonical_sha(without_sha)
+                    entry["declared_sha256"] = declared
+                    if isinstance(declared, str) and declared != entry["sha256"]:
+                        entry["status"] = "unavailable"
+                        entry["reason"] = "sha256_mismatch"
+                    entry["record"] = record
+            info.artifacts.append(entry)
+    info.status = "ok" if any(item["status"] == "ok" for item in info.artifacts) else "unavailable"
+    if info.status == "unavailable":
+        info.reason = "no_usable_structures"
+    notes.append("P5: SHA recalculado sobre o record sem a chave `sha256` (contrato do pacote).")
+    return info
+
+
+# --------------------------------------------------------------------------- #
+# Parsers externos                                                             #
+# --------------------------------------------------------------------------- #
+
+
+def _find_rows(node: Any, depth: int = 0) -> list[dict[str, Any]]:
+    """Localiza a lista de registros dentro de JSON interceptado/RSC."""
+    if depth > 4:
+        return []
+    if isinstance(node, list):
+        rows = [item for item in node if isinstance(item, dict)]
+        return rows if rows else []
+    if isinstance(node, dict):
+        for name in ("rows", "data", "opcoes", "options", "items", "result", "payload"):
+            child = node.get(name)
+            if isinstance(child, list):
+                rows = [item for item in child if isinstance(item, dict)]
+                if rows:
+                    return rows
+        for name in ("rows", "data", "result", "payload", "props", "value"):
+            child = node.get(name)
+            if isinstance(child, dict):
+                found = _find_rows(child, depth + 1)
+                if found:
+                    return found
+    return []
+
+
+def _json_blobs(meta: Mapping[str, Any]) -> list[Any]:
+    """Extrai JSON de RSC preservado sem reescrever o bruto."""
+    blobs: list[Any] = []
+    extracted = meta.get("extracted")
+    if not isinstance(extracted, dict):
+        return blobs
+    for value in extracted.values():
+        if isinstance(value, str) and value.lstrip()[:1] in ("{", "["):
+            try:
+                blobs.append(json.loads(value))
+            except ValueError:
+                continue
+        elif isinstance(value, dict | list):
+            blobs.append(value)
+    return blobs
+
+
+RSC_PUSH = re.compile(
+    r"self\.__next_f\.push\(\s*\[\s*\d+\s*,\s*(\"(?:[^\"\\]|\\.)*\")\s*\]\s*\)"
+)
+
+
+def classify_obm(entry: Mapping[str, Any]) -> str:
+    """Classifica pelo **segmento da URL**, não só pelo `kind` da página.
+
+    A página `/opcoes/{t}` tem `kind == "underlying"`, mas carrega o agregado
+    diário: o segmento `agregado-diario` da URL interceptada manda em
+    `aggregates`. O mesmo vale para `vi-historico`, `volatilidade`, `acoes`,
+    `tesouro-direto/curva` e `calendario-dividendos`.
+    """
+    path = urlparse(str(entry.get("url") or "")).path.lower()
+    segments = [part for part in path.split("/") if part]
+    joined = " ".join(segments)
+    if "agregado-diario" in joined or "agregadodiario" in joined:
+        return "agregado"
+    if "vi-historico" in joined or "vihistorico" in joined:
+        return "vi_historico"
+    if "volatilidade" in joined:
+        return "volatilidade"
+    if "tesouro-direto" in joined or "curva" in joined:
+        return "ettj"
+    if "dividendos" in joined or "calendario" in joined:
+        return "dividendos"
+    if "montador" in joined:
+        return "montador"
+    if "acoes" in segments:
+        return "ohlc"
+    if "opcoes" in segments:
+        return "underlying"
+    return str(entry.get("kind") or "unknown")
+
+
+def _rsc_json_blobs(text: str) -> list[Any]:
+    """JSON embutido em RSC (`self.__next_f.push`), sem alterar o bruto."""
+    blobs: list[Any] = []
+    decoder = json.JSONDecoder()
+    for match in RSC_PUSH.finditer(text):
+        try:
+            payload = json.loads(match.group(1))
+        except ValueError:
+            continue
+        if not isinstance(payload, str):
+            continue
+        index = 0
+        while index < len(payload):
+            start = next(
+                (pos for pos in (payload.find("{", index), payload.find("[", index)) if pos >= 0),
+                None,
+            )
+            if start is None:
+                break
+            try:
+                node, end = decoder.raw_decode(payload[start:])
+            except ValueError:
+                index = start + 1
+                continue
+            blobs.append(node)
+            index = start + end
+    return blobs
+
+
+def artifact_priority(entry: Mapping[str, Any]) -> int:
+    """JSON interceptado (``.json``) antes de HTML/RSC (``.html``)."""
+    name = str(entry.get("artifact") or "")
+    return 0 if Path(name).suffix.lower() == ".json" else 1
+
+
+def artifact_ref(entry: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Proveniência mínima de um registro OBM — o bruto fica no manifesto."""
+    if not isinstance(entry, Mapping):
+        return {"artifact": None}
+    return {
+        "artifact": entry.get("artifact"),
+        "sha256": entry.get("sha256"),
+        "url": entry.get("url"),
+        "accessed_at": entry.get("accessed_at"),
+        "source": entry.get("source"),
+        "kind": entry.get("kind"),
+        "ticker": entry.get("ticker"),
+    }
+
+
+def dedup_key_json(key: Any) -> Any:
+    """Chave de dedup serializável (datas viram ISO)."""
+    if isinstance(key, tuple):
+        return [dedup_key_json(item) for item in key]
+    if isinstance(key, date):
+        return key.isoformat()
+    return key
+
+
+def _artifact_underlying(entry: Mapping[str, Any]) -> str | None:
+    """Ativo-objeto declarado no artefato P3; nunca inferido do prefixo."""
+    ticker = str(entry.get("ticker") or "").strip().upper()
+    return ticker or None
+
+
+def parse_obm(info: SourceInfo, session: str, notes: list[str]) -> dict[str, Any]:
+    """Series, agregados, OHLC (com quantidade), ETTJ, proventos e VI histórico.
+
+    A mesma resposta OBM pode aparecer no HTML/RSC da página e no JSON
+    interceptado. Aqui o JSON tem prioridade e a primeira ocorrência vence
+    empate; duplicatas são **contadas** em ``dedup``/``dedup_counts`` e o bruto
+    permanece intacto no manifesto P3 (nada é apagado).
+    """
+    result: dict[str, Any] = {
+        "series": [],
+        "aggregates": [],
+        "ohlc": [],
+        "ohlc_qty": [],
+        "curve": [],
+        "dividends": [],
+        "vi_history": [],
+        "skipped": [],
+        "classifications": [],
+        "dedup": [],
+        "dedup_counts": {},
+        "ohlc_sources": {},
+        # As listas agregadas seguem existindo por compatibilidade; o recálculo
+        # consome os mapas, que separam o dado por ativo-objeto declarado.
+        "ohlc_by_underlying": {},
+        "ohlc_qty_by_underlying": {},
+        "vi_history_by_underlying": {},
+        "ohlc_sources_by_underlying": {},
+        "dividends_by_underlying": {},
+    }
+    seen: dict[str, dict[Any, dict[str, Any]]] = defaultdict(dict)
+
+    def keep(
+        group: str,
+        key: Any,
+        value: Any,
+        entry: Mapping[str, Any] | None = None,
+        underlying: str | None = None,
+    ) -> bool:
+        """Mantém a primeira ocorrência; registra a duplicata sem apagar o bruto."""
+        bucket = seen[group]
+        ref = artifact_ref(entry)
+        if key in bucket:
+            kept = bucket[key]
+            result["dedup"].append(
+                {
+                    "group": group,
+                    "key": dedup_key_json(key),
+                    "kept": kept,
+                    "discarded": ref,
+                }
+            )
+            result["dedup_counts"][group] = result["dedup_counts"].get(group, 0) + 1
+            kept_value = result[group][kept["index"]]
+            if isinstance(kept_value, dict) and isinstance(kept_value.get("flags"), list):
+                if "duplicate_artifact_collapsed" not in kept_value["flags"]:
+                    kept_value["flags"].append("duplicate_artifact_collapsed")
+            return False
+        bucket[key] = {"index": len(result[group]), "artifact": ref}
+        result["dedup_counts"].setdefault(group, 0)
+        result[group].append(value)
+        by_underlying = result.get(f"{group}_by_underlying")
+        if underlying is not None and isinstance(by_underlying, dict):
+            by_underlying.setdefault(underlying, []).append(value)
+        return True
+
+    entries = [
+        entry
+        for entry in info.artifacts
+        if entry.get("status") == "ok" and entry.get("source") == "obm"
+    ]
+    # Ordenação estável: JSON interceptado primeiro; empate = ordem do manifesto.
+    entries.sort(key=artifact_priority)
+    for entry in entries:
+        artifact = entry.get("artifact") or ""
+        classified = classify_obm(entry)
+        result["classifications"].append({"artifact": artifact, "kind": classified})
+        wrapper = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
+        raw_path = Path(info.manifest or ".").parent / artifact
+        try:
+            text = raw_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            result["skipped"].append({"artifact": artifact, "reason": "artifact_unreadable"})
+            continue
+        nodes: list[Any] = _rsc_json_blobs(text)
+        stripped = text.lstrip()
+        if stripped[:1] in ("{", "["):
+            try:
+                nodes.insert(0, json.loads(stripped))
+            except ValueError:
+                pass
+        nodes.extend(_json_blobs(wrapper))
+        for node in nodes:
+            if classified == "underlying":
+                for row in _find_rows(node):
+                    series = _obm_series_row(row, entry)
+                    if series is None:
+                        result["skipped"].append(
+                            {"artifact": artifact, "reason": "obm_row_unusable"}
+                        )
+                        continue
+                    keep("series", series["match"]["match_key"], series, entry)
+            elif classified in {"agregado", "volatilidade"}:
+                for row in _find_rows(node) or [node]:
+                    if isinstance(row, dict):
+                        result["aggregates"].append({"values": row, "artifact": entry})
+            elif classified == "ohlc":
+                underlying = _artifact_underlying(entry)
+                for row in _find_rows(node):
+                    bar = _obm_bar(row)
+                    if bar is not None and keep(
+                        "ohlc", (underlying, bar.refdate), bar, entry, underlying
+                    ):
+                        ref = artifact_ref(entry)
+                        result["ohlc_sources"][bar.refdate.isoformat()] = ref
+                        if underlying is not None:
+                            result["ohlc_sources_by_underlying"].setdefault(
+                                underlying, {}
+                            )[bar.refdate.isoformat()] = ref
+                    quantity = _obm_qty(row)
+                    if quantity is not None:
+                        keep(
+                            "ohlc_qty",
+                            (underlying, quantity["date"]),
+                            quantity,
+                            entry,
+                            underlying,
+                        )
+            elif classified == "ettj":
+                for row in _find_rows(node):
+                    du, rate = _ettj_node(row)
+                    if du is not None and rate is not None:
+                        keep("curve", du, (du, rate), entry)
+            elif classified == "dividendos":
+                # Calendário é global: o papel vem da linha, nunca do artefato.
+                for row in _find_rows(node):
+                    item = _dividend(row)
+                    if item is not None:
+                        ticker = item["ticker"]
+                        keep(
+                            "dividends",
+                            (ticker, item["date"], item["amount_brl"]),
+                            item,
+                            entry,
+                            ticker,
+                        )
+            elif classified == "vi_historico":
+                underlying = _artifact_underlying(entry)
+                for row in _find_rows(node):
+                    point = _vi_history_point(row)
+                    if point is not None:
+                        keep(
+                            "vi_history",
+                            (underlying, point["date"]),
+                            point,
+                            entry,
+                            underlying,
+                        )
+    notes.append(
+        "OBM: classificação por segmento da URL + JSON de RSC preservado; campos "
+        "por aliases explícitos, bruto mantido em cada linha. " + GAMMA_NOTE
+    )
+    notes.append(
+        "OBM dedup: JSON interceptado (.json) tem prioridade sobre HTML/RSC (.html); "
+        "empate mantém a primeira ocorrência do manifesto. Duplicatas são contadas em "
+        "`dedup`/`dedup_counts`, a linha mantida ganha `duplicate_artifact_collapsed` e "
+        "o bruto segue intacto no manifesto P3. OHLC/VI dedup por (ativo-objeto, data), "
+        "quantidade por (ativo-objeto, data) e provento por (ticker, data, valor); as "
+        "listas agregadas são só compatibilidade, os mapas `*_by_underlying` alimentam "
+        "o recálculo. Provento sem ticker fica fora de todos os mapas."
+    )
+    return result
+
+
+def _obm_series_row(row: Mapping[str, Any], entry: Mapping[str, Any]) -> dict[str, Any] | None:
+    values: dict[str, Any] = {"raw": dict(row)}
+    for name, aliases in OBM_FIELD_ALIASES.items():
+        value, _ = alias_get(row, aliases)
+        values[name] = value
+    if not values.get("ticker") or not values.get("maturity"):
+        return None
+    side = side_code(values.get("side"))
+    if side is None:
+        return None
+    match = make_match_row(
+        ticker=str(values["ticker"]),
+        maturity=str(values["maturity"])[:10],
+        strike_value=values.get("strike"),
+        side=side,
+    )
+    if match["strike_cents"] is None:
+        return None
+    raw_iv_field = next(
+        (name for name in row if key_of(name) in {key_of(a) for a in OBM_FIELD_ALIASES["iv"]}),
+        "iv",
+    )
+    # Contrato F10: `vi_ratio` é fração e `premio` é R$/ação, com unidade confirmada.
+    iv, iv_flags = normalize_iv(values.get("iv"), str(raw_iv_field))
+    price, price_flags = normalize_price(
+        values.get("price"), unit="brl_per_share"
+    )
+    delta = ptbr_float(values.get("delta"))
+    if delta is not None and side == "P" and delta > 0:
+        delta = -delta  # delta assinado da ponta (spec §6.2)
+    values.update(
+        {
+            "match": match,
+            "underlying": str(entry.get("ticker") or "").upper() or None,
+            "iv_normalized": iv,
+            "price_normalized": price,
+            "price_unit": "brl_per_share",
+            "delta_signed": delta,
+            "flags": list(match["flags"]) + iv_flags + price_flags,
+            "artifact": {
+                "artifact": entry.get("artifact"),
+                "sha256": entry.get("sha256"),
+                "url": entry.get("url"),
+                "accessed_at": entry.get("accessed_at"),
+                "source": entry.get("source"),
+            },
+        }
+    )
+    return values
+
+
+def _obm_bar(row: Mapping[str, Any]) -> recalc.OhlcBar | None:
+    day, _ = alias_get(row, ("date", "refdate", "data", "dt"))
+    if not isinstance(day, str) or not DATE_ISO.match(day[:10]):
+        return None
+    numbers: dict[str, int] = {}
+    for name in ("open", "high", "low", "close"):
+        value, _ = alias_get(row, (name, f"{name}_brl", "abertura" if name == "open" else name))
+        number = decimal_from(value)
+        if number is None or number <= 0:
+            return None
+        numbers[name] = int((number * Decimal(100)).to_integral_value(rounding=ROUND_HALF_UP))
+    return recalc.OhlcBar(
+        refdate=date.fromisoformat(day[:10]),
+        open=numbers["open"],
+        high=numbers["high"],
+        low=numbers["low"],
+        close=numbers["close"],
+    )
+
+
+def _obm_qty(row: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Quantidade negociada (ações) da barra OHLC — base do `days_to_liquidate`."""
+    day, _ = alias_get(row, ("date", "refdate", "data", "dt"))
+    value, field = alias_get(row, ("qty", "quantity", "quantidade", "tradesQty"))
+    number = decimal_from(value)
+    if number is None or number <= 0 or not isinstance(day, str) or not DATE_ISO.match(day[:10]):
+        return None
+    return {"date": day[:10], "qty": float(number), "field": field}
+
+
+def _ettj_node(row: Mapping[str, Any]) -> tuple[int | None, float | None]:
+    du_value, _ = alias_get(row, ("du", "diasUteis", "businessDays"))
+    rate_value, _ = alias_get(row, ("rate", "taxa", "precoTaxa", "rate_pct"))
+    du_number = decimal_from(du_value)
+    rate_number = ptbr_float(rate_value)
+    if du_number is None or rate_number is None:
+        return None, None
+    du = int(du_number.to_integral_value())
+    return (du, rate_number) if du > 0 else (None, None)
+
+
+def _dividend(row: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Provento com ticker da linha e ``du`` explícito quando declarado.
+
+    O calendário OBM é global: sem ticker declarado o provento não pode ser
+    atribuído a papel nenhum (``ticker: None``), nunca por prefixo de opção.
+    """
+    day, _ = alias_get(row, ("date", "exDate", "dataEx", "data"))
+    amount, _ = alias_get(row, ("amount", "valor", "dividend", "provento"))
+    du_value, _ = alias_get(row, ("du", "diasUteis", "businessDays"))
+    ticker_value, _ = alias_get(row, DIVIDEND_TICKER_ALIASES)
+    value = decimal_from(amount)
+    if value is None or value < 0 or not isinstance(day, str) or not DATE_ISO.match(day[:10]):
+        return None
+    du_number = decimal_from(du_value)
+    du = int(du_number.to_integral_value()) if du_number is not None else None
+    ticker = str(ticker_value).strip().upper() if ticker_value is not None else None
+    return {
+        "ticker": ticker or None,
+        "date": day[:10],
+        "amount_brl": float(value),
+        "du": du if du is not None and du > 0 else None,
+        "raw": dict(row),
+    }
+
+
+def _vi_history_point(row: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Ponto do VI histórico com data, para montar o histórico IV−RV30."""
+    day, _ = alias_get(row, ("date", "refdate", "data", "dt"))
+    value, field = alias_get(row, ("vi", "iv", "iv_pct", "vi_ratio", "value"))
+    number = ptbr_float(value)
+    if number is None or not isinstance(day, str) or not DATE_ISO.match(day[:10]):
+        return None
+    normalized, flags = normalize_iv(number, str(field or "iv"))
+    if normalized is None:
+        return None
+    return {"date": day[:10], "iv_pct": normalized, "flags": flags, "raw": dict(row)}
+
+
+def parse_opcoes(info: SourceInfo, notes: list[str]) -> dict[str, Any]:
+    """Grade do opcoes.net.br pelo **cabeçalho** DataTable, nunca índice fixo."""
+    result: dict[str, Any] = {"series": [], "headers": [], "skipped": []}
+    for entry in info.artifacts:
+        if entry.get("status") != "ok" or entry.get("source") != "opcoes_net":
+            continue
+        wrapper = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
+        extracted = wrapper.get("extracted") if isinstance(wrapper.get("extracted"), dict) else {}
+        columns = extracted.get("columns")
+        rows = extracted.get("rows")
+        if not isinstance(columns, list) or not isinstance(rows, list):
+            result["skipped"].append(
+                {"artifact": entry.get("artifact"), "reason": "columns_or_rows_missing"}
+            )
+            continue
+        indexes = {
+            name: column_index(columns, aliases)
+            for name, aliases in OPCOES_COLUMN_ALIASES.items()
+        }
+        result["headers"].append(
+            {
+                "artifact": entry.get("artifact"),
+                "columns": list(columns),
+                "indexes": indexes,
+            }
+        )
+        if indexes.get("ticker") is None or indexes.get("strike") is None:
+            result["skipped"].append(
+                {"artifact": entry.get("artifact"), "reason": "columns_unresolved"}
+            )
+            continue
+        boxes = extracted.get("checked_expiries")
+        checked = [str(day)[:10] for day in boxes] if isinstance(boxes, list) else []
+        fallback_maturity = str(entry.get("maturity") or "")[:10] or None
+        for row in rows:
+            cells = list(row) if isinstance(row, list | tuple) else []
+            if not cells and isinstance(row, dict):
+                cells = [row.get(str(column)) for column in columns]
+
+            def cell(
+                name: str,
+                _cells: Sequence[Any] = cells,
+                _indexes: Mapping[str, int | None] = indexes,
+            ) -> Any:
+                index = _indexes.get(name)
+                return _cells[index] if index is not None and index < len(_cells) else None
+
+            maturity = str(cell("maturity") or "")[:10] or None
+            if maturity is None and len(checked) == 1:
+                maturity = checked[0]
+            if maturity is None:
+                maturity = fallback_maturity
+            if maturity is None or not DATE_ISO.match(maturity):
+                result["skipped"].append(
+                    {"artifact": entry.get("artifact"), "reason": "maturity_ambiguous"}
+                )
+                continue
+            side = side_code(cell("side"))
+            if side is None:
+                result["skipped"].append(
+                    {"artifact": entry.get("artifact"), "reason": "side_unresolved"}
+                )
+                continue
+            match = make_match_row(
+                ticker=str(cell("ticker") or ""),
+                maturity=maturity,
+                strike_value=cell("strike"),
+                side=side,
+            )
+            if match["strike_cents"] is None or not match["ticker"]:
+                result["skipped"].append(
+                    {"artifact": entry.get("artifact"), "reason": "strike_or_ticker_invalid"}
+                )
+                continue
+            # Contrato F10: "Último" da grade é R$/ação; não exige "R$" no rótulo.
+            price_raw = cell("price")
+            price, price_flags = normalize_price(price_raw, unit="brl_per_share")
+            # IV da grade é fração por contrato F10 (P3 captura sem normalizar).
+            iv_raw = cell("iv")
+            iv, iv_flags = normalize_iv(iv_raw, "vi_ratio", known_fraction=True)
+            result["series"].append(
+                {
+                    "match": match,
+                    "underlying": str(entry.get("ticker") or "").upper() or None,
+                    "raw": dict(row) if isinstance(row, dict) else list(row),
+                    "columns": list(columns),
+                    "side": side,
+                    "style": cell("style"),
+                    "price_raw": price_raw,
+                    "price_unit": "brl_per_share",
+                    "price_normalized": price,
+                    "iv_raw": iv_raw,
+                    "iv_normalized": iv,
+                    "delta": ptbr_float(cell("delta")),
+                    "gamma": ptbr_float(cell("gamma")),
+                    "theta_raw": ptbr_float(cell("theta")),
+                    "vega_raw": ptbr_float(cell("vega")),
+                    "flags": list(match["flags"]) + price_flags + iv_flags,
+                    "artifact": {
+                        "artifact": entry.get("artifact"),
+                        "sha256": entry.get("sha256"),
+                        "url": entry.get("url"),
+                        "accessed_at": entry.get("accessed_at"),
+                        "source": entry.get("source"),
+                    },
+                }
+            )
+    notes.append(
+        "opcoes.net.br: colunas resolvidas pelo cabeçalho do DataTable; IV bruta "
+        "é fração e virou pontos percentuais; 'Último' é R$/ação por contrato F10 "
+        "(unidade explícita, não depende do rótulo conter 'R$')."
+    )
+    return result
+
+
+def parse_b3lab(info: SourceInfo) -> dict[str, Any]:
+    """P4: séries com inputs/outputs brutos; nenhum output é recalculado aqui."""
+    result: dict[str, Any] = {"series": [], "skipped": []}
+    for entry in info.artifacts:
+        if entry.get("status") != "ok":
+            continue
+        record = entry.get("record")
+        if not isinstance(record, dict):
+            continue
+        inputs = record.get("inputs")
+        b3lab = record.get("b3lab") if isinstance(record.get("b3lab"), dict) else {}
+        outputs = b3lab.get("outputs") if isinstance(b3lab.get("outputs"), dict) else {}
+        if not isinstance(inputs, dict) or not outputs:
+            result["skipped"].append({"file": entry.get("file"), "reason": "outputs_missing"})
+            continue
+        match = make_match_row(
+            ticker=str(inputs.get("ticker") or ""),
+            maturity=str(inputs.get("maturity") or "")[:10],
+            strike_value=inputs.get("strike") or inputs.get("K"),
+            side=inputs.get("side") or inputs.get("SIDE_LABEL"),
+        )
+        if match["strike_cents"] is None or not match["ticker"]:
+            result["skipped"].append({"file": entry.get("file"), "reason": "identity_invalid"})
+            continue
+        result["series"].append(
+            {
+                "match": match,
+                "underlying": record.get("underlying"),
+                "inputs": inputs,
+                "outputs": outputs,
+                "raw": record,
+                "flags": list(b3lab.get("flags") or []),
+                "artifact": {
+                    "file": entry.get("file"),
+                    "sha256": entry.get("sha256"),
+                    "url": record.get("url"),
+                    "accessed_at": record.get("accessed_at"),
+                    "source": "b3lab",
+                },
+            }
+        )
+    return result
+
+
+STRUCTURE_EXTERNAL_ALIASES: dict[str, tuple[str, ...]] = {
+    "net_premium_brl": ("custo", "premio", "premio_neto", "netPremium", "total"),
+    "breakeven_brl": ("breakeven", "breakEven", "pontoEquilibrio"),
+    "max_loss_brl": ("perdaMaxima", "maxLoss", "perdamax"),
+    "max_gain_brl": ("lucroMaximo", "maxGain", "ganhomax"),
+    "delta": ("delta",),
+    "gamma": ("gamma",),
+    "theta_brl": ("theta",),
+    "vega_brl": ("vega",),
+}
+
+
+def extract_structure_external(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Extrai só o que é inequívoco em JSON/tabela do OBM; nunca chuta."""
+    result: dict[str, Any] = {"values": {}, "lists": {}, "raw": {}, "flags": []}
+    obm = record.get("obm") if isinstance(record.get("obm"), dict) else {}
+    status = obm.get("status")
+    if status == "unsupported_external":
+        result["flags"].append("unsupported_external")
+        result["reason"] = obm.get("reason")
+        return result
+    if status in (None, "null", "montador_fill_failed"):
+        result["flags"].append(f"external_{status or 'missing'}")
+        result["reason"] = obm.get("reason") or "sem captura externa utilizável"
+        return result
+    outputs = obm.get("outputs") if isinstance(obm.get("outputs"), dict) else {}
+    candidates: dict[str, list[float]] = defaultdict(list)
+    raw_texts: list[str] = []
+    for response in outputs.get("api_responses") or []:
+        if not isinstance(response, dict):
+            continue
+        text = str(response.get("text") or "")
+        raw_texts.append(text[:2000])
+        try:
+            node = json.loads(text)
+        except ValueError:
+            continue
+        for metric, aliases in STRUCTURE_EXTERNAL_ALIASES.items():
+            value, _ = alias_get(node, aliases) if isinstance(node, dict) else (None, None)
+            if isinstance(value, list):
+                numbers = [ptbr_float(item) for item in value]
+                if numbers and all(number is not None for number in numbers):
+                    result["lists"][metric] = [float(number) for number in numbers]
+                continue
+            number = ptbr_float(value)
+            if number is not None:
+                candidates[metric].append(number)
+    for table in outputs.get("tables") or []:
+        text = str(table)
+        raw_texts.append(text[:2000])
+        for metric, aliases in STRUCTURE_EXTERNAL_ALIASES.items():
+            found: set[float] = set()
+            for alias in aliases:
+                pattern = re.compile(
+                    rf"(?i){re.escape(alias)}[^\d\-\u2212]{{0,30}}"
+                    rf"(R\$\s*)?([+\-\u2212\u2013]?\d[\d.,]*)"
+                )
+                for match in pattern.finditer(text):
+                    number = ptbr_float(match.group(2))
+                    if number is not None:
+                        found.add(number)
+            if len(found) == 1:
+                candidates[metric].extend(found)
+            elif len(found) > 1:
+                result["lists"][metric] = sorted(found)
+    result["raw"] = {"texts": raw_texts, "tables": outputs.get("tables")}
+    for metric in STRUCTURE_EXTERNAL_ALIASES:
+        values = sorted(set(candidates.get(metric) or []))
+        if len(values) == 1:
+            result["values"][metric] = values[0]
+        elif len(values) > 1:
+            result["flags"].append(f"ambiguous_external_extraction:{metric}")
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# Recalculados (P7)                                                            #
+# --------------------------------------------------------------------------- #
+
+
+def recalc_row(
+    *,
+    underlying: str,
+    metric: str,
+    computed: Any,
+    flags: Sequence[str],
+    artifact: Any,
+    internal_value: Any = None,
+    internal_endpoint: str | None = None,
+    internal_flags: Sequence[str] = (),
+    external_normalized: float | None = None,
+    external_raw: Any = None,
+) -> dict[str, Any]:
+    """Recalculado com lado interno explícito e diferença ``externo − interno``."""
+    computed_value = computed.value if hasattr(computed, "value") else computed
+    value = as_float(computed_value) if external_normalized is None else external_normalized
+    raw = computed_value if external_raw is None else external_raw
+    row_flags = list(flags) + [
+        str(item) for item in getattr(computed, "flags", ())
+    ]
+    if value is None:
+        row_flags.append("unavailable")
+    internal_number = as_float(internal_value)
+    if internal_number is None:
+        row_flags.append("internal_unavailable")
+    row_flags.extend(str(item) for item in internal_flags)
+    difference = (
+        value - internal_number
+        if value is not None and internal_number is not None
+        else None
+    )
+    return {
+        "kind": "recalculated",
+        "source": "bench_recalc",
+        "underlying": underlying,
+        "metric": metric,
+        "external": {
+            "raw": raw,
+            "normalized": value,
+            "flags": sorted(set(row_flags)),
+        },
+        "internal": {
+            "raw": internal_value,
+            "normalized": internal_number,
+            "endpoint": internal_endpoint,
+        },
+        "difference": difference,
+        "artifact": artifact,
+        "flags": sorted(set(row_flags)),
+    }
+
+
+def _vrp_history_series(
+    bars: Sequence[recalc.OhlcBar],
+    points: Sequence[Mapping[str, Any]],
+    ex_dates: set[date],
+    today_vrp: float | None,
+    session: str | None = None,
+) -> list[float] | None:
+    """IV−RV30 por data real (VI histórico + OHLC), nunca 252 VRPs constantes.
+
+    Quando ``points`` já traz a sessão corrente, o VRP **desse ponto** é
+    substituído por ``today_vrp`` (sem duplicata); se não traz, ``today_vrp`` é
+    acrescentado ao fim. A série termina sempre em hoje, uma única vez.
+    """
+    if not points or today_vrp is None:
+        return None
+    ordered = sorted(bars, key=lambda bar: bar.refdate)
+    series: list[float] = []
+    replaced_today = False
+    for point in points:
+        try:
+            day = date.fromisoformat(str(point.get("date") or "")[:10])
+        except ValueError:
+            return None
+        window = [bar for bar in ordered if bar.refdate <= day]
+        if len(window) < 30:
+            return None
+        realized = recalc.rv30(
+            window, ex_div_dates={item for item in ex_dates if item <= day}
+        )
+        if realized.value is None:
+            return None
+        if session is not None and day.isoformat() == session:
+            series.append(today_vrp)
+            replaced_today = True
+        else:
+            series.append(float(point["iv_pct"]) - realized.value)
+    if not replaced_today:
+        series.append(today_vrp)
+    return series if len(series) >= recalc.Z_WINDOW else None
+
+
+def build_recalculated(
+    *,
+    underlying: str,
+    obm: dict[str, Any],
+    screen_row: Mapping[str, Any] | None,
+    external_iv_30: float | None,
+    artifact: Any,
+    session: str,
+    smile_maturity: str | None = None,
+    forward_ref: float | None = None,
+    delta_points: Sequence[tuple[Any, Any]] = (),
+) -> list[dict[str, Any]]:
+    """Aplica P7 ao bruto; ``du = 30`` (T = 30/252) e histórico VRP real.
+
+    ``session`` é a data de referência do lake: data futura do VI entra no
+    rank/percentil e no z-sem VRP duplicado; proventos anteriores à sessão ou
+    além de 30 DU ficam fora do carry do forward.
+    """
+    screen = screen_row if isinstance(screen_row, Mapping) else {}
+    endpoint = (
+        "/api/t/{ticker}?sections=summary,term,smile,history&days=252"
+    )
+    bars = sorted(obm.get("ohlc") or [], key=lambda bar: bar.refdate)
+    # O chamador já entrega só o deste papel; a checagem aqui é a última guarda:
+    # ticker declarado diferente não entra, sem ticker entra na flag e não entra.
+    dividends: list[dict[str, Any]] = []
+    ticker_flags: list[str] = []
+    for item in obm.get("dividends") or []:
+        if not isinstance(item, dict):
+            continue
+        declared = str(item.get("ticker") or "").strip().upper()
+        if not declared:
+            if "dividend_ticker_unavailable" not in ticker_flags:
+                ticker_flags.append("dividend_ticker_unavailable")
+            continue
+        if declared != underlying:
+            continue
+        dividends.append(item)
+    ex_dates: set[date] = set()
+    for item in dividends:
+        try:
+            ex_dates.add(date.fromisoformat(str(item.get("date"))[:10]))
+        except (TypeError, ValueError):
+            continue
+    # Janela de 30 dias úteis do carry: só proventos da sessão em diante, com
+    # `du` quando declarado. Provento sem `du` é mantido (e sinalizado) para não
+    # descartar dado silenciosamente — o forward fica None + dividend_du_unavailable.
+    session_day = date.fromisoformat(session) if DATE_ISO.match(session) else None
+    carry_dividends: list[dict[str, Any]] = []
+    for item in dividends:
+        try:
+            day = date.fromisoformat(str(item.get("date"))[:10])
+        except (TypeError, ValueError):
+            continue
+        if session_day is not None and day < session_day:
+            continue
+        du = item.get("du")
+        if is_number(du) and int(du) > 30:
+            continue
+        carry_dividends.append(item)
+    rows: list[dict[str, Any]] = []
+
+    def aggregate_value(names: set[str]) -> tuple[Any, str | None]:
+        for bucket in obm.get("aggregates") or []:
+            entry_artifact = bucket.get("artifact") or {}
+            if str(entry_artifact.get("ticker") or "").upper() != underlying:
+                continue
+            values = bucket.get("values") if isinstance(bucket.get("values"), dict) else {}
+            for name, value in values.items():
+                if key_of(name) in names:
+                    return value, str(name)
+        return None, None
+
+    # 1. RV Yang-Zhang 20/30/60 com datas ex do provento excluídas da janela.
+    for window, function in ((20, recalc.rv20), (30, recalc.rv30), (60, recalc.rv60)):
+        if len(bars) < window:
+            computed: Any = None
+            flags = ["ohlc_unavailable", "insufficient_history"] + ticker_flags
+        else:
+            computed = function(bars, ex_div_dates=ex_dates)
+            flags = list(ticker_flags)
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric=f"rv{window}",
+                computed=computed,
+                flags=flags,
+                artifact=artifact,
+                internal_value=screen.get(f"rv{window}"),
+                internal_endpoint=endpoint,
+            )
+        )
+
+    # 2. Pregão dominante: sharé em % para comparar com rv_shock_share_pct.
+    if len(bars) >= 10:
+        shock = recalc.rv_shock_day(bars, 30, ex_div_dates=ex_dates)
+        share_pct = shock.share * 100.0 if shock.share is not None else None
+        shock_raw = {
+            "date": shock.refdate.isoformat() if shock.refdate else None,
+            "share": shock.share,
+            "share_pct": share_pct,
+            "n_returns": shock.n_returns,
+            "is_shock": shock.is_shock,
+        }
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric="rv_shock_day",
+                computed=shock_raw,
+                external_normalized=share_pct,
+                external_raw=shock_raw,
+                flags=list(shock.flags) + ticker_flags,
+                artifact=artifact,
+                internal_value=screen.get("rv_shock_share_pct"),
+                internal_endpoint=endpoint,
+            )
+        )
+    else:
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric="rv_shock_day",
+                computed=None,
+                flags=["ohlc_unavailable", "insufficient_returns"] + ticker_flags,
+                artifact=artifact,
+                internal_value=screen.get("rv_shock_share_pct"),
+                internal_endpoint=endpoint,
+            )
+        )
+
+    points = sorted(
+        (
+            item
+            for item in (obm.get("vi_history") or [])
+            if isinstance(item, dict) and is_number(item.get("iv_pct"))
+        ),
+        key=lambda item: str(item.get("date") or "")[:10],
+    )
+    # Hoje entra no rank/percentil: se a última data VI já é a sessão, substitui
+    # o IV desse ponto; senão acrescenta a sessão corrente ao história.
+    iv_points = [dict(item) for item in points]
+    if external_iv_30 is not None:
+        if iv_points and str(iv_points[-1].get("date") or "")[:10] == session:
+            replaced = dict(iv_points[-1])
+            replaced["iv_pct"] = external_iv_30
+            replaced["flags"] = list(replaced.get("flags") or []) + ["iv_replaced_today"]
+            iv_points[-1] = replaced
+        else:
+            iv_points.append(
+                {"date": session, "iv_pct": external_iv_30, "flags": ["iv_appended_today"]}
+            )
+    iv_values = [float(item["iv_pct"]) for item in iv_points]
+    rv30_value = next(
+        (
+            row["external"]["normalized"]
+            for row in rows
+            if row["metric"] == "rv30" and row["external"]["normalized"] is not None
+        ),
+        None,
+    )
+
+    # 3. VRP no dia = IV ATM externa − RV30 recalculada.
+    vrp_result = (
+        recalc.vrp(external_iv_30, rv30_value)
+        if external_iv_30 is not None and rv30_value is not None
+        else None
+    )
+    rows.append(
+        recalc_row(
+            underlying=underlying,
+            metric="vrp",
+            computed=vrp_result if vrp_result is not None else None,
+            flags=["missing_input"] if vrp_result is None else [],
+            artifact=artifact,
+            internal_value=screen.get("vrp"),
+            internal_endpoint=endpoint,
+        )
+    )
+
+    # 4. Rank/percentil 252 dos VI históricos (já em % a.a.).
+    if len(iv_values) >= recalc.Z_WINDOW:
+        rank = recalc.iv_rank_252(iv_values)
+        percentile = recalc.iv_percentile_252(iv_values)
+    else:
+        rank = percentile = None
+    for metric, computed in (("iv_rank_252", rank), ("iv_pct_252", percentile)):
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric=metric,
+                computed=computed,
+                flags=(
+                    []
+                    if computed is not None
+                    else ["vi_history_unavailable", "insufficient_history"]
+                ),
+                artifact=artifact,
+                internal_value=screen.get(metric),
+                internal_endpoint=endpoint,
+            )
+        )
+
+    # 5. Z-score do VRP com histórico REAL IV−RV30 por data (nunca constante).
+    today_vrp = vrp_result.value if vrp_result is not None else None
+    vrp_history = _vrp_history_series(bars, iv_points, ex_dates, today_vrp, session=session)
+    zscore = (
+        recalc.vrp_z(vrp_history)
+        if vrp_history is not None and len(vrp_history) >= recalc.Z_WINDOW
+        else None
+    )
+    rows.append(
+        recalc_row(
+            underlying=underlying,
+            metric="vrp_z_252",
+            computed=zscore,
+            flags=(
+                [] if zscore is not None else ["vrp_history_unavailable"]
+            ) + ticker_flags,
+            artifact=artifact,
+            internal_value=screen.get("vrp_z_252"),
+            internal_endpoint=endpoint,
+        )
+    )
+
+    # 6. RR25/BFLY25 dos pontos 25Δ do vencimento smile do OBM.
+    smile_points = [
+        recalc.DeltaPoint(delta=float(delta), iv_pct=float(iv))
+        for delta, iv in delta_points
+        if is_number(delta) and is_number(iv)
+    ]
+    skew = recalc.rr25_bfly25(smile_points, external_iv_30)
+    for metric, value in (("rr25", skew.rr25), ("bfly25", skew.bfly25)):
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric=metric,
+                computed=value,
+                flags=list(skew.flags),
+                artifact=artifact,
+                internal_value=screen.get(metric),
+                internal_endpoint=endpoint,
+            )
+        )
+
+    # 7. Estrutura a termo: IV ATM 90d da agregação externa.
+    iv_90, iv_90_field = aggregate_value({"ivatm90dratio", "ivatm90d"})
+    iv_90_normalized, iv_90_flags = normalize_iv(iv_90, iv_90_field or "iv_atm_90d_ratio")
+    rows.append(
+        recalc_row(
+            underlying=underlying,
+            metric="ts_slope_30_90",
+            computed=recalc.ts_slope_30_90(external_iv_30, iv_90_normalized),
+            flags=iv_90_flags,
+            artifact=artifact,
+            internal_value=screen.get("ts_slope_30_90"),
+            internal_endpoint=endpoint,
+        )
+    )
+
+    # 8. Curva ETTJ/ANBIMA: du = 30 (T = 30/252), nunca 21.
+    curve = [(int(du), float(rate)) for du, rate in (obm.get("curve") or [])]
+    du_30 = 30
+    spot = next(
+        (float(bar.close) / 100.0 for bar in reversed(bars) if bar.close > 0),
+        None,
+    )
+    if curve:
+        df = recalc.discount_factor_from_curve(du_30, curve)
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric="df_30d",
+                computed=df,
+                flags=["df_internal_api_missing"],
+                artifact=artifact,
+                internal_value=None,
+                internal_endpoint="/api/structure (df)",
+            )
+        )
+        missing_du = [item for item in carry_dividends if item.get("du") is None]
+        dividend_flags = ["dividend_du_unavailable"] if missing_du else []
+        usable = [
+            recalc.Dividend(du=int(item["du"]), amount_brl=float(item["amount_brl"]))
+            for item in carry_dividends
+            if item.get("du") is not None and int(item["du"]) > 0
+        ]
+        carry = (
+            recalc.forward_by_carry(spot, curve, du_30 / 252.0, usable)
+            if spot is not None and not missing_du
+            else None
+        )
+        forward_flags = (
+            ticker_flags
+            + ([] if spot is not None else ["ohlc_unavailable"])
+            + dividend_flags
+            + (list(carry.flags) if carry is not None else [])
+        )
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric="forward_30d",
+                computed=carry.forward if carry is not None else None,
+                flags=forward_flags,
+                artifact=artifact,
+                internal_value=screen.get("forward_30d"),
+                internal_endpoint=endpoint,
+            )
+        )
+        rate = carry.rate_pct if carry is not None else None
+        implied = (
+            recalc.implied_div_yield_pct(rate, carry.forward, spot, du_30 / 252.0)
+            if carry is not None
+            and carry.forward is not None
+            and spot is not None
+            else None
+        )
+        rows.append(
+            recalc_row(
+                underlying=underlying,
+                metric="implied_div_yield_30d",
+                computed=implied,
+                flags=forward_flags if implied is None else list(ticker_flags),
+                artifact=artifact,
+                internal_value=screen.get("implied_div_yield_30d"),
+                internal_endpoint=endpoint,
+            )
+        )
+    else:
+        for metric in ("df_30d", "forward_30d", "implied_div_yield_30d"):
+            rows.append(
+                recalc_row(
+                    underlying=underlying,
+                    metric=metric,
+                    computed=None,
+                    flags=["ettj_unavailable"],
+                    artifact=artifact,
+                    internal_value=screen.get(metric),
+                    internal_endpoint=endpoint,
+                )
+            )
+
+    # 9. Dias para liquidar: OI / média de quantidade (ações) de exatamente 20
+    # sessões. Quantidades repetidas na mesma data contam uma vez; com menos de
+    # 20 sessões o denominador é parcial e o resultado é None + flag.
+    oi, _ = aggregate_value({"oi", "openinterest"})
+    qty_by_day: dict[str, float] = {}
+    for item in (obm.get("ohlc_qty") or []):
+        if not isinstance(item, dict):
+            continue
+        day = str(item.get("date") or "")[:10]
+        qty = as_float(item.get("qty"))
+        if DATE_ISO.match(day) and qty is not None:
+            qty_by_day.setdefault(day, qty)
+    recent_quantities = [qty_by_day[day] for day in sorted(qty_by_day)[-20:]]
+    if len(recent_quantities) == 20:
+        average_quantity = math.fsum(recent_quantities) / 20.0
+        quantity_flags: list[str] = []
+    else:
+        average_quantity = None
+        quantity_flags = ["quantity_20d_unavailable"]
+    dtl = recalc.days_to_liquidate(
+        int(oi) if is_number(oi) else None, average_quantity
+    )
+    rows.append(
+        recalc_row(
+            underlying=underlying,
+            metric="days_to_liquidate",
+            computed=dtl,
+            flags=quantity_flags,
+            artifact=artifact,
+            internal_value=screen.get("days_to_liquidate"),
+            internal_endpoint=endpoint,
+        )
+    )
+
+    # 10. Expected move: strike casado call+put mais perto do spot/forward do smile.
+    matched: dict[int, dict[str, float]] = defaultdict(dict)
+    for item in obm.get("series") or []:
+        if str(item.get("underlying") or "").upper() != underlying:
+            continue
+        if smile_maturity is not None:
+            maturity = (item.get("match") or {}).get("maturity")
+            if maturity != smile_maturity:
+                continue
+        cents = (item.get("match") or {}).get("strike_cents")
+        price = item.get("price_normalized")
+        if cents is not None and price is not None:
+            matched[int(cents)][item["match"]["side"]] = float(price)
+    pairs = [
+        (cents, values["C"] + values["P"])
+        for cents, values in matched.items()
+        if "C" in values and "P" in values
+    ]
+    reference = forward_ref if forward_ref is not None else spot
+    closest = (
+        min(pairs, key=lambda pair: abs(pair[0] / 100.0 - reference))
+        if pairs and reference is not None
+        else None
+    )
+    straddle = closest[1] if closest is not None else None
+    rows.append(
+        recalc_row(
+            underlying=underlying,
+            metric="exp_move_1s_30d",
+            computed=(
+                recalc.expected_move_1s(straddle, spot)
+                if straddle is not None and spot is not None
+                else None
+            ),
+            flags=(
+                []
+                if straddle is not None and spot is not None
+                else ["straddle_unavailable", "ohlc_unavailable"]
+            ),
+            artifact=artifact,
+            internal_value=screen.get("exp_move_1s_30d"),
+            internal_endpoint=endpoint,
+        )
+    )
+    return rows
+
+# --------------------------------------------------------------------------- #
+# Construção das linhas de comparação                                          #
+# --------------------------------------------------------------------------- #
+
+
+def series_row(
+    *,
+    source: str,
+    metric: str,
+    match: Mapping[str, Any],
+    method: str,
+    flags: Sequence[str],
+    external_raw: Any,
+    external_normalized: float | None,
+    internal_raw: Any,
+    internal_normalized: float | None,
+    internal_endpoint: str,
+    artifact: Any,
+    external_unit: str | None = None,
+    internal_unit: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    difference = (
+        external_normalized - internal_normalized
+        if external_normalized is not None and internal_normalized is not None
+        else None
+    )
+    row_flags = list(flags)
+    if external_normalized is None and reason is None:
+        row_flags.append("external_normalization_unavailable")
+    if internal_normalized is None and reason is None:
+        row_flags.append("internal_normalization_unavailable")
+    return {
+        "kind": "series",
+        "source": source,
+        "metric": metric,
+        "ticker": match.get("ticker"),
+        "underlying": match.get("underlying"),
+        "maturity": match.get("maturity"),
+        "side": match.get("side"),
+        "strike_cents_internal": match.get("strike_cents_internal"),
+        "strike_cents_external": match.get("strike_cents_external"),
+        "match": dict(match.get("keys") or {}),
+        "match_method": method,
+        "flags": sorted(set(row_flags)),
+        "external": {
+            "raw": external_raw,
+            "normalized": external_normalized,
+            "unit": external_unit,
+        },
+        "internal": {
+            "raw": internal_raw,
+            "normalized": internal_normalized,
+            "endpoint": internal_endpoint,
+            "unit": internal_unit,
+        },
+        "difference": difference,
+        "artifact": artifact,
+        "reason": reason,
+    }
+
+
+def internal_values(data: Mapping[str, Any]) -> dict[str, Any]:
+    """Valores internos das séries: preço/IV/delta do `last`, gregas do topo."""
+    last = data.get("last") if isinstance(data.get("last"), dict) else {}
+    close = as_float(last.get("close_brl"))
+    mid = as_float(last.get("mid_brl"))
+    price_flags: list[str] = []
+    price = close if close is not None else mid
+    if close is None and mid is not None:
+        price_flags.append("price_from_mid")
+    if price is None:
+        price_flags.append("price_missing")
+    gamma = data.get("gamma")
+    gamma_v = gamma_variants(gamma)
+    return {
+        "price": (price, price_flags),
+        "iv": (as_float(last.get("iv_pct")), []),
+        "delta": (as_float(last.get("delta")), []),
+        "gamma": (gamma_v["gamma_internal_raw"], gamma_v["flags"]),
+        "gamma_x100_candidate": (
+            gamma_v["gamma_internal_x100"],
+            gamma_v["flags"] + ["gamma_scale_candidate_x100"],
+        ),
+        "theta": (as_float(data.get("theta_brl")), []),
+        "vega": (as_float(data.get("vega_brl")), []),
+        "rho": (None, ["internal_api_missing_rho"]),
+        "raw": data,
+    }
+
+
+def external_values(
+    item: Mapping[str, Any], source: str
+) -> dict[str, tuple[Any, list[str], Any]]:
+    """``(normalizado, flags, bruto)`` por métrica — o bruto nunca é o normalizado."""
+    flags_all = list(item.get("flags") or [])
+    if source == "obm":
+        return {
+            "price": (
+                item.get("price_normalized"),
+                flags_all,
+                item.get("price_raw", item.get("price")),
+            ),
+            "iv": (
+                item.get("iv_normalized"),
+                flags_all,
+                item.get("iv_raw", item.get("iv")),
+            ),
+            "delta": (item.get("delta_signed", item.get("delta")), flags_all, item.get("delta")),
+            "gamma": (ptbr_float(item.get("gamma")), flags_all, item.get("gamma")),
+            "theta": (None, flags_all + ["unit_unknown"], item.get("theta")),
+            "vega": (None, flags_all + ["unit_unknown"], item.get("vega")),
+            "rho": (ptbr_float(item.get("rho")), flags_all, item.get("rho")),
+        }
+    if source == "opcoes_net":
+        return {
+            "price": (
+                item.get("price_normalized"),
+                flags_all,
+                item.get("price_raw", item.get("price")),
+            ),
+            "iv": (
+                item.get("iv_normalized"),
+                flags_all,
+                item.get("iv_raw", item.get("iv")),
+            ),
+            "delta": (item.get("delta"), flags_all, item.get("delta")),
+            "gamma": (item.get("gamma"), flags_all, item.get("gamma")),
+            "theta": (None, flags_all + ["unit_unknown"], item.get("theta_raw")),
+            "vega": (None, flags_all + ["unit_unknown"], item.get("vega_raw")),
+            "rho": (None, flags_all + ["external_rho_unavailable"], None),
+        }
+    inputs = item.get("inputs") if isinstance(item.get("inputs"), dict) else {}
+    outputs = item.get("outputs") if isinstance(item.get("outputs"), dict) else {}
+    theta_raw = outputs.get("theta")
+    vega_raw = outputs.get("vega")
+    theta, theta_flags, _ = normalize_theta(ptbr_float(theta_raw), inputs)
+    vega, vega_flags, _ = normalize_vega(ptbr_float(vega_raw), inputs)
+    return {
+        "price": (
+            ptbr_float(outputs.get("preco")),
+            flags_all + ["theoretical_price_not_close"],
+            outputs.get("preco"),
+        ),
+        "iv": (
+            None,
+            flags_all + ["b3lab_iv_is_input_not_extracted"],
+            inputs.get("sigma"),
+        ),
+        "delta": (ptbr_float(outputs.get("delta")), flags_all, outputs.get("delta")),
+        "gamma": (ptbr_float(outputs.get("gamma")), flags_all, outputs.get("gamma")),
+        "theta": (theta, flags_all + theta_flags, theta_raw),
+        "vega": (vega, flags_all + vega_flags, vega_raw),
+        "rho": (
+            ptbr_float(outputs.get("rho")),
+            flags_all + ["internal_api_missing_rho"],
+            outputs.get("rho"),
+        ),
+    }
+
+
+def build_series_comparisons(
+    *,
+    source: str,
+    external_series: Sequence[Mapping[str, Any]],
+    internal_by_key: Mapping[tuple[str, str], Mapping[str, Any]],
+    notes: list[str],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    internal_rows: list[dict[str, Any]] = []
+    for (ticker, maturity), detail in sorted(internal_by_key.items()):
+        for item in detail.get("series", []):
+            row = make_match_row(
+                ticker=ticker,
+                maturity=maturity,
+                strike_value=item.get("strike_brl"),
+                side=item.get("side"),
+            )
+            row["underlying"] = detail.get("underlying")
+            internal_rows.append(row)
+    external_rows = [
+        dict(item["match"], underlying=item.get("underlying"), raw=item.get("raw"))
+        for item in external_series
+        if isinstance(item.get("match"), dict)
+    ]
+    matches, skipped = match_rows(internal_rows, external_rows)
+    rows: list[dict[str, Any]] = []
+    for match in matches:
+        inside = match["internal"]
+        outside = match["external"]
+        detail = internal_by_key.get((inside["ticker"], inside["maturity"]), {})
+        internal_payload = None
+        for item in detail.get("series", []):
+            candidate = make_match_row(
+                ticker=inside["ticker"],
+                maturity=inside["maturity"],
+                strike_value=item.get("strike_brl"),
+                side=item.get("side"),
+            )
+            if candidate["match_key"] == inside["match_key"]:
+                internal_payload = item
+                break
+        if internal_payload is None:
+            continue
+        values = internal_values(internal_payload)
+        source_item = next(
+            (
+                item
+                for item in external_series
+                if item.get("match", {}).get("match_key") == outside["match_key"]
+            ),
+            None,
+        )
+        if source_item is None:
+            continue
+        ext = external_values(source_item, source)
+        keys = {
+            "ticker": inside["ticker"],
+            "maturity": inside["maturity"],
+            "side": inside["side"],
+            "strike_cents": outside["strike_cents"],
+        }
+        artifact = source_item.get("artifact")
+        metrics = list(METRICS) + ["gamma_x100_candidate"]
+        for metric in metrics:
+            internal_number, internal_flags = values.get(metric, (None, []))
+            external_metric = "gamma" if metric == "gamma_x100_candidate" else metric
+            external_number, external_flags, external_raw_value = ext.get(
+                external_metric, (None, [], None)
+            )
+            if metric == "gamma_x100_candidate" and source != "obm":
+                continue
+            # Gamma: o externo NÃO é multiplicado; só o candidato interno é ×100.
+            unit_external = (
+                "brl_per_share" if metric == "price" else None
+            )
+            unit_internal = (
+                "brl_per_share" if metric in {"price", "gamma", "theta", "vega"} else None
+            )
+            row = series_row(
+                source=source,
+                metric=metric,
+                match={
+                    "keys": keys,
+                    "underlying": outside.get("underlying") or detail.get("underlying"),
+                    "strike_cents_internal": inside["strike_cents"],
+                    "strike_cents_external": outside["strike_cents"],
+                },
+                method=match["match_method"],
+                flags=list(match["flags"]) + list(internal_flags) + list(external_flags),
+                external_raw=external_raw_value,
+                external_normalized=as_float(external_number),
+                internal_raw=(
+                    internal_payload if metric in {"price", "iv"} else internal_number
+                ),
+                internal_normalized=as_float(internal_number),
+                internal_endpoint="/api/s/{ticker}/{maturity}",
+                artifact=artifact,
+                external_unit=unit_external,
+                internal_unit=unit_internal,
+            )
+            rows.append(row)
+    notes.append(
+        f"{source}: {len(matches)} séries casadas, {len(skipped)} sem casamento; "
+        f"{sum(1 for item in matches if item['match_method'] == 'fallback_unique')} fallback(s)."
+    )
+    return rows, skipped
+
+
+def build_underlying_comparisons(
+    *,
+    screens: Mapping[str, Mapping[str, Any]],
+    underlyings: Mapping[str, Mapping[str, Any]],
+    aggregates: Sequence[Mapping[str, Any]],
+    ohlc: Sequence[recalc.OhlcBar] = (),
+    ohlc_sources: Mapping[str, Any] | None = None,
+    notes: list[str],
+    obm: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    if obm is not None:
+        # `obm` é o recorte do papel: o spot não pode vir da barra de outro ativo.
+        ohlc = obm.get("ohlc") or ()
+        ohlc_sources = obm.get("ohlc_sources") or {}
+    rows: list[dict[str, Any]] = []
+    # Spot externo é o fechamento da última barra OHLC OBM em R$/ação (centavos
+    # ÷ 100) — comparação direta com `spot_brl` interno, com artefato declarado.
+    # O lote de OHLC pode cobrir vários papéis: filtra pelo ticker do artefato.
+    spot_bars = sorted(ohlc, key=lambda bar: bar.refdate)
+
+    def spot_source(
+        ticker: str,
+    ) -> tuple[recalc.OhlcBar | None, dict[str, Any] | None]:
+        candidates: list[tuple[recalc.OhlcBar, dict[str, Any] | None]] = []
+        for bar in spot_bars:
+            ref = (ohlc_sources or {}).get(bar.refdate.isoformat()) or {}
+            ref_ticker = str(ref.get("ticker") or "").upper()
+            if ref_ticker and ref_ticker != ticker:
+                continue
+            if bar.close > 0:
+                candidates.append((bar, ref or None))
+        return candidates[-1] if candidates else (None, None)
+
+    aggregate_by_ticker: dict[str, dict[str, Any]] = defaultdict(dict)
+    for bucket in aggregates:
+        values = bucket.get("values") if isinstance(bucket.get("values"), dict) else {}
+        artifact = bucket.get("artifact") or {}
+        ticker = str(artifact.get("ticker") or "").upper()
+        if not ticker:
+            continue
+        for metric, aliases in OBM_AGGREGATE_ALIASES.items():
+            value, field = alias_get(values, aliases)
+            if value is None:
+                continue
+            if metric in {"iv_rank_252", "iv_pct_252", "skew_25d_30d_ratio"}:
+                # rank/percentil já são 0–100; skew é razão bruta — nunca IV.
+                normalized, flags = as_float(value), []
+                if metric == "skew_25d_30d_ratio":
+                    flags.append("definition_pending")
+            else:
+                normalized, flags = normalize_iv(value, str(field or metric))
+            aggregate_by_ticker[ticker][metric] = {
+                "raw": value,
+                "normalized": normalized,
+                "flags": flags,
+                "unit": "ratio" if metric == "skew_25d_30d_ratio" else None,
+            }
+            if metric == "skew_25d_30d_ratio":
+                aggregate_by_ticker[ticker][metric]["flags"].append("definition_pending")
+    for ticker, detail in sorted(underlyings.items()):
+        detail_data = detail.get("data") if isinstance(detail.get("data"), dict) else {}
+        summary = detail_data.get("summary") if isinstance(detail_data.get("summary"), dict) else {}
+        if not isinstance(summary, dict):
+            summary = {}
+        screen = screens.get(ticker, {})
+        spot_bar, spot_ref = spot_source(ticker)
+        for metric in UNDERLYING_FIELDS:
+            internal = summary.get(metric)
+            if internal is None:
+                internal = screen.get(metric)
+            if internal is None:
+                continue
+            external = aggregate_by_ticker.get(ticker, {}).get(metric)
+            spot_from_ohlc = metric == "spot_brl" and spot_bar is not None
+            if spot_from_ohlc:
+                assert spot_bar is not None
+                external_value = spot_bar.close / 100.0
+                external_raw_value: Any = {
+                    "refdate": spot_bar.refdate.isoformat(),
+                    "close_cents": spot_bar.close,
+                    "close_brl": external_value,
+                }
+                flags = ["obm_ohlc_close"]
+                external_artifact: dict[str, Any] | None = {
+                    "source": "obm",
+                    "ticker": ticker,
+                    "kind": "ohlc",
+                    **(spot_ref or {}),
+                }
+            elif external:
+                external_value = external["normalized"]
+                external_raw_value = external["raw"]
+                flags = list(external["flags"])
+                external_artifact = {"source": "obm", "ticker": ticker}
+            else:
+                external_value = None
+                external_raw_value = None
+                flags = ["external_unavailable"]
+                external_artifact = None
+            if external_value is None:
+                flags.append("external_unavailable")
+            rows.append(
+                {
+                    "kind": "underlying",
+                    "source": "obm" if (spot_from_ohlc or external) else None,
+                    "metric": metric,
+                    "ticker": ticker,
+                    "underlying": ticker,
+                    "match": {"ticker": ticker},
+                    "match_method": (
+                        "ticker_session" if (spot_from_ohlc or external) else "internal_only"
+                    ),
+                    "flags": sorted(set(flags)),
+                    "external": {
+                        "raw": external_raw_value,
+                        "normalized": external_value,
+                    },
+                    "internal": {
+                        "raw": internal,
+                        "normalized": as_float(internal),
+                        "endpoint": "/api/t/{ticker}?sections=summary,term,smile,history&days=252",
+                    },
+                    "difference": (
+                        external_value - as_float(internal)
+                        if external_value is not None and is_number(internal)
+                        else None
+                    ),
+                    "artifact": external_artifact,
+                    "reason": None,
+                }
+            )
+    if any(
+        "definition_pending" in aggregate.get("skew_25d_30d_ratio", {}).get("flags", [])
+        for aggregate in aggregate_by_ticker.values()
+    ):
+        notes.append(SKEW_NOTE)
+    return rows
+
+
+def build_structure_comparisons(info: SourceInfo, notes: list[str]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for entry in info.artifacts:
+        if entry.get("status") != "ok":
+            continue
+        record = entry.get("record")
+        if not isinstance(record, dict):
+            continue
+        response = record.get("response") if isinstance(record.get("response"), dict) else {}
+        data = response.get("data") if isinstance(response.get("data"), dict) else {}
+        if not data:
+            continue
+        external = extract_structure_external(record)
+        # O papel vem de response.data.underlying (PETR4), não do nome da estrutura.
+        underlying = str(
+            data.get("underlying") or record.get("underlying") or ""
+        ).upper() or None
+        for metric in (
+            "net_premium_brl",
+            "breakeven_brl",
+            "max_loss_brl",
+            "max_gain_brl",
+            "delta",
+            "gamma",
+            "theta_brl",
+            "vega_brl",
+        ):
+            internal = data.get(metric)
+            external_value = external["values"].get(metric)
+            external_list = external["lists"].get(metric)
+            flags = set(external["flags"])
+            internal_normalized = as_float(internal)
+            external_normalized = as_float(external_value)
+            difference: Any = (
+                external_normalized - internal_normalized
+                if external_normalized is not None and internal_normalized is not None
+                else None
+            )
+            if metric == "breakeven_brl" and isinstance(internal, list):
+                internal_list = [as_float(item) for item in internal]
+                if (
+                    external_list is not None
+                    and len(external_list) == len(internal_list)
+                    and all(item is not None for item in internal_list)
+                ):
+                    external_normalized = external_list
+                    internal_normalized = internal_list
+                    difference = [
+                        float(external_item) - float(internal_item)
+                        for external_item, internal_item in zip(
+                            external_list, internal_list, strict=True
+                        )
+                    ]
+                    flags.add("breakeven_list_compared")
+                elif len(internal_list) == 1 and external_normalized is not None:
+                    internal_normalized = internal_list[0]
+                    difference = external_normalized - internal_normalized
+                else:
+                    external_normalized = external_list
+                    internal_normalized = internal_list
+                    difference = None
+                    flags.add("breakeven_list_unavailable")
+            elif internal is None:
+                flags.add("internal_missing")
+            rows.append(
+                {
+                    "kind": "structure",
+                    "source": "obm_montador",
+                    "metric": metric,
+                    "structure": record.get("name"),
+                    "underlying": underlying,
+                    "match": {"structure": record.get("name")},
+                    "match_method": "p5_record",
+                    "flags": sorted(flags),
+                    "external": {
+                        "raw": external_list if external_list is not None else external["raw"],
+                        "normalized": external_normalized,
+                    },
+                    "internal": {
+                        "raw": internal,
+                        "normalized": internal_normalized,
+                        "endpoint": "/api/structure",
+                    },
+                    "difference": difference,
+                    "artifact": {
+                        "file": entry.get("file"),
+                        "sha256": entry.get("sha256"),
+                        "manifest": info.manifest,
+                    },
+                    "reason": external.get("reason"),
+                }
+            )
+    notes.append(
+        "Estruturas: venda coberta permanece `unsupported_external`; só são comparados "
+        "números extraídos de forma inequívoca do bruto do montador."
+    )
+    return rows
+
+
+def summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    grouped: dict[tuple[str, str], list[float]] = defaultdict(list)
+    unavailable: dict[tuple[str, str], int] = defaultdict(int)
+    for row in rows:
+        source = str(row.get("source") or "unknown")
+        metric = str(row.get("metric") or "unknown")
+        difference = row.get("difference")
+        if is_number(difference):
+            grouped[(source, metric)].append(float(difference))
+        else:
+            unavailable[(source, metric)] += 1
+    by_source: dict[str, dict[str, Any]] = defaultdict(dict)
+    for (source, metric), values in sorted(grouped.items()):
+        stats = difference_stats(values)
+        stats["n_unavailable"] = unavailable.get((source, metric), 0)
+        by_source[source][metric] = stats
+    for (source, metric), count in sorted(unavailable.items()):
+        if (source, metric) not in grouped:
+            stats = difference_stats([])
+            stats["n_unavailable"] = count
+            by_source[source][metric] = stats
+    return {
+        "by_source": dict(sorted(by_source.items())),
+        "n_comparisons": sum(len(values) for values in grouped.values()),
+        "n_unavailable": sum(unavailable.values()),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Orquestração e CLI                                                           #
+# --------------------------------------------------------------------------- #
+
+
+def atomic_write_json(path: Path, value: Any) -> None:
+    """Escrita atômica com unlink+rename (bind do Windows recusa replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_name(f".{path.name}.pending-{os.getpid()}")
+    pending.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    try:
+        if path.exists():
+            path.unlink()
+        pending.rename(path)
+    except OSError as exc:
+        pending.unlink(missing_ok=True)
+        raise CompareError(
+            "write_failed",
+            f"não foi possível gravar {path}: {exc}",
+            "confira --output e o bind ./data:/data",
+        ) from exc
+
+
+def build_output(args: argparse.Namespace) -> dict[str, Any]:
+    """Monta o JSON intermediário; nenhuma etapa inventa dado ausente."""
+    notes: list[str] = []
+    unavailable: list[dict[str, str]] = []
+    output: dict[str, Any] = {
+        "schema": SCHEMA,
+        "generated_at": now_iso(),
+        "reference_date": args.date,
+        "model_version": None,
+        "input_dir": str(args.input_dir),
+        "api_url": args.api_url,
+        "sources": {},
+        "series_comparisons": {"obm": [], "opcoes_net": [], "b3lab": []},
+        "underlying_comparisons": [],
+        "structure_comparisons": [],
+        "recalculated": [],
+        "summary": {},
+        "unavailable": unavailable,
+        "notes": notes,
+    }
+    manifests = discover_manifests(args.input_dir, notes)
+    # `capture_verified` é só o verificador interno do P3: as fontes publicadas
+    # no JSON são `obm` e `opcoes_net`, cada uma com status/artefatos próprios.
+    capture_verified = verify_capture(manifests["capture"], args.date)
+    obm_info = split_capture(capture_verified, "obm", "obm")
+    opcoes_info = split_capture(capture_verified, "opcoes_net", "opcoes_net")
+    b3lab_info = verify_b3lab(manifests["b3lab"], args.date)
+    structures_info = verify_structures(
+        manifests["structures"], args.date, notes
+    )
+    for info in (obm_info, opcoes_info, b3lab_info, structures_info):
+        output["sources"][info.name] = info.as_json()
+        if info.status != "ok":
+            unavailable.append(
+                {
+                    "source": info.name,
+                    "code": "source_unavailable",
+                    "reason": info.reason or "unknown",
+                }
+            )
+
+    try:
+        client = ApiClient(args.api_url)
+        health = fetch_health(client)
+    except CompareError as exc:
+        unavailable.append({"source": "api", "code": exc.code, "reason": exc.message})
+        output["summary"] = summarize([])
+        notes.append(RHO_NOTE)
+        return output
+    output["model_version"] = health["model_version"]
+    if health["session"] != args.date or health["last_session"] != args.date:
+        reason = (
+            f"lago em {health['session']}/{health['last_session']}, pedido {args.date}"
+        )
+        unavailable.append(
+            {"source": "api", "code": "session_mismatch", "reason": reason}
+        )
+        output["summary"] = summarize([])
+        notes.append(RHO_NOTE)
+        return output
+
+    obm = parse_obm(obm_info, args.date, notes)
+    opcoes = parse_opcoes(opcoes_info, notes)
+    b3lab = parse_b3lab(b3lab_info)
+
+    underlyings: dict[str, str] = {}
+    for group in (obm["series"], opcoes["series"], b3lab["series"]):
+        for item in group:
+            ticker = item.get("match", {}).get("ticker")
+            underlying = item.get("underlying")
+            if ticker and underlying and isinstance(underlying, str):
+                underlyings[ticker] = underlying.upper()
+    screen = fetch_screen_all(client, args.date)
+    screens = {
+        str(row.get("underlying", "")).upper(): row
+        for row in screen["rows"]
+        if isinstance(row, dict) and row.get("underlying")
+    }
+    output["sources"]["api"] = {
+        "status": "ok",
+        "reason": None,
+        "session": health["session"],
+        "model_version": health["model_version"],
+        "screen": {"total": screen["total"], "rows": len(screen["rows"]), "pages": screen["pages"]},
+        "endpoints": [
+            "/api/health",
+            "/api/screen",
+            "/api/t/{ticker}?sections=summary,term,smile,history&days=252",
+            "/api/s/{ticker}/{maturity}",
+        ],
+    }
+
+    internal_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    pairs = sorted(
+        {
+            (ticker, str(item.get("match", {}).get("maturity") or "")[:10])
+            for ticker, item in (
+                (t, s)
+                for t, group in (
+                    (None, obm["series"]),
+                    (None, opcoes["series"]),
+                    (None, b3lab["series"]),
+                )
+                for s in group
+                for t in [s.get("match", {}).get("ticker")]
+            )
+            if ticker and item
+        }
+    )
+    for ticker, maturity in pairs:
+        try:
+            detail = fetch_series(client, ticker, maturity)
+        except CompareError as exc:
+            unavailable.append(
+                {
+                    "source": "api",
+                    "code": exc.code,
+                    "reason": f"/api/s/{ticker}/{maturity}: {exc.message}",
+                }
+            )
+            continue
+        internal_by_key[(ticker, maturity)] = {
+            "underlying": underlyings.get(ticker),
+            "series": [
+                {
+                    "ticker": detail["data"].get("ticker", ticker),
+                    "maturity": maturity,
+                    "side": detail["data"].get("side"),
+                    "strike_brl": detail["data"].get("strike_brl"),
+                    "last": detail["data"].get("last") or {},
+                    "gamma": detail["data"].get("gamma"),
+                    "theta_brl": detail["data"].get("theta_brl"),
+                    "vega_brl": detail["data"].get("vega_brl"),
+                    "payload": detail["payload"],
+                }
+            ],
+        }
+
+    all_matches: list[dict[str, Any]] = []
+    for source, group in (
+        ("obm", obm["series"]),
+        ("opcoes_net", opcoes["series"]),
+        ("b3lab", b3lab["series"]),
+    ):
+        rows, skipped = build_series_comparisons(
+            source=source,
+            external_series=group,
+            internal_by_key=internal_by_key,
+            notes=notes,
+        )
+        output["series_comparisons"][source].extend(rows)
+        all_matches.extend(rows)
+        for item in skipped:
+            unavailable.append(
+                {
+                    "source": source,
+                    "code": str(item.get("reason") or "match_skipped"),
+                    "reason": json.dumps(item, ensure_ascii=False),
+                }
+            )
+
+    for underlying in sorted(set(underlyings.values())):
+        try:
+            detail = fetch_underlying(client, underlying, args.date)
+        except CompareError as exc:
+            unavailable.append(
+                {
+                    "source": "api",
+                    "code": exc.code,
+                    "reason": f"/api/t/{underlying}: {exc.message}",
+                }
+            )
+            continue
+        screen_row = screens.get(underlying, {})
+        # Recorte deste papel. Curva e agregados continuam globais: cada bucket
+        # de agregado já carrega o ticker do próprio artefato e é filtrado lá.
+        obm_for_underlying: dict[str, Any] = {
+            "ohlc": obm["ohlc_by_underlying"].get(underlying, []),
+            "ohlc_qty": obm["ohlc_qty_by_underlying"].get(underlying, []),
+            "vi_history": obm["vi_history_by_underlying"].get(underlying, []),
+            "dividends": obm["dividends_by_underlying"].get(underlying, []),
+            "ohlc_sources": obm["ohlc_sources_by_underlying"].get(underlying, {}),
+            "aggregates": obm["aggregates"],
+            "curve": obm["curve"],
+            "series": obm["series"],
+        }
+        manifest_expiries = (
+            capture_verified.payload.get("expiries") or {}
+        )
+        manifest_expiry = manifest_expiries.get(underlying)
+        manifest_expiry = manifest_expiry if isinstance(manifest_expiry, dict) else {}
+        detail_data = detail.get("data") if isinstance(detail.get("data"), dict) else {}
+        term = detail_data.get("term") or []
+        smile_maturity = (
+            manifest_expiry.get("smile_maturity") or detail_data.get("smile_maturity")
+        )
+        if not isinstance(smile_maturity, str) or not smile_maturity:
+            dated_terms = [
+                row
+                for row in term
+                if isinstance(row, dict) and isinstance(row.get("maturity"), str)
+            ]
+            smile_maturity = min(
+                dated_terms,
+                key=lambda row: abs(float(row.get("t") or 0.0) - 30.0 / 252.0),
+                default=None,
+            )
+            smile_maturity = smile_maturity.get("maturity") if smile_maturity else None
+        forward_ref = next(
+            (
+                as_float(row.get("forward_brl"))
+                for row in term
+                if isinstance(row, dict) and row.get("maturity") == smile_maturity
+            ),
+            None,
+        )
+        # Delta points 25Δ do vencimento smile (delta assinado, IV normalizada).
+        delta_points = [
+            (item.get("delta_signed"), item.get("iv_normalized"))
+            for item in obm["series"]
+            if str(item.get("underlying") or "").upper() == underlying
+            and (item.get("match") or {}).get("maturity") == smile_maturity
+            and item.get("delta_signed") is not None
+            and item.get("iv_normalized") is not None
+        ]
+        external_iv: float | None = None
+        for bucket in obm["aggregates"]:
+            artifact = bucket.get("artifact") or {}
+            if str(artifact.get("ticker") or "").upper() != underlying:
+                continue
+            values = bucket.get("values") if isinstance(bucket.get("values"), dict) else {}
+            for name, value in values.items():
+                if key_of(name) == "ivatm30dratio" and is_number(value):
+                    external_iv, _ = normalize_iv(value, str(name))
+                    break
+            if external_iv is not None:
+                break
+        output["recalculated"].extend(
+            build_recalculated(
+                underlying=underlying,
+                obm=obm_for_underlying,
+                screen_row=screen_row,
+                external_iv_30=external_iv,
+                artifact={"source": "obm", "manifest": capture_verified.manifest},
+                session=args.date,
+                smile_maturity=smile_maturity,
+                forward_ref=forward_ref,
+                delta_points=delta_points,
+            )
+        )
+        output["underlying_comparisons"].extend(
+            build_underlying_comparisons(
+                screens=screens,
+                underlyings={underlying: {"data": detail}},
+                aggregates=obm["aggregates"],
+                notes=notes,
+                obm=obm_for_underlying,
+            )
+        )
+    output["structure_comparisons"].extend(
+        build_structure_comparisons(structures_info, notes)
+    )
+    notes.append(RHO_NOTE)
+    notes.append(
+        "P&L/exposição delta reais vêm das estruturas P5 com P7; a linha "
+        "ilustrativa `pnl_1x_stock` (entrada = saída = spot, P&L sempre zero) "
+        "foi removida — não é benchmark de posição."
+    )
+    notes.append(
+        "Nenhum número de relatório é produzido aqui: este JSON é intermediário "
+        "e o relatório F10.6 fica para outra sessão."
+    )
+    output["summary"] = summarize(
+        list(all_matches)
+        + list(output["underlying_comparisons"])
+        + list(output["structure_comparisons"])
+        + list(output["recalculated"])
+    )
+    return output
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="bench_compare",
+        description=(
+            "Comparador offline F10 (P6): lê o bruto de P3/P4/P5, consulta só a API "
+            "local e grava JSON intermediário `b3o-bench-compare/1`. Sem Playwright, "
+            "sem captura, sem relatório final; `--help` não faz rede."
+        ),
+    )
+    parser.add_argument("--date", required=True, help="sessão do lake em AAAA-MM-DD")
+    parser.add_argument(
+        "--input-dir",
+        default=None,
+        help=f"pasta com os manifests (default: {DEFAULT_INPUT_DIR}/<data>)",
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help=f"JSON intermediário (default: {DEFAULT_OUTPUT}/benchmark-<data>.json)",
+    )
+    parser.add_argument(
+        "--api-url",
+        default=DEFAULT_HTTP_URL,
+        help=f"API local do b3o (default: B3_HTTP_URL ou {DEFAULT_HTTP_URL})",
+    )
+    return parser
+
+
+def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    args = build_parser().parse_args(argv)
+    if not DATE_ISO.match(args.date):
+        raise CompareError(
+            "bad_date",
+            f"--date deve ser AAAA-MM-DD, recebido {args.date!r}",
+            "use uma sessão do lake (veja /api/health)",
+        )
+    try:
+        date.fromisoformat(args.date)
+    except ValueError as exc:
+        raise CompareError(
+            "bad_date", f"--date não é uma data válida: {args.date!r}", "confira o calendário"
+        ) from exc
+    input_dir = (
+        Path(args.input_dir)
+        if args.input_dir
+        else DEFAULT_INPUT_DIR / args.date
+    )
+    output = (
+        Path(args.output)
+        if args.output
+        else DEFAULT_OUTPUT / f"benchmark-{args.date}.json"
+    )
+    return argparse.Namespace(
+        date=args.date,
+        input_dir=input_dir,
+        output=output,
+        api_url=args.api_url.rstrip("/"),
+    )
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    try:
+        args = parse_args(argv)
+    except CompareError as exc:
+        print(json.dumps({"error": exc.payload()}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    try:
+        output = build_output(args)
+        atomic_write_json(args.output, output)
+    except CompareError as exc:
+        print(json.dumps({"error": exc.payload()}, ensure_ascii=False), file=sys.stderr)
+        return 2
+    except Exception as exc:  # falha imprevista também é explícita, sem traceback
+        error = CompareError(
+            "compare_failed",
+            f"falha inesperada: {type(exc).__name__}: {exc}",
+            "nenhum dado externo foi inventado; confira os manifests e a API local",
+        )
+        print(json.dumps({"error": error.payload()}, ensure_ascii=False), file=sys.stderr)
+        return 3
+    print(
+        json.dumps(
+            {
+                "schema": output["schema"],
+                "reference_date": output["reference_date"],
+                "output": str(args.output),
+                "sources": {
+                    name: value["status"] for name, value in output["sources"].items()
+                },
+                "n_comparisons": output["summary"].get("n_comparisons"),
+                "n_unavailable": output["summary"].get("n_unavailable"),
+            },
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

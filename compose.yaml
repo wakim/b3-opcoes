@@ -162,6 +162,29 @@ services:
       - b3o-node-modules:/frontend/node_modules
     command: ["sh", "-c", "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"]
 
+  # Serviço de benchmark do F10 (Playwright): perfil próprio, isolado do produto.
+  # Base oficial FIXA + Dockerfile.bench (só o driver Python, sem deps do produto);
+  # Playwright não entra no pyproject/uv.lock. ipc: host é o recomendado pelo
+  # Chromium; nenhuma porta é publicada.
+  bench:
+    build:
+      context: .
+      dockerfile: Dockerfile.bench
+    image: b3o-bench:f10
+    profiles: [bench]
+    working_dir: /scripts
+    ipc: host
+    environment:
+      TZ: America/Sao_Paulo
+      B3_HTTP_URL: http://app:8080
+    depends_on:
+      app:
+        condition: service_started
+    volumes:
+      - ./data:/data
+      - ./backend/scripts:/scripts:ro
+    command: ["python", "-c", "import playwright; print('bench ok')"]
+
 volumes:
   b3o-node-modules:
   b3o-postgres:

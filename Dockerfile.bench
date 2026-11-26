@@ -1,0 +1,7 @@
+# Imagem do servico de benchmark do F10 (fora do produto).
+# A base oficial traz so os browsers + deps de sistema; o pacote Python
+# playwright NAO vem nela (documentacao oficial do Playwright). Instalamos
+# apenas o driver Python, na mesma versao dos browsers gravados na base.
+FROM mcr.microsoft.com/playwright/python:v1.65.2-noble
+
+RUN pip install --no-cache-dir playwright==1.65.2

@@ -66,3 +66,13 @@ export const visuallyHidden =
 export const field = 'flex min-w-0 flex-col gap-[4px]'
 /** `.builder__field-label` */
 export const fieldLabel = 'text-[calc(11px*var(--font-scale))] text-muted-foreground'
+
+/** Modal de verbete: 20% menor que a escala global, sem mudar geometria.
+ *  No mobile, corpo/título/rótulos herdam o tamanho-base reduzido; no desktop,
+ *  cada papel usa o token correspondente da escala do glossário. */
+export const glossaryModalBody =
+  'text-[calc(13.5px*var(--font-scale)*0.8)] lg:text-glossary-body lg:leading-body'
+export const glossaryModalTitle = 'lg:text-glossary-title lg:leading-title'
+export const glossaryModalLabel = 'lg:text-glossary-label'
+export const glossaryModalDetail = 'lg:text-glossary-detail'
+export const glossaryModalMetric = 'lg:text-glossary-metric'

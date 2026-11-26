@@ -8,6 +8,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import {
+  glossaryModalBody,
+  glossaryModalLabel,
+  glossaryModalTitle,
+} from '@/lib/classes'
 
 export function Dialog({
   title,
@@ -21,6 +26,7 @@ export function Dialog({
   initialFocus = 'autofocus',
   showCloseButton = true,
   size = 'default',
+  typography = 'default',
   returnFocusSelector,
 }: {
   open?: boolean
@@ -34,9 +40,11 @@ export function Dialog({
   initialFocus?: 'autofocus' | 'close'
   showCloseButton?: boolean
   size?: 'default' | 'wide'
+  typography?: 'default' | 'glossary'
   returnFocusSelector?: string
 }) {
   const previousFocus = useRef<HTMLElement | null>(null)
+  const isGlossary = typography === 'glossary'
 
   return (
     <DialogRoot
@@ -52,6 +60,7 @@ export function Dialog({
         className={cn(
           'max-h-[90dvh] overflow-y-auto',
           size === 'wide' ? 'sm:max-w-3xl' : 'sm:max-w-lg',
+          isGlossary && glossaryModalBody,
           className,
         )}
         onEscapeKeyDown={(event) => {
@@ -90,10 +99,25 @@ export function Dialog({
       >
         <DialogHeader>
           {eyebrow && (
-            <div className="lg:text-label text-muted-foreground">{eyebrow}</div>
+            <div
+              className={cn(
+                'text-muted-foreground',
+                isGlossary ? glossaryModalLabel : 'lg:text-label',
+              )}
+            >
+              {eyebrow}
+            </div>
           )}
-          <DialogTitle>{title}</DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
+          <DialogTitle className={isGlossary ? glossaryModalTitle : undefined}>
+            {title}
+          </DialogTitle>
+          {description && (
+            <DialogDescription
+              className={isGlossary ? glossaryModalBody : undefined}
+            >
+              {description}
+            </DialogDescription>
+          )}
         </DialogHeader>
         {children}
       </DialogContent>

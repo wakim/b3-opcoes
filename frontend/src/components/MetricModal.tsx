@@ -6,7 +6,13 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { apiGet, type GlossaryDetail } from '../lib/api'
-import { num } from '../lib/classes'
+import {
+  glossaryModalBody,
+  glossaryModalDetail,
+  glossaryModalLabel,
+  glossaryModalMetric,
+  num,
+} from '../lib/classes'
 import { useCopy } from '../lib/presentation'
 import { glossaryKey, presentationKeyForField, type ModalTarget } from './metricKeys'
 import { ErrorState } from './State'
@@ -23,10 +29,10 @@ function section(md: string, name: string): string {
 function Block({ title, text }: { title: string; text: string }) {
   if (!text) return null
   return (
-    <div className="lg:text-modal-body lg:leading-body grid gap-1">
-      <div className="lg:text-label text-muted-foreground">{title}</div>
-      <p className="lg:text-modal-body lg:leading-body">
-        <InlineMd text={text} />
+    <div className={`${glossaryModalBody} grid gap-1`}>
+      <div className={`${glossaryModalLabel} text-muted-foreground`}>{title}</div>
+      <p className={glossaryModalBody}>
+        <InlineMd text={text} codeClassName={glossaryModalDetail} />
       </p>
     </div>
   )
@@ -75,20 +81,21 @@ export function MetricModal({
       onClose={onClose}
       initialFocus="close"
       size="wide"
+      typography="glossary"
     >
       {target && (
         <div className="grid gap-4">
           <div className="grid gap-1 rounded-[6px] border border-border bg-muted/30 p-4">
-            <span className="lg:text-label text-muted-foreground">{panelLabel}</span>
-            <span className={`${num} lg:text-metric`}>{target.value}</span>
-            {help && <span className="lg:text-label text-muted-foreground">{help}</span>}
+            <span className={`${glossaryModalLabel} text-muted-foreground`}>{panelLabel}</span>
+            <span className={`${num} ${glossaryModalMetric}`}>{target.value}</span>
+            {help && <span className={`${glossaryModalLabel} text-muted-foreground`}>{help}</span>}
           </div>
           {entry.isError && <ErrorState error={entry.error} title={errorLabel} />}
-          {entry.isLoading && <p className="lg:text-label text-muted-foreground">{loadingLabel}</p>}
+          {entry.isLoading && <p className={`${glossaryModalLabel} text-muted-foreground`}>{loadingLabel}</p>}
           <Block title={whatLabel} text={definition} />
           <Block title={mistakeLabel} text={mistake} />
           {!key && (
-            <p className="lg:text-label text-muted-foreground">
+            <p className={`${glossaryModalLabel} text-muted-foreground`}>
               {missingLabel}
             </p>
           )}

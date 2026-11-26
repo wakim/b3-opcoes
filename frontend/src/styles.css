@@ -27,6 +27,14 @@
   --text-modal-body: calc(16px * var(--font-scale));
   --text-modal-title: calc(22px * var(--font-scale));
 
+  /* Modal de verbete: exceção pontual de 20% pedida pelo dono. Os tokens
+     continuam derivando da escala global; só este diálogo usa estes tamanhos. */
+  --text-glossary-body: calc(16px * var(--font-scale) * 0.8);
+  --text-glossary-title: calc(22px * var(--font-scale) * 0.8);
+  --text-glossary-label: calc(13px * var(--font-scale) * 0.8);
+  --text-glossary-detail: calc(13px * var(--font-scale) * 0.8);
+  --text-glossary-metric: calc(20px * var(--font-scale) * 0.8);
+
   --leading-body: 1.5;
   --leading-table: 1.4;
   --leading-title: 1.15;

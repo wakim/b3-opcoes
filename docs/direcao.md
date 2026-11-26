@@ -1,7 +1,7 @@
 # Direção visual — aprovada
 
 **Caráter escolhido:** A · Bancada fria (ver `direcao.html`)
-**Status:** aprovada pelo dono em 22/11/2026 · revisão tipográfica desktop aprovada em 24/11/2026 · aumento global de **40%** aplicado em 25/11/2026, aguardando avaliação final do dono
+**Status:** aprovada pelo dono em 22/11/2026 · revisão tipográfica desktop aprovada em 24/11/2026 · aumento global de **40%** aplicado em 25/11/2026 · modal de verbete **20% menor** por pedido do dono em 25/11/2026
 
 ---
 
@@ -79,6 +79,14 @@ leitura a 100% usa:
 | busca (nome / meta) | **19,6 px / 17,5 px** | 1,5 |
 | builder (rótulos / inputs) | **18,2 px / 19,6 px** | 1,5 |
 | modal (corpo / título) | **22,4 px / 30,8 px** | 1,5 / 1,15 |
+| modal de verbete (corpo / título) | **17,92 px / 24,64 px** | 1,5 / 1,15 |
+
+O modal de verbete é uma exceção pontual de **−20%** pedida pelo dono em
+25/11/2026: corpo, título, rótulos, ajuda, código e valor da ficha usam
+`--text-glossary-*`, todos derivados de `--font-scale`. Com a escala global
+1,4, rótulos/detalhe ficam em **14,56 px**, valor em **22,4 px** e o corpo
+mobile em **15,12 px**. Largura, espaço, raio, alvos e os demais modais
+não mudam.
 
 A escala vive nos tokens `--text-*` e `--leading-*` de `@theme` no Tailwind e
 é aplicada somente com utilitários `lg:`. Os tamanhos mobile, o CSS dos gráficos

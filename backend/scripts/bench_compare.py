@@ -137,7 +137,10 @@ OPCOES_COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "strike": ("strike", "preço de exercício", "preco de exercicio", "exercicio"),
     "maturity": ("vencimento", "venc", "maturity"),
     "price": ("último", "ultimo", "last", "fechamento"),
-    "iv": ("iv", "vol. implícita", "volatilidade implícita", "vi"),
+    # Cabeçalho REAL do DataTable em 2026-11-25: "Vol. Impl. (%)", não
+    # "Vol. Implícita". Alias explícito evita depender de casamento parcial;
+    # o valor da coluna é fração (0,4412) e continua ×100 em `parse_opcoes`.
+    "iv": ("iv", "vol. impl. (%)", "vol. implícita", "volatilidade implícita", "vi"),
     "delta": ("delta", "δ"),
     "gamma": ("gamma", "γ"),
     "theta": ("theta", "θ", "theta r$"),
@@ -188,9 +191,36 @@ GAMMA_NOTE = (
 )
 RHO_NOTE = "A API não expõe rho; rho externo fica bruto e o interno é null com flag."
 SKEW_NOTE = (
-    "skew_25d_30d_ratio do OBM fica bruto: F10.1 não definiu fields[]/fórmula, "
-    "então não é comparado como rr25."
+    "skew_25d_30d_ratio do OBM fica bruto. A própria `fields[]` do agregado define "
+    "o campo como 'IV da put 25Δ menos a da put 50Δ, levadas a 30 dias corridos', "
+    "com peso pelo número de negócios nas séries vizinhas — ponto de 30 dias "
+    "corridos e uma perna put-put. Não é o nosso RR25 (call 25Δ − put 25Δ no "
+    "vencimento smile, 30 dias úteis): nunca é comparado como rr25."
 )
+B3LAB_THETA_NOTE = (
+    "B3Lab: theta é por dia CALENDÁRIO; o valor em dia útil é somente candidato "
+    "theta×365/252, com o bruto preservado. Vega e rho são por 1 ponto (1%) de σ; "
+    "rho é derivada parcial com q fixo, não rho Black-76 com q=r atrelado — "
+    "metodologia declarada, sem conversão."
+)
+B3LAB_INPUT_NOTE = (
+    "B3Lab: record.inputs traz F/df/t/du (S/df/t/du no bruto); "
+    "record.b3lab.inputs traz business_days/sigma_pct/rate_pct/"
+    "dividend_yield_pct. IV é input (sigma_pct), nunca output extraído; preço é "
+    "teórico, não fechamento."
+)
+STRUCTURE_QTY_SHARES = 100
+"Quantidade do montador OBM: saídas já são totais para 100 ações."
+
+STRUCTURE_FIELD_SOURCE: dict[str, str] = {
+    "net_premium_brl": "net_cost",
+    "max_gain_brl": "max_profit",
+    "max_loss_brl": "max_loss",
+    "breakeven_brl": "breakevens",
+}
+"Tradução explícita dos campos brutos do `recalc.response.text` do OBM."
+
+STRUCTURE_GREEK_FIELDS: tuple[str, ...] = ("delta", "gamma", "theta_brl", "vega_brl")
 
 
 class CompareError(Exception):
@@ -690,6 +720,106 @@ def fetch_health(client: ApiClient) -> dict[str, Any]:
     }
 
 
+def guard_health(health: Mapping[str, Any], expected: str, phase: str) -> None:
+    """Guarda dura de sessão **e** modelo; divergência aborta sem escrever output.
+
+    ``as_of_session`` e ``data.last_session`` têm que ser iguais a ``--date``;
+    ``model_version`` é ``int`` (``bool`` não conta) e veio do envelope da API.
+    Nenhum JSON parcial de sucesso é devolvido quando uma das duas leituras
+    (antes/depois) falha.
+    """
+    raw = health.get("raw") if isinstance(health.get("raw"), Mapping) else health
+    data = raw.get("data") if isinstance(raw.get("data"), Mapping) else {}
+    observed = (raw.get("as_of_session"), data.get("last_session"))
+    if any(value != expected for value in observed):
+        raise CompareError(
+            "health_session_mismatch",
+            f"{phase}: health declarou {observed!r}, pedido {expected!r}",
+            "rode `b3o prepare` até a sessão pedida e rode a comparação sem misturar datas",
+        )
+    model = raw.get("model_version")
+    if model is None:
+        model = data.get("model_version")
+    if isinstance(model, bool) or not isinstance(model, int):
+        raise CompareError(
+            "health_model_version_invalid",
+            f"{phase}: model_version={model!r} não é inteiro",
+            "confira /api/health; nunca compare modelos diferentes no mesmo ranking",
+        )
+    if data.get("model_version_mismatch") is True:
+        raise CompareError(
+            "health_model_version_mismatch",
+            f"{phase}: health sinalizou model_version_mismatch",
+            "recalcule o histórico inteiro antes de comparar",
+        )
+    if data.get("last_error") is not None:
+        raise CompareError(
+            "health_last_error",
+            f"{phase}: health registrou last_error={data.get('last_error')!r}",
+            "resolva a falha de fonte do lake antes de comparar",
+        )
+
+
+def guard_manifest_model(
+    name: str, declared: Any, expected: int, manifest: str | None
+) -> None:
+    """Modelo declarado por P3/P4/P5 tem que ser o mesmo do health atual."""
+    if declared is None:
+        raise CompareError(
+            f"{name}_model_version_missing",
+            f"{name}: manifesto {manifest or 'desconhecido'} não declara model_version",
+            "regrave a captura com o mesmo modelo do lake",
+        )
+    if isinstance(declared, bool) or not isinstance(declared, int) or declared != expected:
+        raise CompareError(
+            f"{name}_model_version_mismatch",
+            f"{name}: model_version={declared!r} no manifesto, health={expected}",
+            "capturas de modelos diferentes não podem entrar na mesma comparação",
+        )
+
+
+def guard_declared_session(
+    name: str, location: str, declared: Any, expected: str
+) -> None:
+    """Data de sessão **declarada** tem que bater com ``--date``.
+
+    Ausência (``None``) é dado auxiliar sem sessão declarada e é permitida;
+    divergência é erro de sessão — nunca sucesso parcial com fonte utilizável.
+    """
+    if declared is None:
+        return
+    if not isinstance(declared, str) or declared != expected:
+        raise CompareError(
+            f"{name}_session_mismatch",
+            f"{name} {location}: declara {declared!r}, pedido {expected!r}",
+            "captura e comparação têm que usar exatamente a mesma sessão",
+        )
+
+
+def guard_manifest_session(
+    name: str,
+    declared: Any,
+    expected: str,
+    manifest: str | None,
+    extras: Sequence[tuple[str, Any]] = (),
+) -> None:
+    """Sessão primária obrigatória e toda data auxiliar declarada no manifesto.
+
+    ``extras`` traz as demais datas de sessão do mesmo manifesto (P3
+    ``requested_date`` e P5 ``reference_date``): divergência entre qualquer uma
+    e ``--date`` aborta a comparação, mesmo quando a primária confere.
+    """
+    if declared is None:
+        raise CompareError(
+            f"{name}_session_missing",
+            f"{name}: manifesto {manifest or 'desconhecido'} não declara sessão",
+            "regrave a captura com a sessão do lake",
+        )
+    guard_declared_session(name, "manifesto (sessão primária)", declared, expected)
+    for extra_name, extra_date in extras:
+        guard_declared_session(name, f"manifesto {extra_name}", extra_date, expected)
+
+
 def fetch_screen_all(client: ApiClient, session: str) -> dict[str, Any]:
     """`/api/screen` paginado por ``offset``; nenhuma lista passa de 60 linhas."""
     rows: list[dict[str, Any]] = []
@@ -727,10 +857,19 @@ def fetch_underlying(client: ApiClient, ticker: str, session: str) -> dict[str, 
     return payload
 
 
-def fetch_series(client: ApiClient, ticker: str, maturity: str) -> dict[str, Any]:
+def fetch_series(
+    client: ApiClient, ticker: str, maturity: str, session: str
+) -> dict[str, Any]:
     payload = client.get(
         f"/api/s/{quote(ticker, safe='')}/{quote(maturity, safe='')}"
     )
+    if payload.get("as_of_session") != session:
+        raise CompareError(
+            "session_mismatch",
+            f"{ticker}/{maturity}: /api/s trouxe "
+            f"{payload.get('as_of_session')!r}, esperado {session}",
+            "a comparação exige a mesma sessão do health",
+        )
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     return {"payload": payload, "data": data}
 
@@ -756,9 +895,15 @@ class SourceInfo:
     artifacts: list[dict[str, Any]] = field(default_factory=list)
     flags: list[str] = field(default_factory=list)
 
-    def unavailable(self, reason: str, **kwargs: Any) -> None:
+    def unavailable(self, code: str, **kwargs: Any) -> None:
+        """Marca indisponibilidade sem colidir ``code`` com ``reason``.
+
+        Chamada canônica: ``unavailable(code, reason=...)``. Quando nenhuma
+        mensagem é passada, o próprio ``code`` serve de motivo — nunca ``None``
+        silencioso (AGENTS.md, regra 5).
+        """
         self.status = "unavailable"
-        self.reason = reason
+        self.reason = kwargs.pop("reason", None) or code
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
@@ -945,6 +1090,12 @@ def verify_capture(path: Path | None, session: str) -> SourceInfo:
             "status": "ok",
             "reason": None,
         }
+        # Toda sessão declarada no artefato é validada, inclusive quando o
+        # próprio artefato é declarado unavailable ou o arquivo está faltando:
+        # divergência aborta, nunca vira "fonte indisponível" silenciosa.
+        guard_declared_session(
+            "P3", f"artefato {name} reference_date", entry.get("reference_date"), session
+        )
         if entry.get("status") not in (None, "ok"):
             record["status"] = "unavailable"
             record["reason"] = str(entry.get("reason") or "declared_unavailable")
@@ -959,12 +1110,6 @@ def verify_capture(path: Path | None, session: str) -> SourceInfo:
             if isinstance(expected, str) and record["sha256"] != expected:
                 record["status"] = "unavailable"
                 record["reason"] = "sha256_mismatch"
-            if (
-                isinstance(entry.get("reference_date"), str)
-                and entry["reference_date"] != session
-            ):
-                record["status"] = "unavailable"
-                record["reason"] = "reference_date_mismatch"
         meta_name = entry.get("meta_file")
         if isinstance(meta_name, str) and meta_name:
             meta_path = path.parent / meta_name
@@ -1069,9 +1214,9 @@ def verify_b3lab(path: Path | None, session: str) -> SourceInfo:
                 record["reason"] = "series_file_unreadable"
                 body = None
             if isinstance(body, dict):
-                if body.get("reference_date") not in (None, session):
-                    record["status"] = "unavailable"
-                    record["reason"] = "reference_date_mismatch"
+                guard_declared_session(
+                    "P4", f"corpo {filename} reference_date", body.get("reference_date"), session
+                )
                 raw_records.append(body)
                 record["sha256"] = canonical_sha(body)
                 # O corpo bruto é guardado: `parse_b3lab` lê só `entry["record"]`.
@@ -1093,6 +1238,8 @@ def verify_b3lab(path: Path | None, session: str) -> SourceInfo:
     info.status = "ok" if any(item["status"] == "ok" for item in info.artifacts) else "unavailable"
     if info.status == "unavailable":
         info.reason = "no_usable_series"
+    else:
+        info.reason = None
     return info
 
 
@@ -1193,12 +1340,18 @@ def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> 
             computed = canonical_sha(without_source)
             declared = manifest.get("source_sha256") or loaded.get("source_sha256")
             plan_verified = isinstance(declared, str) and declared == computed
-            if loaded.get("session") not in (None, session):
-                plan_verified = False
-                info.flags.append(f"{candidate.name}:session_mismatch")
-            if loaded.get("model_version") not in (None, model):
-                plan_verified = False
-                info.flags.append(f"{candidate.name}:model_version_mismatch")
+            guard_declared_session(
+                "P5", f"plano {candidate.name} session", loaded.get("session"), session
+            )
+            guard_declared_session(
+                "P5",
+                f"plano {candidate.name} reference_date",
+                loaded.get("reference_date"),
+                session,
+            )
+            guard_manifest_model(
+                "P5", loaded.get("model_version"), model, str(candidate)
+            )
             break
         if not plan_verified:
             info.flags.append(f"{manifest_path.name}:source_sha256_unverified")
@@ -1229,6 +1382,34 @@ def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> 
                     entry["status"] = "unavailable"
                     entry["reason"] = "structure_file_unreadable"
                 else:
+                    guard_declared_session(
+                        "P5", f"record {name} session", record.get("session"), session
+                    )
+                    guard_declared_session(
+                        "P5", f"record {name} reference_date", record.get("reference_date"), session
+                    )
+                    request = (
+                        record.get("request")
+                        if isinstance(record.get("request"), Mapping)
+                        else {}
+                    )
+                    guard_declared_session(
+                        "P5", f"record {name} request.date", request.get("date"), session
+                    )
+                    response = (
+                        record.get("response")
+                        if isinstance(record.get("response"), Mapping)
+                        else {}
+                    )
+                    guard_declared_session(
+                        "P5",
+                        f"record {name} response.as_of_session",
+                        response.get("as_of_session"),
+                        session,
+                    )
+                    guard_manifest_model(
+                        "P5", response.get("model_version"), model, str(record_path)
+                    )
                     declared = record.get("sha256")
                     without_sha = {
                         key: value for key, value in record.items() if key != "sha256"
@@ -2237,78 +2418,127 @@ def parse_b3lab(info: SourceInfo) -> dict[str, Any]:
     return result
 
 
-STRUCTURE_EXTERNAL_ALIASES: dict[str, tuple[str, ...]] = {
-    "net_premium_brl": ("custo", "premio", "premio_neto", "netPremium", "total"),
-    "breakeven_brl": ("breakeven", "breakEven", "pontoEquilibrio"),
-    "max_loss_brl": ("perdaMaxima", "maxLoss", "perdamax"),
-    "max_gain_brl": ("lucroMaximo", "maxGain", "ganhomax"),
-    "delta": ("delta",),
-    "gamma": ("gamma",),
-    "theta_brl": ("theta",),
-    "vega_brl": ("vega",),
-}
-
-
 def extract_structure_external(record: Mapping[str, Any]) -> dict[str, Any]:
-    """Extrai só o que é inequívoco em JSON/tabela do OBM; nunca chuta."""
-    result: dict[str, Any] = {"values": {}, "lists": {}, "raw": {}, "flags": []}
-    obm = record.get("obm") if isinstance(record.get("obm"), dict) else {}
+    """Lê SOMENTE ``obm.outputs.recalc.response.text`` validado (P5).
+
+    As respostas em ``obm.outputs.api_responses`` incluem o auto-recálculo do
+    preset antigo e não são usadas: só o ``recalc`` disparado com os inputs da
+    planilha P5 é fonte legítima. O bruto do texto e o ``post_data`` ficam no
+    resultado; cada ausência vira ``null`` + flag/motivo, nunca zero.
+    """
+    result: dict[str, Any] = {
+        "values": {},
+        "lists": {},
+        "raw_values": {},
+        "raw": {},
+        "flags": ["source_recalc_response_text_only"],
+        "reason": None,
+        "recalc_meta": {},
+    }
+    obm = record.get("obm") if isinstance(record.get("obm"), Mapping) else {}
     status = obm.get("status")
     if status == "unsupported_external":
         result["flags"].append("unsupported_external")
+        result["reason"] = obm.get("reason")
+        return result
+    if status == "no_public_single_leg_control":
+        result["flags"].append("no_public_single_leg_control")
         result["reason"] = obm.get("reason")
         return result
     if status in (None, "null", "montador_fill_failed"):
         result["flags"].append(f"external_{status or 'missing'}")
         result["reason"] = obm.get("reason") or "sem captura externa utilizável"
         return result
-    outputs = obm.get("outputs") if isinstance(obm.get("outputs"), dict) else {}
-    candidates: dict[str, list[float]] = defaultdict(list)
-    raw_texts: list[str] = []
-    for response in outputs.get("api_responses") or []:
-        if not isinstance(response, dict):
-            continue
-        text = str(response.get("text") or "")
-        raw_texts.append(text[:2000])
-        try:
-            node = json.loads(text)
-        except ValueError:
-            continue
-        for metric, aliases in STRUCTURE_EXTERNAL_ALIASES.items():
-            value, _ = alias_get(node, aliases) if isinstance(node, dict) else (None, None)
+    outputs = obm.get("outputs") if isinstance(obm.get("outputs"), Mapping) else {}
+    recalc = outputs.get("recalc") if isinstance(outputs.get("recalc"), Mapping) else {}
+    response = recalc.get("response") if isinstance(recalc.get("response"), Mapping) else {}
+    validation = (
+        recalc.get("validation") if isinstance(recalc.get("validation"), Mapping) else {}
+    )
+    request = recalc.get("request") if isinstance(recalc.get("request"), Mapping) else {}
+    text = str(response.get("text") or "")
+    post_data = request.get("post_data")
+    result["raw"] = {
+        "response_status": response.get("status"),
+        "post_data": post_data,
+        "recalc_response_text": text[:4000],
+    }
+    result["recalc_meta"] = {
+        "source": "obm.outputs.recalc.response.text",
+        "response_status": response.get("status"),
+        "post_data": post_data,
+        "be_source": validation.get("be_source"),
+        "max_source": validation.get("max_source"),
+        "be_tolerance_brl": validation.get("be_tolerance_brl"),
+        "breakevens_from_obm_grid": validation.get("breakevens_from_obm_grid"),
+        "expected": validation.get("expected"),
+        "got": validation.get("got"),
+        "validation_ok": validation.get("ok"),
+        "problems": validation.get("problems"),
+    }
+    if validation.get("ok") is not True:
+        # O recálculo que falhou na validação não é fonte de número: o bruto e
+        # os metadados ficam, os valores saem null com flag explícita.
+        result["flags"].append("external_recalc_validation_failed")
+        result["reason"] = "recalc.validation.ok não é true"
+        return result
+    if response.get("status") != 200 or not text:
+        result["flags"].append("external_recalc_response_invalid")
+        result["reason"] = "recalc.response sem status 200 ou sem texto validado"
+        return result
+    try:
+        node = json.loads(text)
+    except ValueError:
+        result["flags"].append("external_recalc_response_bad_json")
+        result["reason"] = "recalc.response.text não é JSON"
+        return result
+    if not isinstance(node, Mapping):
+        result["flags"].append("external_recalc_response_bad_json")
+        result["reason"] = "recalc.response.text não é objeto JSON"
+        return result
+    for metric, source_field in STRUCTURE_FIELD_SOURCE.items():
+        value = node.get(source_field)
+        result["raw_values"][metric] = value
+        if metric == "breakeven_brl":
             if isinstance(value, list):
                 numbers = [ptbr_float(item) for item in value]
                 if numbers and all(number is not None for number in numbers):
                     result["lists"][metric] = [float(number) for number in numbers]
-                continue
-            number = ptbr_float(value)
-            if number is not None:
-                candidates[metric].append(number)
-    for table in outputs.get("tables") or []:
-        text = str(table)
-        raw_texts.append(text[:2000])
-        for metric, aliases in STRUCTURE_EXTERNAL_ALIASES.items():
-            found: set[float] = set()
-            for alias in aliases:
-                pattern = re.compile(
-                    rf"(?i){re.escape(alias)}[^\d\-\u2212]{{0,30}}"
-                    rf"(R\$\s*)?([+\-\u2212\u2013]?\d[\d.,]*)"
-                )
-                for match in pattern.finditer(text):
-                    number = ptbr_float(match.group(2))
-                    if number is not None:
-                        found.add(number)
-            if len(found) == 1:
-                candidates[metric].extend(found)
-            elif len(found) > 1:
-                result["lists"][metric] = sorted(found)
-    result["raw"] = {"texts": raw_texts, "tables": outputs.get("tables")}
-    for metric in STRUCTURE_EXTERNAL_ALIASES:
-        values = sorted(set(candidates.get(metric) or []))
-        if len(values) == 1:
-            result["values"][metric] = values[0]
-        elif len(values) > 1:
-            result["flags"].append(f"ambiguous_external_extraction:{metric}")
+                else:
+                    result["flags"].append("external_breakevens_unreadable")
+            else:
+                result["flags"].append("external_breakevens_absent")
+            continue
+        result["raw_values"][metric] = value
+        number = ptbr_float(value)
+        if number is None:
+            result["flags"].append(f"external_{source_field}_absent")
+        else:
+            # Bruto preservado: net_cost/max_* são TOTAIS para qty=100 e
+            # max_loss chega negativo. A normalização é feita na comparação.
+            result["values"][metric] = number
+    greeks = node.get("greeks")
+    if not isinstance(greeks, Mapping) or not greeks:
+        result["flags"].append("external_greeks_absent")
+    else:
+        for metric in STRUCTURE_GREEK_FIELDS:
+            greek_field = (
+                "theta"
+                if metric == "theta_brl"
+                else "vega"
+                if metric == "vega_brl"
+                else metric
+            )
+            result["raw_values"][metric] = greeks.get(greek_field)
+            number = ptbr_float(greeks.get(greek_field))
+            if number is None:
+                result["flags"].append(f"external_greek_{greek_field}_absent")
+            else:
+                result["values"][metric] = number
+    if validation.get("be_source") == "grade_do_obm":
+        result["flags"].append("be_source_grade_do_obm")
+    if validation.get("max_source") == "grade_do_obm":
+        result["flags"].append("max_source_grade_do_obm")
     return result
 
 
@@ -2548,20 +2778,20 @@ def build_recalculated(
         ),
         key=lambda item: str(item.get("date") or "")[:10],
     )
-    # Hoje entra no rank/percentil: se a última data VI já é a sessão, substitui
-    # o IV desse ponto; senão acrescenta a sessão corrente ao história.
+    # Rank/percentil usam OS 252 pontos VI históricos como vieram de
+    # `vi-historico` (o último já é a sessão, 33,159631% na PETR4). O IV ATM 30d
+    # do agregado NÃO substitui o ponto de hoje: são construções diferentes
+    # (o agregado interpola em variância total para 30 dias corridos).
     iv_points = [dict(item) for item in points]
-    if external_iv_30 is not None:
-        if iv_points and str(iv_points[-1].get("date") or "")[:10] == session:
-            replaced = dict(iv_points[-1])
-            replaced["iv_pct"] = external_iv_30
-            replaced["flags"] = list(replaced.get("flags") or []) + ["iv_replaced_today"]
-            iv_points[-1] = replaced
-        else:
-            iv_points.append(
-                {"date": session, "iv_pct": external_iv_30, "flags": ["iv_appended_today"]}
-            )
     iv_values = [float(item["iv_pct"]) for item in iv_points]
+    vi_history_info = {
+        "n_points": len(iv_points),
+        "first_date": str(iv_points[0].get("date"))[:10] if iv_points else None,
+        "last_date": str(iv_points[-1].get("date"))[:10] if iv_points else None,
+        "last_iv_pct": iv_values[-1] if iv_values else None,
+        "today_aggregate_iv_atm_30d": external_iv_30,
+        "flags": ["rank_uses_raw_vi_history", "no_iv30_replacement"],
+    }
     rv30_value = next(
         (
             row["external"]["normalized"]
@@ -2596,21 +2826,21 @@ def build_recalculated(
     else:
         rank = percentile = None
     for metric, computed in (("iv_rank_252", rank), ("iv_pct_252", percentile)):
-        rows.append(
-            recalc_row(
-                underlying=underlying,
-                metric=metric,
-                computed=computed,
-                flags=(
-                    []
-                    if computed is not None
-                    else ["vi_history_unavailable", "insufficient_history"]
-                ),
-                artifact=artifact,
-                internal_value=screen.get(metric),
-                internal_endpoint=endpoint,
-            )
+        row = recalc_row(
+            underlying=underlying,
+            metric=metric,
+            computed=computed,
+            flags=(
+                []
+                if computed is not None
+                else ["vi_history_unavailable", "insufficient_history"]
+            ),
+            artifact=artifact,
+            internal_value=screen.get(metric),
+            internal_endpoint=endpoint,
         )
+        row["external"]["vi_history"] = vi_history_info
+        rows.append(row)
 
     # 5. Z-score do VRP com histórico REAL IV−RV30 por data (nunca constante).
     today_vrp = vrp_result.value if vrp_result is not None else None
@@ -2620,19 +2850,30 @@ def build_recalculated(
         if vrp_history is not None and len(vrp_history) >= recalc.Z_WINDOW
         else None
     )
-    rows.append(
-        recalc_row(
-            underlying=underlying,
-            metric="vrp_z_252",
-            computed=zscore,
-            flags=(
-                [] if zscore is not None else ["vrp_history_unavailable"]
-            ) + ticker_flags,
-            artifact=artifact,
-            internal_value=screen.get("vrp_z_252"),
-            internal_endpoint=endpoint,
+    z_row = recalc_row(
+        underlying=underlying,
+        metric="vrp_z_252",
+        computed=zscore,
+        flags=(
+            []
+            if zscore is not None
+            else (
+                ["vrp_history_unavailable"]
+                + (["insufficient_history"] if vrp_history is None else [])
+            )
         )
+        + ticker_flags,
+        artifact=artifact,
+        internal_value=screen.get("vrp_z_252"),
+        internal_endpoint=endpoint,
     )
+    z_row["external"]["vrp_history"] = {
+        "method": "IV−RV30 por data (VI histórico + Yang-Zhang do OHLC OBM)",
+        "n_points": len(vrp_history) if vrp_history is not None else 0,
+        "last_value": vrp_history[-1] if vrp_history else None,
+        "constant_series": False,
+    }
+    rows.append(z_row)
 
     # 6. RR25/BFLY25 dos pontos 25Δ do vencimento smile do OBM.
     smile_points = [
@@ -2755,6 +2996,11 @@ def build_recalculated(
     # sessões. Quantidades repetidas na mesma data contam uma vez; com menos de
     # 20 sessões o denominador é parcial e o resultado é None + flag.
     oi, _ = aggregate_value({"oi", "openinterest"})
+    # `latest_positions` é estoque por série e NÃO é o OI atual do papel: nunca
+    # é usado como substituto silencioso quando `latest.oi` falta.
+    oi_flags: list[str] = []
+    if oi is None:
+        oi_flags.extend(["oi_unavailable", "latest_positions_not_used"])
     qty_by_day: dict[str, float] = {}
     for item in (obm.get("ohlc_qty") or []):
         if not isinstance(item, dict):
@@ -2778,7 +3024,7 @@ def build_recalculated(
             underlying=underlying,
             metric="days_to_liquidate",
             computed=dtl,
-            flags=quantity_flags,
+            flags=oi_flags + quantity_flags,
             artifact=artifact,
             internal_value=screen.get("days_to_liquidate"),
             internal_endpoint=endpoint,
@@ -2803,32 +3049,46 @@ def build_recalculated(
         for cents, values in matched.items()
         if "C" in values and "P" in values
     ]
-    reference = forward_ref if forward_ref is not None else spot
+    reference_flags: list[str] = []
+    reference_source = "internal_forward_30d"
+    reference = forward_ref
+    if reference is None:
+        reference = spot
+        reference_source = "spot_fallback"
+        reference_flags.append("forward_30d_unavailable_spot_fallback")
     closest = (
         min(pairs, key=lambda pair: abs(pair[0] / 100.0 - reference))
         if pairs and reference is not None
         else None
     )
     straddle = closest[1] if closest is not None else None
-    rows.append(
-        recalc_row(
-            underlying=underlying,
-            metric="exp_move_1s_30d",
-            computed=(
-                recalc.expected_move_1s(straddle, spot)
-                if straddle is not None and spot is not None
-                else None
-            ),
-            flags=(
-                []
-                if straddle is not None and spot is not None
-                else ["straddle_unavailable", "ohlc_unavailable"]
-            ),
-            artifact=artifact,
-            internal_value=screen.get("exp_move_1s_30d"),
-            internal_endpoint=endpoint,
+    exp_row = recalc_row(
+        underlying=underlying,
+        metric="exp_move_1s_30d",
+        computed=(
+            recalc.expected_move_1s(straddle, spot)
+            if straddle is not None and spot is not None
+            else None
+        ),
+        flags=(
+            []
+            if straddle is not None and spot is not None
+            else ["straddle_unavailable", "ohlc_unavailable"]
         )
+        + reference_flags,
+        artifact=artifact,
+        internal_value=screen.get("exp_move_1s_30d"),
+        internal_endpoint=endpoint,
     )
+    exp_row["external"]["reference"] = {
+        "source": reference_source,
+        "forward_30d_internal": forward_ref,
+        "spot_brl": spot,
+        "used": reference,
+        "matched_strike_cents": closest[0] if closest is not None else None,
+        "straddle_brl": straddle,
+    }
+    rows.append(exp_row)
     return rows
 
 # --------------------------------------------------------------------------- #
@@ -2852,6 +3112,9 @@ def series_row(
     external_unit: str | None = None,
     internal_unit: str | None = None,
     reason: str | None = None,
+    internal_provenance: Mapping[str, Any] | None = None,
+    external_inputs: Mapping[str, Any] | None = None,
+    gamma_internal: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     difference = (
         external_normalized - internal_normalized
@@ -2886,7 +3149,17 @@ def series_row(
             "normalized": internal_normalized,
             "endpoint": internal_endpoint,
             "unit": internal_unit,
+            "provenance": dict(internal_provenance or {}),
+            **(
+                {
+                    "gamma_internal_raw": gamma_internal.get("gamma_internal_raw"),
+                    "gamma_internal_x100": gamma_internal.get("gamma_internal_x100"),
+                }
+                if gamma_internal is not None
+                else {}
+            ),
         },
+        "external_inputs": dict(external_inputs or {}),
         "difference": difference,
         "artifact": artifact,
         "reason": reason,
@@ -2894,18 +3167,37 @@ def series_row(
 
 
 def internal_values(data: Mapping[str, Any]) -> dict[str, Any]:
-    """Valores internos das séries: preço/IV/delta do `last`, gregas do topo."""
+    """Escalares internos por métrica, com bruto e proveniência — nunca o payload.
+
+    As linhas de preço/IV carregam só o escalar bruto e de onde ele veio; o
+    payload inteiro de ``/api/s`` fica fora do JSON intermediário (P6-A o
+    embutia em ``internal.raw``). Gamma mantém o bruto da API e o candidato
+    ×100; a API não expõe rho, que fica ``null`` + flag.
+    """
     last = data.get("last") if isinstance(data.get("last"), dict) else {}
     close = as_float(last.get("close_brl"))
     mid = as_float(last.get("mid_brl"))
     price_flags: list[str] = []
-    price = close if close is not None else mid
+    price_field = "last.close_brl"
+    price = close
     if close is None and mid is not None:
+        price = mid
+        price_field = "last.mid_brl"
         price_flags.append("price_from_mid")
     if price is None:
         price_flags.append("price_missing")
     gamma = data.get("gamma")
     gamma_v = gamma_variants(gamma)
+    endpoint = "/api/s/{ticker}/{maturity}"
+    provenance = {
+        "price": {"field": price_field, "endpoint": endpoint},
+        "iv": {"field": "last.iv_pct", "endpoint": endpoint},
+        "delta": {"field": "last.delta", "endpoint": endpoint},
+        "gamma": {"field": "gamma", "endpoint": endpoint},
+        "theta": {"field": "theta_brl", "endpoint": endpoint},
+        "vega": {"field": "vega_brl", "endpoint": endpoint},
+        "rho": {"field": None, "endpoint": endpoint, "reason": "internal_api_missing_rho"},
+    }
     return {
         "price": (price, price_flags),
         "iv": (as_float(last.get("iv_pct")), []),
@@ -2918,7 +3210,18 @@ def internal_values(data: Mapping[str, Any]) -> dict[str, Any]:
         "theta": (as_float(data.get("theta_brl")), []),
         "vega": (as_float(data.get("vega_brl")), []),
         "rho": (None, ["internal_api_missing_rho"]),
-        "raw": data,
+        "raw": {
+            "price": close if close is not None else mid,
+            "iv": last.get("iv_pct"),
+            "delta": last.get("delta"),
+            "gamma": gamma,
+            "gamma_internal_raw": gamma_v["gamma_internal_raw"],
+            "gamma_internal_x100": gamma_v["gamma_internal_x100"],
+            "theta": data.get("theta_brl"),
+            "vega": data.get("vega_brl"),
+            "rho": None,
+        },
+        "provenance": provenance,
     }
 
 
@@ -2967,8 +3270,13 @@ def external_values(
     outputs = item.get("outputs") if isinstance(item.get("outputs"), dict) else {}
     theta_raw = outputs.get("theta")
     vega_raw = outputs.get("vega")
-    theta, theta_flags, _ = normalize_theta(ptbr_float(theta_raw), inputs)
-    vega, vega_flags, _ = normalize_vega(ptbr_float(vega_raw), inputs)
+    # B3Lab: θ é por dia corrido (×365/252 só como candidato); ν e ρ por 1%.
+    # A base tem que ser explícita: `business_days` nos inputs NÃO torna o
+    # θ exibido "por dia útil" (F10.1 calibrado em 25/11).
+    theta_basis = {"day_basis": "calendar_day", "business_days": inputs.get("business_days")}
+    vega_basis = {"vega_basis": "per_pct", "sigma_pct": inputs.get("sigma_pct")}
+    theta, theta_flags, _ = normalize_theta(ptbr_float(theta_raw), theta_basis)
+    vega, vega_flags, _ = normalize_vega(ptbr_float(vega_raw), vega_basis)
     return {
         "price": (
             ptbr_float(outputs.get("preco")),
@@ -2982,11 +3290,20 @@ def external_values(
         ),
         "delta": (ptbr_float(outputs.get("delta")), flags_all, outputs.get("delta")),
         "gamma": (ptbr_float(outputs.get("gamma")), flags_all, outputs.get("gamma")),
-        "theta": (theta, flags_all + theta_flags, theta_raw),
-        "vega": (vega, flags_all + vega_flags, vega_raw),
+        "theta": (
+            theta,
+            flags_all + theta_flags + ["theta_b3lab_calendar_day_candidate_x365_252"],
+            theta_raw,
+        ),
+        "vega": (vega, flags_all + vega_flags + ["vega_b3lab_per_1pct"], vega_raw),
         "rho": (
             ptbr_float(outputs.get("rho")),
-            flags_all + ["internal_api_missing_rho"],
+            flags_all
+            + [
+                "internal_api_missing_rho",
+                "rho_b3lab_partial_derivative_fixed_q",
+                "rho_b3lab_per_1pct",
+            ],
             outputs.get("rho"),
         ),
     }
@@ -3053,6 +3370,27 @@ def build_series_comparisons(
             "strike_cents": outside["strike_cents"],
         }
         artifact = source_item.get("artifact")
+        external_inputs: dict[str, Any] = {}
+        if source == "b3lab":
+            record = source_item.get("raw") if isinstance(source_item.get("raw"), Mapping) else {}
+            inputs = record.get("inputs") if isinstance(record.get("inputs"), Mapping) else {}
+            lab = record.get("b3lab") if isinstance(record.get("b3lab"), Mapping) else {}
+            lab_inputs = lab.get("inputs") if isinstance(lab.get("inputs"), Mapping) else {}
+            external_inputs = {
+                "contract_inputs": {
+                    "F": inputs.get("S"),
+                    "DF": inputs.get("df"),
+                    "t": inputs.get("t"),
+                    "du": inputs.get("du"),
+                    "r_cont": inputs.get("r_cont"),
+                    "q_pct": inputs.get("q_pct"),
+                    "source": "record.inputs",
+                },
+                "b3lab_inputs": dict(lab_inputs),
+                "flags": ["inputs_preserved", "b3lab_inputs_preserved"],
+            }
+        raw_scalars = values.get("raw") or {}
+        provenance = values.get("provenance") or {}
         metrics = list(METRICS) + ["gamma_x100_candidate"]
         for metric in metrics:
             internal_number, internal_flags = values.get(metric, (None, []))
@@ -3060,19 +3398,22 @@ def build_series_comparisons(
             external_number, external_flags, external_raw_value = ext.get(
                 external_metric, (None, [], None)
             )
-            if metric == "gamma_x100_candidate" and source != "obm":
-                continue
-            # Gamma: o externo NÃO é multiplicado; só o candidato interno é ×100.
-            unit_external = (
-                "brl_per_share" if metric == "price" else None
-            )
+            # Gamma: o externo NUNCA é multiplicado. O candidato ×100 é só o
+            # interno, e existe também para b3lab/opcoes_net (não só OBM).
+            unit_external = "brl_per_share" if metric == "price" else None
             unit_internal = (
                 "brl_per_share" if metric in {"price", "gamma", "theta", "vega"} else None
+            )
+            raw_field = (
+                "gamma_internal_x100" if metric == "gamma_x100_candidate" else metric
             )
             row = series_row(
                 source=source,
                 metric=metric,
                 match={
+                    # Chaves de casamento também no topo da linha: P6-A gravava
+                    # `ticker/maturity/side` nulos e só os conservava em `keys`.
+                    **keys,
                     "keys": keys,
                     "underlying": outside.get("underlying") or detail.get("underlying"),
                     "strike_cents_internal": inside["strike_cents"],
@@ -3082,14 +3423,17 @@ def build_series_comparisons(
                 flags=list(match["flags"]) + list(internal_flags) + list(external_flags),
                 external_raw=external_raw_value,
                 external_normalized=as_float(external_number),
-                internal_raw=(
-                    internal_payload if metric in {"price", "iv"} else internal_number
-                ),
+                internal_raw=raw_scalars.get(raw_field, internal_number),
                 internal_normalized=as_float(internal_number),
                 internal_endpoint="/api/s/{ticker}/{maturity}",
                 artifact=artifact,
                 external_unit=unit_external,
                 internal_unit=unit_internal,
+                internal_provenance=provenance.get(raw_field) or provenance.get(metric),
+                external_inputs=external_inputs,
+                gamma_internal=(
+                    raw_scalars if metric in {"gamma", "gamma_x100_candidate"} else None
+                ),
             )
             rows.append(row)
     notes.append(
@@ -3147,7 +3491,8 @@ def build_underlying_comparisons(
                 # rank/percentil já são 0–100; skew é razão bruta — nunca IV.
                 normalized, flags = as_float(value), []
                 if metric == "skew_25d_30d_ratio":
-                    flags.append("definition_pending")
+                    flags.append("definition_from_fields")
+                    flags.append("not_our_rr25")
             else:
                 normalized, flags = normalize_iv(value, str(field or metric))
             aggregate_by_ticker[ticker][metric] = {
@@ -3157,7 +3502,9 @@ def build_underlying_comparisons(
                 "unit": "ratio" if metric == "skew_25d_30d_ratio" else None,
             }
             if metric == "skew_25d_30d_ratio":
-                aggregate_by_ticker[ticker][metric]["flags"].append("definition_pending")
+                aggregate_by_ticker[ticker][metric]["flags"].extend(
+                    ["definition_from_fields", "not_our_rr25"]
+                )
     for ticker, detail in sorted(underlyings.items()):
         detail_data = detail.get("data") if isinstance(detail.get("data"), dict) else {}
         summary = detail_data.get("summary") if isinstance(detail_data.get("summary"), dict) else {}
@@ -3230,24 +3577,28 @@ def build_underlying_comparisons(
                     "reason": None,
                 }
             )
-    if any(
-        "definition_pending" in aggregate.get("skew_25d_30d_ratio", {}).get("flags", [])
-        for aggregate in aggregate_by_ticker.values()
-    ):
-        notes.append(SKEW_NOTE)
     return rows
 
 
 def build_structure_comparisons(info: SourceInfo, notes: list[str]) -> list[dict[str, Any]]:
+    """Compara P5 com o recálculo validado do OBM (nunca com preset antigo).
+
+    * saídas OBM são totais para 100 ações: ``per_share_brl = bruto/100``;
+    * ``max_loss`` bruto negativo vira magnitude para comparar com o interno;
+    * breakevens mantêm a lista bruta e as diferenças **por raiz**;
+    * breakeven/máximo da grade do OBM são metodologia externa (flag), não bug
+      interno (ADR-051);
+    * put caixa e venda coberta ficam ``null`` + motivo (ADR-051).
+    """
     rows: list[dict[str, Any]] = []
     for entry in info.artifacts:
         if entry.get("status") != "ok":
             continue
         record = entry.get("record")
-        if not isinstance(record, dict):
+        if not isinstance(record, Mapping):
             continue
-        response = record.get("response") if isinstance(record.get("response"), dict) else {}
-        data = response.get("data") if isinstance(response.get("data"), dict) else {}
+        response = record.get("response") if isinstance(record.get("response"), Mapping) else {}
+        data = response.get("data") if isinstance(response.get("data"), Mapping) else {}
         if not data:
             continue
         external = extract_structure_external(record)
@@ -3255,6 +3606,8 @@ def build_structure_comparisons(info: SourceInfo, notes: list[str]) -> list[dict
         underlying = str(
             data.get("underlying") or record.get("underlying") or ""
         ).upper() or None
+        meta = external["recalc_meta"]
+        expected = meta.get("expected") if isinstance(meta.get("expected"), Mapping) else {}
         for metric in (
             "net_premium_brl",
             "breakeven_brl",
@@ -3266,42 +3619,79 @@ def build_structure_comparisons(info: SourceInfo, notes: list[str]) -> list[dict
             "vega_brl",
         ):
             internal = data.get(metric)
-            external_value = external["values"].get(metric)
-            external_list = external["lists"].get(metric)
             flags = set(external["flags"])
+            source_field = STRUCTURE_FIELD_SOURCE.get(metric)
+            external_raw = external["raw_values"].get(metric)
+            external_list = external["lists"].get(metric)
+            external_value = external["values"].get(metric)
+            normalized = as_float(external_value)
             internal_normalized = as_float(internal)
-            external_normalized = as_float(external_value)
-            difference: Any = (
-                external_normalized - internal_normalized
-                if external_normalized is not None and internal_normalized is not None
-                else None
-            )
-            if metric == "breakeven_brl" and isinstance(internal, list):
-                internal_list = [as_float(item) for item in internal]
-                if (
-                    external_list is not None
-                    and len(external_list) == len(internal_list)
-                    and all(item is not None for item in internal_list)
-                ):
-                    external_normalized = external_list
-                    internal_normalized = internal_list
-                    difference = [
-                        float(external_item) - float(internal_item)
-                        for external_item, internal_item in zip(
-                            external_list, internal_list, strict=True
-                        )
-                    ]
-                    flags.add("breakeven_list_compared")
-                elif len(internal_list) == 1 and external_normalized is not None:
-                    internal_normalized = internal_list[0]
-                    difference = external_normalized - internal_normalized
-                else:
-                    external_normalized = external_list
-                    internal_normalized = internal_list
-                    difference = None
-                    flags.add("breakeven_list_unavailable")
-            elif internal is None:
-                flags.add("internal_missing")
+            difference: Any = None
+            root_differences: list[float] | None = None
+            per_share: float | None = None
+            if metric == "breakeven_brl":
+                normalized = (
+                    [float(value) for value in external_list]
+                    if external_list is not None
+                    else None
+                )
+                if isinstance(internal, list):
+                    internal_list = [as_float(item) for item in internal]
+                    if (
+                        normalized is not None
+                        and len(normalized) == len(internal_list)
+                        and all(item is not None for item in internal_list)
+                    ):
+                        internal_normalized = internal_list
+                        root_differences = [
+                            external_item - float(internal_item)
+                            for external_item, internal_item in zip(
+                                normalized, internal_list, strict=True
+                            )
+                        ]
+                        difference = root_differences
+                        flags.add("breakeven_list_compared")
+                    else:
+                        internal_normalized = internal_list
+                        difference = None
+                        flags.add("breakeven_list_unavailable")
+                elif internal is None:
+                    flags.add("internal_missing")
+            else:
+                if metric == "max_loss_brl" and is_number(external_value):
+                    # Bruto negativo preservado; normalizado é a magnitude.
+                    normalized = abs(float(external_value))
+                    flags.add("max_loss_magnitude_normalized")
+                    if meta.get("max_source") == "grade_do_obm":
+                        flags.add("max_source_grade_do_obm")
+                    expected_loss = expected.get("max_loss_brl")
+                    if is_number(expected_loss) and abs(
+                        abs(float(expected_loss)) - normalized
+                    ) > 0.5:
+                        flags.add("max_loss_grade_differs_from_analytic")
+                if metric in STRUCTURE_GREEK_FIELDS and external_value is None:
+                    flags.add("external_greeks_absent")
+                if source_field is not None and is_number(external_value):
+                    # Nenhuma multiplicação do bruto: só a divisão por qty=100.
+                    per_share = float(external_value) / STRUCTURE_QTY_SHARES
+                if normalized is not None and internal_normalized is not None:
+                    difference = normalized - internal_normalized
+                elif internal is None and metric not in STRUCTURE_GREEK_FIELDS:
+                    flags.add("internal_missing")
+            # Metodologia externa é propriedade da FONTE do número, não da
+            # magnitude da diferença: be_tolerance_brl continua em `methodology`
+            # para medir o desvio, mas não condiciona a flag (ADR-051/item 25).
+            if metric == "breakeven_brl":
+                grid_source = meta.get("be_source") == "grade_do_obm"
+                grid_difference = root_differences
+            elif metric in {"max_loss_brl", "max_gain_brl"}:
+                grid_source = meta.get("max_source") == "grade_do_obm"
+                grid_difference = difference
+            else:
+                grid_source = False
+                grid_difference = None
+            if grid_source and grid_difference is not None:
+                flags.add("external_grid_methodology")
             rows.append(
                 {
                     "kind": "structure",
@@ -3313,8 +3703,15 @@ def build_structure_comparisons(info: SourceInfo, notes: list[str]) -> list[dict
                     "match_method": "p5_record",
                     "flags": sorted(flags),
                     "external": {
-                        "raw": external_list if external_list is not None else external["raw"],
-                        "normalized": external_normalized,
+                        "raw": external_raw,
+                        "normalized": normalized,
+                        "raw_total_brl": external_value,
+                        "per_share_brl": per_share,
+                        "field": source_field,
+                        "response_text": external["raw"].get("recalc_response_text"),
+                        "breakevens_raw": external_list,
+                        "root_differences_brl": root_differences,
+                        "methodology": meta,
                     },
                     "internal": {
                         "raw": internal,
@@ -3331,8 +3728,14 @@ def build_structure_comparisons(info: SourceInfo, notes: list[str]) -> list[dict
                 }
             )
     notes.append(
-        "Estruturas: venda coberta permanece `unsupported_external`; só são comparados "
-        "números extraídos de forma inequívoca do bruto do montador."
+        "Estruturas: só `obm.outputs.recalc.response.text` validado é lido (nunca as "
+        "respostas de auto-recálculo do preset antigo). Saídas são totais para "
+        "100 ações (`per_share_brl = bruto/100`); max_loss negativo é preservado no "
+        "bruto e comparado por magnitude; breakevens mantêm lista bruta e diferenças "
+        "por raiz. Be/max da grade do OBM levam `external_grid_methodology` — "
+        "metodologia externa, não bug interno (ADR-051). Put caixa fica `null` + "
+        "`no_public_single_leg_control` e venda coberta `null` + `unsupported_external`; "
+        "gregas externas ausentes ficam `null` + motivo."
     )
     return rows
 
@@ -3406,10 +3809,21 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
         "underlying_comparisons": [],
         "structure_comparisons": [],
         "recalculated": [],
+        "health_before": None,
+        "health_after": None,
+        "opcoes_header_metrics": [],
+        "obm_field_definitions": [],
+        "obm_skew": [],
         "summary": {},
         "unavailable": unavailable,
         "notes": notes,
     }
+    # Guarda zero: /api/health ANTES de qualquer parsing/manifesto/trabalho.
+    client = ApiClient(args.api_url)
+    health = fetch_health(client)
+    guard_health(health, args.date, "health_before")
+    output["health_before"] = health["raw"]
+    output["model_version"] = health["model_version"]
     manifests = discover_manifests(args.input_dir, notes, session=args.date)
     # `capture_verified` é só o verificador interno do P3: as fontes publicadas
     # no JSON são `obm` e `opcoes_net`, cada uma com status/artefatos próprios.
@@ -3431,29 +3845,104 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
                 }
             )
 
-    try:
-        client = ApiClient(args.api_url)
-        health = fetch_health(client)
-    except CompareError as exc:
-        unavailable.append({"source": "api", "code": exc.code, "reason": exc.message})
-        output["summary"] = summarize([])
-        notes.append(RHO_NOTE)
-        return output
-    output["model_version"] = health["model_version"]
-    if health["session"] != args.date or health["last_session"] != args.date:
-        reason = (
-            f"lago em {health['session']}/{health['last_session']}, pedido {args.date}"
+    # Guarda de sessão/modelo dos manifests: divergir aborta sem escrever output.
+    model = health["model_version"]
+    if manifests["capture"] is not None:
+        capture_manifest = capture_verified.payload
+        capture_path = str(manifests["capture"])
+        guard_manifest_session(
+            "P3",
+            capture_manifest.get("session"),
+            args.date,
+            capture_path,
+            extras=[("requested_date", capture_manifest.get("requested_date"))],
         )
-        unavailable.append(
-            {"source": "api", "code": "session_mismatch", "reason": reason}
+        guard_manifest_model(
+            "P3", capture_manifest.get("model_version"), model, capture_path
         )
-        output["summary"] = summarize([])
-        notes.append(RHO_NOTE)
-        return output
+    if manifests["b3lab"] is not None:
+        lab_manifest = b3lab_info.payload
+        lab_path = str(manifests["b3lab"])
+        guard_manifest_session("P4", lab_manifest.get("reference_date"), args.date, lab_path)
+        guard_manifest_model("P4", lab_manifest.get("model_version"), model, lab_path)
+    for p5_path in manifests["structures"]:
+        p5_manifest = read_json(Path(p5_path), "structures_manifest")
+        guard_manifest_session(
+            "P5",
+            p5_manifest.get("session") or p5_manifest.get("reference_date"),
+            args.date,
+            str(p5_path),
+            extras=[
+                ("session", p5_manifest.get("session")),
+                ("reference_date", p5_manifest.get("reference_date")),
+            ],
+        )
+        guard_manifest_model(
+            "P5", p5_manifest.get("model_version"), model, str(p5_path)
+        )
 
     obm = parse_obm(obm_info, args.date, notes)
     opcoes = parse_opcoes(opcoes_info, notes)
     b3lab = parse_b3lab(b3lab_info)
+
+    # Cabeçalho VH/CALLs/PUTs do opcoes.net.br: descritivo, metodologia NÃO
+    # confirmada — não é Yang-Zhang nem ATM equivalente sem evidência.
+    output["opcoes_header_metrics"] = opcoes["header_metrics"]
+    notes.append(
+        "opcoes.net.br VH/CALLs/PUTs (Última, IV Rank, Percentil, Mín, Máx) fica em "
+        "`opcoes_header_metrics` como bruto/normalizado por pt-BR, com "
+        "`header_methodology_unconfirmed`: não é Yang-Zhang nem ATM equivalente."
+    )
+
+    # `fields[]` do agregado OBM é a fonte da definição do skew bruto.
+    for bucket in obm["aggregates"]:
+        artifact = bucket.get("artifact") or {}
+        ticker = str(artifact.get("ticker") or "").upper()
+        if not ticker:
+            continue
+        for definition in bucket.get("fields") or []:
+            if not isinstance(definition, Mapping):
+                continue
+            output["obm_field_definitions"].append(
+                {
+                    "underlying": ticker,
+                    "key": definition.get("key"),
+                    "label": definition.get("label"),
+                    "description": definition.get("description"),
+                }
+            )
+        values = bucket.get("values") if isinstance(bucket.get("values"), Mapping) else {}
+        value, field = alias_get(values, ("skew_25d_30d_ratio",))
+        if value is None:
+            continue
+        description = next(
+            (
+                str(item.get("description") or "")
+                for item in bucket.get("fields") or []
+                if isinstance(item, Mapping)
+                and key_of(item.get("key") or "") == "skew25d30dratio"
+            ),
+            None,
+        )
+        output["obm_skew"].append(
+            {
+                "underlying": ticker,
+                "source_field": field,
+                "raw": value,
+                "normalized": as_float(value),
+                "field_definition": description,
+                "flags": [
+                    "raw_preserved",
+                    "definition_from_fields",
+                    "not_our_rr25",
+                    "calendar_days_put_put",
+                ],
+            }
+        )
+    if output["obm_skew"]:
+        notes.append(SKEW_NOTE)
+    notes.append(B3LAB_THETA_NOTE)
+    notes.append(B3LAB_INPUT_NOTE)
 
     underlyings: dict[str, str] = {}
     for group in (obm["series"], opcoes["series"], b3lab["series"]):
@@ -3501,13 +3990,58 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
     )
     for ticker, maturity in pairs:
         try:
-            detail = fetch_series(client, ticker, maturity)
+            detail = fetch_series(client, ticker, maturity, args.date)
         except CompareError as exc:
             unavailable.append(
                 {
                     "source": "api",
                     "code": exc.code,
                     "reason": f"/api/s/{ticker}/{maturity}: {exc.message}",
+                }
+            )
+            continue
+        # Só o último negócio NA SESSÃO DO BENCHMARK pode entrar na comparação:
+        # `/api/s` devolve o último negócio da série, que pode ser anterior à
+        # sessão pedida (ex.: B3SAA107 em 25/11 com last em 23/11). A sessão do
+        # payload já foi conferida em fetch_series; aqui vale a data do negócio.
+        last = detail["data"].get("last")
+        if not isinstance(last, dict):
+            unavailable.append(
+                {
+                    "source": "api",
+                    "code": "internal_last_missing",
+                    "reason": (
+                        f"/api/s/{ticker}/{maturity}: last ausente/inválido "
+                        f"(ticker={ticker}, maturity={maturity}, session={args.date})"
+                    ),
+                }
+            )
+            continue
+        last_date = last.get("date")
+        last_date_str = str(last_date)[:10] if last_date is not None else ""
+        if not DATE_ISO.match(last_date_str):
+            unavailable.append(
+                {
+                    "source": "api",
+                    "code": "internal_last_missing",
+                    "reason": (
+                        f"/api/s/{ticker}/{maturity}: last.date ausente/inválida "
+                        f"(ticker={ticker}, maturity={maturity}, "
+                        f"last_date={last_date!r}, session={args.date})"
+                    ),
+                }
+            )
+            continue
+        if last_date_str != args.date:
+            unavailable.append(
+                {
+                    "source": "api",
+                    "code": "internal_stale",
+                    "reason": (
+                        f"/api/s/{ticker}/{maturity}: último negócio em {last_date_str} "
+                        f"(ticker={ticker}, maturity={maturity}, "
+                        f"last_date={last_date_str}, session={args.date})"
+                    ),
                 }
             )
             continue
@@ -3598,14 +4132,16 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
                 default=None,
             )
             smile_maturity = smile_maturity.get("maturity") if smile_maturity else None
-        forward_ref = next(
-            (
-                as_float(row.get("forward_brl"))
-                for row in term
-                if isinstance(row, dict) and row.get("maturity") == smile_maturity
-            ),
-            None,
+        # Expected move 30d: referência é o forward 30d INTERNO de
+        # `metrics_underlying` (41,592692 para PETR4 em 25/11), não o
+        # `forward_brl` do vencimento smile do termo (41,91). O spot é só
+        # fallback explícito e sinalizado quando a métrica falta.
+        detail_summary = (
+            detail_data.get("summary") if isinstance(detail_data.get("summary"), Mapping) else {}
         )
+        forward_ref = as_float(screen_row.get("forward_30d"))
+        if forward_ref is None:
+            forward_ref = as_float(detail_summary.get("forward_30d"))
         # Delta points 25Δ do vencimento smile (delta assinado, IV normalizada).
         delta_points = [
             (item.get("delta_signed"), item.get("iv_normalized"))
@@ -3668,6 +4204,11 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
         + list(output["structure_comparisons"])
         + list(output["recalculated"])
     )
+    # Guarda final: health_after tem que ser o MESMO modelo/sessão; divergência
+    # aborta aqui, antes de qualquer escrita em --output.
+    health_after = fetch_health(client)
+    guard_health(health_after, args.date, "health_after")
+    output["health_after"] = health_after["raw"]
     return output
 
 

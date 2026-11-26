@@ -192,6 +192,7 @@ Uma linha por `(ticker, refdate)`, com o *leg* (trecho entre ajustes).
 | `r` | DI, taxa efetiva anual, base 252; interpolar em **log-DF** por dias úteis |
 | `DF` | `exp(−r·T)` |
 | IV | anualizada em base 252 |
+| Γ | variação do delta por **R$1 de `F`/spot**, por ação; `F` é o proxy do spot no Black-76 |
 | Θ | por **dia útil**, em R$ e em % do prêmio |
 | ν | R$ por ação por **1 ponto** de vol (o multiplicador do contrato vem de `fator de cotação`) |
 | Arredondamento | nenhum no cálculo; arredondar só na serialização |
@@ -207,6 +208,8 @@ Forward = strike de cruzamento (`C = P`, interpolado). Sem cruzamento na grade �
 ### 6.3 IV e gregas
 Black-76 sobre `(F, K, T, DF, σ)`, inversão por Brent em `[1e-4, 5]`.
 *Sanidade:* recomputar com `r ± 100 bp`; `max|ΔIV| < 0,25`.
+
+O gamma publicado é `∂Δ/∂F` por ação para **R$1 de variação de `F`** (proxy do spot). `greeks_black76` recebe `F` em centavos e devolve gamma por centavo; a fronteira em `metrics/series.py` grava `gamma = greeks.gamma * 100.0` (ADR-052). `theta_brl`/`vega_brl`/`rho` saem na moeda de `F` e continuam **divididos por 100** para virar reais por ação; `theta_pct` é adimensional e não muda.
 
 ### 6.4 ATM 30d
 Por vencimento: IV no strike `K = F` por interpolação de variância total `w = σ²T` em `log(K/F)`.

@@ -11,7 +11,11 @@ log_level: INFO
 # v2 (22/11/2026): carry do forward deixa de ser simétrico — F acima da curva é
 # rejeitado (+5% a.a.), dividendo implícito vale até 25% a.a. (BBAS3 perdia o ATM
 # com q = 7,3%). Ver ADR-020.
-model_version: 2
+# v3 (26/11/2026): gamma gravado como variação do delta por ação para cada R$1
+# de variação de F/forward. greeks_black76 recebe F em centavos e devolvia γ por
+# centavo; a fronteira de métricas multiplica por 100 (θ/ν/ρ já dividiam por 100).
+# Conferido em 32 séries B3Lab: externo/API = 100 exatamente.
+model_version: 3
 
 # Fonte do COTAHIST (medido em 22/11/2026 — ver AGENTS.md):
 # o padrão antigo arquivos.b3.com.br/dados/pregao/cotahist/ está morto (404);

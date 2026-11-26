@@ -17,7 +17,9 @@ grega contra **diferença finita independente**, não contra a fórmula.
 
 Unidades (contrato Onda D §1, `docs/glossario.md`):
 - `delta`: por ação, adimensional, call `+`, put `−`;
-- `gamma`: variação de delta por unidade de `F`;
+- `gamma`: variação de delta por unidade de `F`, na moeda de `F` (se `F` é centavos,
+  γ sai "por centavo"); a fronteira em `metrics/series.py` multiplica por 100 para
+  gravar a variação do delta por ação para cada R$1 de variação de F/forward;
 - `theta_brl`: R$ (ou ¢, a moeda de `F`) **por dia útil** — Θ anual ÷ 252,
   por ação (÷ `quote_factor`, porque `preço por ação = preço ÷ FATCOT`);
 - `theta_pct`: % do prêmio **por dia útil** (`theta_brl / prêmio × 100`);
@@ -49,7 +51,8 @@ class Greeks:
     """Por ação; call `+`, put `−` (nunca `|delta|`)."""
 
     gamma: float
-    """∂²V/∂F² por ação, na moeda de `F`."""
+    """∂²V/∂F² por ação, na moeda de `F` (se `F` é centavos, γ é por centavo;
+    a fronteira de métricas converte centavo→por real multiplicando por 100)."""
 
     theta_brl: float
     """Θ por **dia útil**, por ação, na moeda de `F` (÷ `quote_factor`)."""

@@ -20,7 +20,9 @@ Unidades
 devolve fração e a conversão `×100` mora aqui. `theta_brl`/`vega_brl`/`rho` saem
 de `greeks.greeks_black76` na moeda de `F` (centavos) e são **divididos por 100**
 para virar R$ por ação — o nome do campo no contrato diz R$; o `/quote_factor` já
-é feito pela grega.
+é feito pela grega. `gamma` é a exceção: como é ∂Δ/∂F, converter `F` de centavos
+para R$ exige **multiplicar por 100** (γ por centavo → γ por R$ de variação do
+forward, isto é, a variação do delta por ação para cada R$1 de variação de F/forward).
 
 Smile por strike (contrato §4.5 passo 6)
 ---------------------------------------
@@ -451,7 +453,10 @@ def series_metrics(
         quote_factor=quote.quote_factor,
         iv=evaluated.iv_pct,
         delta=None if greeks is None else greeks.delta,
-        gamma=None if greeks is None else greeks.gamma,
+        # γ é ∂Δ/∂F: F entra em centavos, então γ sai "por centavo". Multiplicar
+        # por 100 converte para variação do delta por ação para cada R$1 de
+        # variação de F/forward.
+        gamma=None if greeks is None else greeks.gamma * 100.0,
         theta_brl=None if greeks is None else greeks.theta_brl / 100.0,
         theta_pct=None if greeks is None else greeks.theta_pct,
         vega_brl=None if greeks is None else greeks.vega_brl / 100.0,

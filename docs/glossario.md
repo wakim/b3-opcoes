@@ -370,9 +370,9 @@ O gráfico "Fechamento do papel" mostra esse número pregão a pregão. Desdobra
 
 ## Gamma
 
-**O que é** — a taxa de variação do delta. É o que faz a posição "acelerar" quando o papel se aproxima do strike.
+**O que é** — a taxa de variação do delta para cada **R$1 de variação do forward** (proxy do spot), por ação. É o que faz a posição "acelerar" quando o papel se aproxima do strike.
 
-**Erro comum** — ignorar gamma no vencimento. Perto do vencimento, ATM, o delta deixa de ser estável: ele vira 0 ou 1 em horas. Posição vendida ATM na semana do vencimento é a forma mais rápida de perder o controle.
+**Erro comum** — ignorar gamma no vencimento. Perto do vencimento, ATM, o delta deixa de ser estável: ele vira 0 ou 1 em horas. Posição vendida ATM na semana do vencimento é a forma mais rápida de perder o controle. Confundir gamma por centavo com gamma por real também erra por 100×: o painel usa gamma **por R$1 de forward**, nunca por centavo.
 
 **No painel** — gamma máximo no strike ATM; cresce à medida que o vencimento chega.
 

@@ -21,12 +21,12 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 
 | Item | Situação |
 |---|---|
-| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…047) |
+| Planejamento | spec v0.6, arquitetura, mockups (mobile e desktop), glossário, direção visual, log de decisões (ADR-001…052) |
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. **F5 entregue e aceito**: PWA (Hoje, Ticker, Série, Aprender, builder de estrutura, liquidez) servido pelo FastAPI, instalado no celular via `tailscale serve` 8443 (só tailnet) e offline pelo service worker. **F6 implementado e validado** (ADR-041/045): journal PostgreSQL append-only, carteira com marcação EOD, P&L, gregas, alertas e payoff; aceitação no uso real (ADR-047). **F7 implementado e validado** (ADR-042): Diário de decisões com previsão estruturada, avaliação automática no lote EOD e calibração pessoal; aceitação no uso real (ADR-047). **F8 entregue e aceita** (ADR-043/044/046/047): interface em shadcn + Tailwind, CSS global reduzido a tokens, base e as exceções da ADR-046; avaliação manual do dono aprovada em 25/11/2026. |
 | Retomar em | **F8 aceita; começar a usar F6/F7 (ADR-047).** (1) **Diário todo pregão**: uma decisão real por sessão na app da 8083/8443 (inclusive "não entrei"), com previsão estruturada quando houver tese — a aceitação F7 conta 30 sessões consecutivas e ≥ 10 previsões avaliadas pelo lote. (2) **Duas posições reais** registradas na Carteira na data da execução, e o P&L conferido com o extrato da corretora (F6.6). A F9 está implementada, com validação final pendente; defeito achado no uso vira correção pontual. |
 | Novo pedido | **F9 — níveis de linguagem Expert/Leigo**, pedido do dono em 24/11/2026. Implementação concluída; validação final pendente. É apresentação, não altera dado, cálculo ou a aceitação de uso de F6/F7. |
-| Benchmark externo | **F10 — benchmark de métricas**, pedido do dono em 25/11/2026, revisado em 26/11 para cobrir **todas** as métricas de mercado. **F10.1 verificado** (skew do OBM pendente), **serviço `bench` concluído** (`826690e`) e mecanismos P3/P4/P5/P6/P7 construídos e validados estaticamente, sem captura, comparação ou relatório final. Fontes: OBM, opcoes.net.br e a calculadora do B3Lab; a execução futura exige a mesma sessão do lake. |
-| Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
+| Benchmark externo | **F10 — aderência numérica às referências de mercado**, pedido do dono em 25/11/2026 e revisado em 26/11: cobrir **todas** as métricas de mercado e corrigir o algoritmo interno quando a divergência for bug reproduzido, não mera diferença de metodologia. Capturas P3/P4/P5 e o JSON intermediário P6/P7 foram executados para 25/11; **P6-B fechado e commitado em `8b2a07c`**, com output novo `data/out/benchmark-2026-11-25-p6b-stale.json` (modelo 2). A correção do gamma foi reproduzida em **32/32** séries B3Lab; a config subiu para `model_version=3` e o **backfill integral terminou com exit 0 em 26/11** (`data/out/f10-model3-backfill-20261126-run1.json`): 725 sessões, 7.800.617 séries + 117.341 underlyings, todo modelo 3, contagens pré/pós idênticas e rank/z conferidos com diferença 0 em PETR4/VALE3/BBAS3. O gate de saúde segue **bloqueado** por `source_unavailable` (ReadTimeout no BDI/OI), embora API/CLI estejam em 2026-11-25/modelo 3. Recapturas e lacunas **4A/4B/4C** e o **F10.6** continuam pendentes; nenhum checkbox da aceitação está marcado. Fontes: OBM, opcoes.net.br e B3Lab. |
+| Dados baixados | COTAHIST 2024–2026 (2026: 224 sessões, 3.575.881 linhas no lake; 725 sessões no total), OI (12 datas), curva DI (725 sessões; última: 282 nós `b3_reference`), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
 
@@ -706,32 +706,77 @@ ordens, rotas e contratos da API.
 
 # F10 — Benchmark externo de métricas
 
-**Pedido do dono (25/11/2026):** comparar as métricas do painel com referências externas.
-**Revisão (26/11/2026):** o dono exigiu cobertura para **todas** as métricas de mercado, podendo combinar
-sites. Fontes investigadas no navegador em 26/11/2026 (sessão 25/11 nos sites e no lake).
+**Pedido do dono (25/11/2026) e revisão (26/11/2026):** comparar **todas** as métricas de mercado
+com referências consolidadas e fazer nosso algoritmo produzir valores iguais a elas sempre que
+inputs, contrato e metodologia forem equivalentes. Divergência real reproduzida vira correção;
+diferença de metodologia, liquidez ou dado externo não vira ajuste cego.
 
 **Estado real em 26/11/2026:**
-- **F10.1 concluído com uma pendência explícita:** “OpçõesBR” não é `opcoes.net.br`; B3Lab usa `r`
-  contínua e `T = du/252`; o montador público do OBM não aceita perna de ação; o seletor do
-  opcoes.net.br usa `quotesMode=UP`, `#vAAAA-MM-DD` e espera do DataTable. A definição de
-  `skew_25d_30d_ratio` continua pendente e a captura futura deve preservar `fields[]` do agregado.
-  Evidência: `data/bench/f10_1-verificacoes.md`.
-- **F10.2 concluído:** serviço `bench` isolado, `Dockerfile.bench` e Playwright 1.65.2
-  (`826690e`), mais o mecanismo de captura P3 (`608bf57`).
-- **Mecanismos construídos e validados estaticamente:** P7 (`278e239`), P5 (`9c668e6`),
-  P4 (`4934f41`) e P6 (`3dcd884`). Todos passaram por `py_compile`, `--help`, `ruff`,
-  `git diff --check` e conferência sintética independente; nenhum foi executado sobre o lake.
-- **Nenhuma captura externa, comparação numérica ou relatório final de benchmark foi executado.**
-  Nenhum item da **Aceitação F10** está marcado.
+- **F10.1 concluído:** “OpçõesBR” não é `opcoes.net.br`; B3Lab usa `r` contínua e `T = du/252`;
+  o montador público do OBM não aceita perna de ação; o seletor do opcoes.net.br usa
+  `quotesMode=UP`, `#vAAAA-MM-DD` e espera do DataTable. O `fields[]` do agregado OBM confirmou
+  `skew_25d_30d_ratio` como put 25Δ menos put 50Δ, levadas a 30 dias corridos, com peso por
+  negócios — **não é RR25**. Evidência: `data/bench/f10_1-verificacoes.md` e brutos P3.
+- **Capturas P3/P4/P5 executadas** para a sessão 25/11, com manifests, hashes e brutos preservados.
+- **P6/P7 produziram JSON intermediário** sobre o lago real. **P6-B fechado e commitado em
+  `8b2a07c`**; o output novo é `data/out/benchmark-2026-11-25-p6b-stale.json`, preservado no
+  `model_version=2` e portanto anterior à correção do gamma.
+- **Correção do gamma reproduzida e histórico recalculado:** 32/32 séries B3Lab com
+  `gamma_externo / gamma_api = 100`. A config subiu para `model_version=3` e o backfill
+  integral terminou com **exit 0 em 26/11/2026**
+  (`data/out/f10-model3-backfill-20261126-run1.json`): 725 sessões (2024-01-02 a
+  2026-11-25), `metrics_series` 7.800.617 linhas (2024 2.093.270 / 2025 2.618.212 /
+  2026 3.089.135) e `metrics_underlying` 117.341 linhas (40.488 / 39.569 / 37.284),
+  todas `model_version=3`, zero NULL e contagens pré/pós idênticas. Rank/percentil/z
+  recalculados de forma independente em PETR4, VALE3 e BBAS3: diferença máxima 0.
+  PETRX449 2026-12-18: gamma 0,10116443874196744 na métrica, 0,101164 na API,
+  0,1012 no B3Lab e 0,001012 no campo antigo; straddle PETR4 do P5: 15,690665
+  contra 0,156907 antes. O P6-B `stale` e as estruturas P5 permanecem no modelo 2.
+  Ainda assim não há veredito F10: o gate de saúde está bloqueado (abaixo) e as
+  recapturas 4A/4B/4C e o F10.6 seguem pendentes (ADR-052).
+- **Gate de saúde bloqueado em 26/11/2026:** API e CLI em 2026-11-25,
+  `model_version=3`, `ingest_model_version=3`, `model_version_mismatch=false`,
+  `age_sessions=0`, mas `last_error=source_unavailable` por ReadTimeout no BDI/OI
+  (`oi_unavailable=true`). O diagnóstico manual de 26/11 devolveu 407 bytes com
+  "Nenhum resultado" (hash
+  `F3EA4924B4CFE1CB4F87DF7711E2903E962E18295456839B8AFE8B09D22A77C9`); isso não
+  autoriza afirmar que o BDI avançou para 26/11. Nenhum checkbox da Aceitação F10
+  é marcado.
+- **Recapturas e lacunas 4A/4B/4C continuam pendentes.**
+- **F10.6 não existe.** Nenhum item da **Aceitação F10** está marcado.
 
-**Escopo da retomada:** construir e validar estaticamente os mecanismos (`py_compile`, `--help`,
-`ruff` e `git diff --check` em container). **Não executar captura**, não abrir OBM/opcoes.net.br/B3Lab,
-não gerar relatório final e não concluir o F10 nesta sessão. Não reabre F6/F7/F9 nem altera a
+**Escopo da retomada:** com o P6-B fechado e o recálculo integral do modelo 3 concluído, auditar a
+prova real e montar a matriz de divergências sobre o lago reescrito; reproduzir independentemente
+cada possível bug interno e corrigir o que for real (nova mudança de fórmula exige novo
+`model_version` e novo backfill integral), fechar as recapturas/lacunas 4A/4B/4C — inclusive o
+bloqueio externo do BDI/OI — e somente então gerar o F10.6. Recapturas são permitidas apenas para
+a mesma sessão do lake e sem sobrescrever brutos ou backups. Não reabre F6/F7/F9 nem altera a
 aceitação de uso real.
 
-**Objetivo:** medir a aderência de todas as métricas de mercado a referências externas, separando
-divergência de metodologia de erro real — sem transformar site de terceiro em dono da verdade.
-**Estimativa:** 2 sessões (~7 h) · **Depende de:** F1, F3 e F4. É independente de F9 e da aceitação de uso de F6/F7.
+**Objetivo:** atingir **aderência numérica** às referências de mercado até a precisão publicada,
+sem transformar um site opaco em dono da verdade. O relatório deve separar claramente:
+`metodologia`, `liquidez`, `dado_externo` e `bug_interno`.
+**Estimativa:** 2–4 sessões (~7–12 h) · **Depende de:** F1, F3 e F4. É independente de F9 e da aceitação de uso de F6/F7.
+**Prompt de execução:** `docs/prompts/f10-aderencia-numerica.md`.
+
+### Contrato de aderência
+
+- **B3Lab é a referência primária para preço teórico e gregas Black-Scholes** quando recebe
+  exatamente os mesmos `S/F`, `K`, `T`, `r`, `σ` e `q`. O alvo é igualdade até a precisão
+  exibida pela calculadora (4 casas) e tolerância numérica explicitada no relatório.
+- **OBM é a referência primária para dados de mercado equivalentes**: fechamento, strike,
+  vencimento, prêmio, IV, forward/agregados, OHLC, curva e estruturas. Campos diretos devem
+  coincidir após normalização de unidade; diferenças de construção são classificadas, não
+  forçadas.
+- **opcoes.net.br é a segunda referência** para grade, IV e cabeçalho. O cabeçalho VH/CALLs/PUTs
+  permanece descritivo enquanto a metodologia não for confirmada; a coluna `Vol. Impl. (%)` é
+  fração e deve ser multiplicada por 100.
+- **Tolerância é por métrica e fixada antes da comparação**: campo direto usa a precisão da fonte;
+  calculadora usa meia unidade da última casa exibida; métrica recalculada usa tolerância
+  numérica declarada. O relatório publica `n`, mediana, P90, máximo e outliers.
+- **Correção interna exige reprodução independente** no dado interno. Não se altera fórmula,
+  unidade ou calendário apenas para igualar o site. Se a fórmula mudar, `model_version` sobe e
+  todo o histórico é recalculado; rank/z nunca misturam modelos.
 
 ## Fontes (medidas em 26/11/2026)
 
@@ -761,13 +806,13 @@ assim). **Descritivo** = regra diferente; só se descreve, sem gate numérico.
 | Estrutura a termo (IV ATM por vencimento) | OBM `/volatilidade` | — | direto |
 | `ts_slope_30_90` | OBM (`iv_atm_30d` e `iv_atm_90d`) | — | recalculado |
 | Smile | OBM `/volatilidade` | opcoes.net.br (IV por strike) | direto |
-| `rr25` | OBM `skew_25d_30d_ratio` (definição a confirmar) | 25Δ recalculado do smile do OBM com a nossa definição | direto + recalculado |
+| `rr25` | 25Δ recalculado do smile do OBM com a nossa definição | `skew_25d_30d_ratio` do OBM (put−put, 30 dias corridos; descritivo) | recalculado; skew do OBM não é RR25 |
 | `bfly25` | smile do OBM nos pontos 25Δ | smile do opcoes.net.br | recalculado |
 | `iv_rank_252`, `iv_pct_252` | OBM (rank + `vi-historico`) | opcoes.net.br (rank/percentil, calls e puts separados) | direto + recalculado |
 | `rv20`, `rv30`, `rv60` (Yang-Zhang) | OHLC do OBM + Yang-Zhang reimplementado | opcoes.net.br VH (fechamento a fechamento) | recalculado; VH só descritivo |
 | Pregão dominante (`rv_shock_day`) | OHLC do OBM | — | recalculado |
-| `vrp`, `vrp_z_252` | IV ATM do OBM − RV recalculada; z pelo `vi-historico` | — | recalculado |
-| `exp_move_1s_30d` | `iv_atm_30d` do OBM | — | recalculado |
+| `vrp`, `vrp_z_252` | IV ATM do OBM − RV recalculada; z com histórico real IV−RV30 por data | — | recalculado; sem 252 pontos, `null` + flag |
+| `exp_move_1s_30d` | straddle ATM + `forward_30d` interno; spot só como fallback sinalizado | — | recalculado |
 | DF / curva | ETTJ prefixada ANBIMA (via OBM) | — | direto (fonte independente da DI da B3) |
 | `forward_30d` | S·e^{rt} − VP dos proventos (ETTJ + calendário do OBM) | — | recalculado |
 | `implied_div_yield_30d` | proventos com data ex na janela (calendário do OBM) | — | recalculado |
@@ -807,40 +852,44 @@ fonte publica equivalente — verificação por recontagem interna) e `signal_cl
 
 | ID | Tarefa | Est. |
 |---|---|---|
-| F10.1 | **Verificações antes do gate:** (a) confirmar que "OpçõesBR" é o opcoes.net.br pela metodologia publicada (ATM de 4 séries, RV30 em 21 pregões); (b) definição e sinal do `skew_25d_30d_ratio` do OBM; (c) convenção de `r` do B3Lab, calibrada num caso conhecido; (d) se o montador do OBM aceita perna de ação; (e) como trocar de vencimento na grade do opcoes.net.br pelo Playwright. Registrar cada resposta com data | 45 min |
+| F10.1 | **Verificações concluídas em 26/11/2026:** OpçõesBR ≠ opcoes.net.br; B3Lab usa `r` contínua e `T=du/252`; OBM não aceita perna de ação; seletor do opcoes.net.br usa `quotesMode=UP`/`#vAAAA-MM-DD`; `skew_25d_30d_ratio` definido pelo `fields[]` como put 25Δ − put 50Δ a 30 dias corridos, com peso por negócios | 45 min |
 | F10.2 | `bench_capture.py` + serviço `bench`; capturar a sessão do lake com guarda de data | 1 h 30 |
 | F10.3 | `bench_b3lab.py` e `bench_structures.py` | 1 h |
 | F10.4 | `bench_compare.py`: IV por série/ATM/smile/termo, Gregas e preço — `n`, mediana, P90 e máximo das diferenças (pontos de vol para IV) | 1 h 30 |
 | F10.5 | Recalculados: RV Yang-Zhang, `rv_shock_day`, VRP/z, rank/percentil, `rr25`/`bfly25`, `ts_slope_30_90`, forward, dividendo implícito, DF, `days_to_liquidate`, expected move, P&L/exposição | 1 h 30 |
-| F10.6 | Relatório em `data/out/benchmark-AAAA-MM-DD.md`: matriz preenchida (fonte, URL, data de acesso, `n`, estatística), outliers e classificação (`metodologia`, `liquidez`, `dado externo`, `bug interno`); registrar aprendizado no `AGENTS.md` e abrir correção só para bug reproduzido | 45 min |
+| F10.6 | Relatório em `data/out/benchmark-AAAA-MM-DD.md`: matriz preenchida (fonte, URL, data de acesso, `n`, mediana, P90, máximo), tolerância por métrica, outliers, classificação (`metodologia`, `liquidez`, `dado_externo`, `bug_interno`) e lista de bugs reproduzidos | 1 h |
+| F10.7 | Corrigir os bugs internos reproduzidos, revalidar cada correção no lago real e, se houver mudança de fórmula, subir `model_version` e recalcular todo o histórico antes do veredito final | 1–3 h |
 
 ### Estado dos mecanismos (retomada de 26/11/2026)
 
 | Pacote | Arquivo | Estado |
 |---|---|---|
-| P1 / F10.1 | `data/bench/f10_1-verificacoes.md` | Verificações concluídas; `skew_25d_30d_ratio` pendente |
+| P1 / F10.1 | `data/bench/f10_1-verificacoes.md` + brutos P3 | Verificações concluídas; `skew_25d_30d_ratio` definido pelo `fields[]` do OBM |
 | P2 / F10.2 (infra) | `compose.yaml`, `Dockerfile.bench` | Concluído e commitado (`826690e`) |
-| P3 | `backend/scripts/bench_capture.py` | Construído e validado estaticamente (`608bf57`); captura futura proibida nesta retomada |
-| P4 | `backend/scripts/bench_b3lab.py` | Construído e validado estaticamente (`4934f41`); captura futura proibida nesta retomada |
-| P5 | `backend/scripts/bench_structures.py` | Construído e validado estaticamente (`9c668e6`); captura futura proibida nesta retomada |
-| P7 | `backend/scripts/bench_recalc.py` | Construído e validado estaticamente (`278e239`); funções puras, sem `b3o` |
-| P6 | `backend/scripts/bench_compare.py` | Construído e validado estaticamente (`3dcd884`); produz só JSON intermediário |
-| Captura e relatório | `data/bench/`, `data/out/` | Não executados; fora do escopo desta retomada |
+| P3 | `backend/scripts/bench_capture.py` + `data/bench/2026-11-25/` | Captura real executada para 25/11; 190 artefactos manifestados |
+| P4 | `backend/scripts/bench_b3lab.py` + `data/bench/2026-11-25/b3lab/` | Captura real executada; 32 séries com inputs/outputs |
+| P5 | `backend/scripts/bench_structures.py` + `data/bench/structures-2026-11-25-petr4/` | Captura real executada; 3 estruturas comparáveis e 2 ausências ratificadas |
+| P7 | `backend/scripts/bench_recalc.py` | Executado no JSON intermediário; funções puras, sem `b3o` |
+| P6 | `backend/scripts/bench_compare.py` + JSON de revisão | Fechado e commitado (`8b2a07c`); output novo `data/out/benchmark-2026-11-25-p6b-stale.json`, preservado no modelo 2 |
+| Gamma / backfill | correção em `metrics/series.py` + `config.yaml` | Reprodução 32/32 concluída; config e lago em modelo 3; backfill integral exit 0 em 26/11 (725 sessões, 7.800.617 séries, 117.341 underlyings, rank/z com diferença 0); gate de saúde ainda bloqueado por `source_unavailable` no BDI/OI |
+| Captura e relatório | `data/bench/`, `data/out/` | Brutos preservados; recapturas e lacunas 4A/4B/4C pendentes; F10.6 ainda não gerado |
 
 **Aceitação F10**
 - [ ] toda métrica de mercado da matriz tem ao menos uma referência externa no relatório (direta ou
-      recalculada), e as que ficam fora do benchmark aparecem listadas com o motivo
+      recalculada), com alvo de aderência e tolerância declarados; as que ficam fora aparecem com o motivo
 - [ ] toda comparação usa a mesma sessão e o mesmo contrato; spot/forward, strike, vencimento, estilo,
       taxa, prazo e unidade estão declarados, com fonte, URL e data de acesso externas
 - [ ] IV por série/ATM/smile/termo tem duas referências EOD na amostra, com estatística de diferença e
       outliers individuais explicados
 - [ ] preço teórico e Gregas são conferidos com inputs idênticos na calculadora; diferenças de unidade
       (por ação/contrato, por dia corrido/dia útil, por 1 ponto/1% de vol) não são confundidas com erro
+- [ ] métricas com construção equivalente atingem igualdade até a precisão publicada da referência;
+      divergências além da tolerância estão explicadas e, quando forem bug interno, corrigidas e revalidadas
 - [ ] métricas recalculadas aparecem marcadas como tal; IV rank/percentil, RV e VRP só têm gate numérico
       quando a construção é equivalente (VH do opcoes.net.br × Yang-Zhang fica descritivo)
 - [ ] as cinco verificações do F10.1 estão respondidas e registradas
-- [ ] toda divergência material tem causa classificada; só vira correção após reprodução independente no
-      dado interno — nunca apenas para igualar o site externo
+- [ ] toda divergência material tem causa classificada; bug interno só vira correção após reprodução
+      independente no dado interno — nunca há ajuste cego apenas para igualar o site externo
 - [ ] relatório e brutos salvos fora do git; Playwright, scraping, serviço pago ou cotação ao vivo não viram
       dependência do produto; se um bug mudar fórmula, `model_version` sobe e o histórico é recalculado inteiro
 

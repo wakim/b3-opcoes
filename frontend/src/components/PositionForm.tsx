@@ -355,7 +355,7 @@ export function PositionForm({
           size="icon"
           className="absolute top-4 right-4"
           onClick={clearDraft}
-          aria-label="Fechar formulário"
+          aria-label={p.copy('action', 'clear_draft').label}
           disabled={create.isPending}
         >
           <span aria-hidden="true">×</span>
@@ -367,10 +367,10 @@ export function PositionForm({
           className="contents m-0 min-w-0 border-none p-0"
           disabled={create.isPending}
         >
-          <legend className={visuallyHidden}>Dados da posição</legend>
+          <legend className={visuallyHidden}>{p.copy('form', 'position_data').label}</legend>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
             <label className={field}>
-              <span className={`${fieldLabel} lg:text-label`}>Ativo-objeto</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'underlying').label}</span>
               <Input
                 className={`${fieldControl} lg:text-control`}
                 value={underlying}
@@ -384,7 +384,7 @@ export function PositionForm({
               />
             </label>
             <label className={field}>
-              <span className={`${fieldLabel} lg:text-label`}>Data da sessão (opcional)</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'session_date_optional').label}</span>
               <Input
                 className={`${fieldControl} lg:text-control`}
                 type="date"
@@ -394,7 +394,7 @@ export function PositionForm({
             </label>
             <label className={field}>
               <span className={`${fieldLabel} lg:text-label`}>
-                Limite de capital (R$, opcional)
+                {p.copy('form', 'capital_limit').label} {p.copy('form', 'price_optional').label}
               </span>
               <Input
                 className={`${fieldControl} lg:text-control`}
@@ -408,12 +408,12 @@ export function PositionForm({
               />
             </label>
             <label className={`${field} col-span-full`}>
-              <span className={`${fieldLabel} lg:text-label`}>Notas</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'notes').label}</span>
               <Textarea
                 className={`${textareaControl} lg:text-control lg:leading-body`}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="contexto da decisão"
+                placeholder={p.copy('form', 'context_placeholder').label}
                 maxLength={2000}
                 rows={3}
               />
@@ -422,14 +422,11 @@ export function PositionForm({
 
           <fieldset className="m-0 min-w-0 border-none p-0" disabled={create.isPending}>
             <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
-              Pernas
-              <HelpTip
-                label={`O que é ${p.copy('leg').label}?`}
-                text={p.copy('leg').help ?? 'Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade.'}
-              />
+              {p.copy('form', 'legs_plural').label}
+              <HelpTip term="leg" />
             </legend>
             <p className={`${chainNote} lg:text-label lg:leading-body`}>
-              A quantidade é em ações. 100 ações = 1 contrato padrão; nada é multiplicado por 100.
+              {p.copy('form', 'quantity_note').label}
             </p>
             <div className="grid gap-[8px]">
               {legs.map((leg, index) => (
@@ -448,24 +445,24 @@ export function PositionForm({
                       disabled={legs.length === 1}
                       aria-label={`Remover perna ${index + 1}`}
                     >
-                      remover
+                      {p.copy('action', 'remove').label}
                     </Button>
                   </div>
                   <div className="grid grid-cols-[minmax(0,1fr)] gap-[8px] min-[640px]:grid-cols-[repeat(2,minmax(0,1fr))] min-[720px]:grid-cols-[120px_minmax(140px,1fr)_132px_104px]">
                     <label className={field}>
-                      <span className={`${fieldLabel} lg:text-label`}>Tipo</span>
+                      <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'leg_type').label}</span>
                       <NativeSelect
                         className={`${fieldControl} lg:text-control`}
                         value={leg.kind}
                         onChange={(event) => changeKind(leg.id, event.target.value as LegKind)}
-                        aria-label={`Tipo da perna ${index + 1}`}
+                        aria-label={p.copy('form', 'type_leg', { n: index + 1 }).label}
                       >
                         <option value="option">{p.copy('leg_type', 'option').label}</option>
                         <option value="stock">{p.copy('leg_type', 'stock').label}</option>
                       </NativeSelect>
                     </label>
                     <label className={field}>
-                      <span className={`${fieldLabel} lg:text-label`}>Ticker</span>
+                      <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'ticker').label}</span>
                       <Input
                         className={`${fieldControl} lg:text-control`}
                         value={leg.ticker}
@@ -480,26 +477,26 @@ export function PositionForm({
                         maxLength={32}
                         autoComplete="off"
                         spellCheck={false}
-                        aria-label={`Ticker da perna ${index + 1}`}
+                        aria-label={p.copy('form', 'ticker_leg', { n: index + 1 }).label}
                         required
                       />
                     </label>
                     <label className={field}>
-                      <span className={`${fieldLabel} lg:text-label`}>Lado</span>
+                      <span className={`${fieldLabel} lg:text-label`}>{p.copy('position_side').label}</span>
                       <NativeSelect
                         className={`${fieldControl} lg:text-control`}
                         value={leg.side}
                         onChange={(event) =>
                           updateLeg(leg.id, { side: event.target.value as LegSide })
                         }
-                        aria-label={`Lado da perna ${index + 1}`}
+                        aria-label={p.copy('form', 'side_leg', { n: index + 1 }).label}
                       >
                         <option value="long">{p.copy('position_side', 'long').label}</option>
                         <option value="short">{p.copy('position_side', 'short').label}</option>
                       </NativeSelect>
                     </label>
                     <label className={field}>
-                      <span className={`${fieldLabel} lg:text-label`}>Ações</span>
+                      <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'actions').label}</span>
                       <Input
                         className={`${fieldControl} lg:text-control`}
                         type="number"
@@ -509,7 +506,7 @@ export function PositionForm({
                         step={1}
                         value={leg.quantity}
                         onChange={(event) => updateLeg(leg.id, { quantity: event.target.value })}
-                        aria-label={`Quantidade de ações da perna ${index + 1}`}
+                        aria-label={p.copy('form', 'quantity_leg', { n: index + 1 }).label}
                         required
                       />
                     </label>
@@ -542,7 +539,7 @@ export function PositionForm({
 
           <fieldset className="m-0 min-w-0 border-none p-0" disabled={create.isPending}>
             <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
-              Tese
+              {p.copy('form', 'thesis').label}
             </legend>
             <label className="flex min-h-[44px] cursor-pointer items-center gap-[8px] text-[calc(12.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
               <Checkbox
@@ -551,26 +548,26 @@ export function PositionForm({
                 onCheckedChange={(checked) => setPredictionEnabled(checked === true)}
                 disabled={create.isPending}
               />
-              <span>Registrar previsão estruturada</span>
+              <span>{p.copy('form', 'prediction_checkbox').label}</span>
             </label>
             {predictionEnabled && (
               <div className="mt-[12px] grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
                 <label className={field}>
-                  <span className={`${fieldLabel} lg:text-label`}>Métrica</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'metric').label}</span>
                   <NativeSelect
                     className={`${fieldControl} lg:text-control`}
                     value={metric}
                     onChange={(event) => setMetric(event.target.value)}
-                    aria-label="Métrica da previsão"
+                    aria-label={p.copy('form', 'metric').label}
                   >
-                    <option value="spot">Preço (spot / fechamento)</option>
-                    <option value="iv_atm_30d">IV ATM 30d</option>
-                    <option value="vrp">VRP</option>
-                    <option value="rr25">RR25</option>
+                    <option value="spot">{p.copy('spot', 'form').label}</option>
+                    <option value="iv_atm_30d">{p.copy('iv_atm_30d', 'option').label}</option>
+                    <option value="vrp">{p.copy('vrp', 'option').label}</option>
+                    <option value="rr25">{p.copy('rr25').label}</option>
                   </NativeSelect>
                 </label>
                 <label className={field}>
-                  <span className={`${fieldLabel} lg:text-label`}>Operador</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'operator').label}</span>
                   <NativeSelect
                     className={`${fieldControl} lg:text-control`}
                     value={operator}
@@ -585,7 +582,7 @@ export function PositionForm({
                   </NativeSelect>
                 </label>
                 <label className={field}>
-                  <span className={`${fieldLabel} lg:text-label`}>Valor</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'value').label}</span>
                   <Input
                     className={`${fieldControl} lg:text-control`}
                     type="text"
@@ -597,7 +594,7 @@ export function PositionForm({
                   />
                 </label>
                 <label className={field}>
-                  <span className={`${fieldLabel} lg:text-label`}>Horizonte (sessões)</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'horizon_sessions').label}</span>
                   <Input
                     className={`${fieldControl} lg:text-control`}
                     type="number"
@@ -610,7 +607,7 @@ export function PositionForm({
                   />
                 </label>
                 <label className={`${field} col-span-full`}>
-                  <span className={`${fieldLabel} lg:text-label`}>Avaliar em</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'evaluate_on').label}</span>
                   <Input
                     className={`${fieldControl} lg:text-control`}
                     type="date"
@@ -632,7 +629,7 @@ export function PositionForm({
               {validationError}
             </p>
           )}
-          {create.isError && <ErrorState error={create.error} title="Posição não registrada" />}
+          {create.isError && <ErrorState error={create.error} title={p.copy('error_title', 'create_position').label} />}
 
           <div className="mt-[4px] flex flex-wrap justify-end gap-[8px] max-sm:grid max-sm:grid-cols-[minmax(0,1fr)]">
             <Button

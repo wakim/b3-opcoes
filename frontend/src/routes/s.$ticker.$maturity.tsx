@@ -34,7 +34,8 @@ function SeriesPage() {
   const { ticker, maturity } = Route.useParams()
   const [view, setView] = useState<'price' | 'iv'>('price')
   const [modal, setModal] = useState<ModalTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
+  const openMetric: OpenMetric = (field, label, value, term, variant, params) =>
+    setModal({ field, label, value, term, variant, params })
 
   const series = useQuery({
     queryKey: ['series', ticker, maturity],
@@ -59,11 +60,11 @@ function SeriesPage() {
   const sessionSpan = sessionX ? sessionX[sessionX.length - 1] - sessionX[0] + 1 : history.length
   const historyDetails = history.map((point, index) => {
     const parts: string[] = []
-    if (point.strike_brl != null) parts.push(`${p.copy('strike').label} ${brl(point.strike_brl)}`)
+    if (point.strike_brl != null) parts.push(p.copy('series', 'strike_value', { strike: p.copy('strike').label, value: brl(point.strike_brl) }).label)
     if (legChange[index]) parts.push(p.copy('chart', 'leg').label)
     if (sessionX && index > 0) {
       const idle = sessionX[index] - sessionX[index - 1] - 1
-      if (idle > 0) parts.push(`${idle} ${idle > 1 ? 'pregões' : 'pregão'} sem negócio antes`)
+      if (idle > 0) parts.push(p.copy('series', idle > 1 ? 'no_trade_before_many' : 'no_trade_before_one', { count: idle }).label)
     }
     return parts.length ? parts.join(' · ') : null
   })
@@ -73,23 +74,22 @@ function SeriesPage() {
       <Link className="mb-[12px] inline-flex min-h-[44px] items-center font-mono text-[calc(12px*var(--font-scale))] text-[color:var(--text-2)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label" to="/t/$ticker" params={{ ticker }}>
         <span aria-hidden="true">‹</span> {ticker}
       </Link>
-      <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">Série</h1>
+      <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{p.copy('screen', 'serie').label}</h1>
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-[6px] border border-border bg-border">
-        <div className={IDC}><dt className={IDT}>Contrato</dt><dd className={IDD_NUM}>{data.ticker}</dd></div>
-        <div className={IDC}><dt className={IDT}>Lado / estilo</dt><dd className={IDD}>{p.side(data.side)} / {data.style ? p.style(data.style) : p.copy('option_style', 'unknown').label}</dd></div>
+        <div className={IDC}><dt className={IDT}>{p.copy('series', 'contract').label}</dt><dd className={IDD_NUM}>{data.ticker}</dd></div>
+        <div className={IDC}><dt className={IDT}>{p.copy('series', 'side_style').label}</dt><dd className={IDD}>{p.side(data.side)} / {data.style ? p.style(data.style) : p.copy('option_style', 'unknown').label}</dd></div>
         <div className={IDC}><dt className={IDT}>{p.copy('strike', 'expanded').label}</dt><dd className={IDD_NUM}>{brl(data.strike_brl)}</dd></div>
         <div className={IDC}><dt className={IDT}>{p.copy('maturity').label}</dt><dd className={IDD_NUM}>{data.maturity}</dd></div>
         <div className={IDC}><dt className={IDT}>{p.copy('leg').label}</dt><dd className={IDD_NUM}>{data.leg_id}</dd></div>
       </dl>
 
-      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Último ponto · {data.last.date}</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('series', 'last_point', { date: data.last.date }).label}</h2>
       <MetricGrid>
-        <Metric label="Data" value={data.last.date} />
+        <Metric term="table" variant="date" value={data.last.date} />
         <GlossaryMetric
           field="mid_brl"
-          label="Preço"
-          term={p.metric('mid_brl') ?? 'spot'}
+          term="spot"
           value={brl(data.last.mid_brl ?? data.last.close_brl)}
           onOpen={openMetric}
           emphasis
@@ -139,19 +139,19 @@ function SeriesPage() {
       </MetricGrid>
 
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
-        <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Histórico</h2>
+        <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('screen', 'history_title').label}</h2>
         <ToggleGroup
           type="multiple"
           value={[view]}
           onValueChange={(values) => { if (values.length) setView(values[values.length - 1] as 'price' | 'iv') }}
           className="flex flex-wrap gap-[4px]"
-          aria-label="Série do gráfico"
+          aria-label={p.copy('series', 'chart_aria').label}
         >
           <ToggleGroupItem
             value="price"
             className="h-[44px] rounded-[4px] border border-border bg-card px-[12px] py-[8px] font-mono text-[calc(11.5px*var(--font-scale))] font-normal whitespace-normal tabular-nums text-[color:var(--text-2)] lg:text-control data-[state=on]:border-input data-[state=on]:bg-muted data-[state=on]:text-foreground focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary"
           >
-            Preço
+            {p.copy('table', 'price').label}
           </ToggleGroupItem>
           <ToggleGroupItem
             value="iv"
@@ -165,12 +165,12 @@ function SeriesPage() {
         labels={labels}
         series={[
           {
-            label: view === 'price' ? 'Preço' : p.copy('iv_pct').label,
+            label: view === 'price' ? p.copy('table', 'price').label : p.copy('iv_pct').label,
             values: history.map((point) => (view === 'price' ? point.close_brl : point.iv_pct)),
           },
         ]}
         formatValue={(v) => (view === 'price' ? brl(v) : fmt(v, 1))}
-        ariaLabel={`Histórico de ${view === 'price' ? 'preço' : p.copy('iv_pct').label} de ${data.ticker}`}
+        ariaLabel={`${p.copy('screen', 'history_title').label} de ${view === 'price' ? p.copy('table', 'price').label : p.copy('iv_pct').label} de ${data.ticker}`}
         showPoints={history.length <= 30}
         xValues={sessionX}
         dashedGap={1}
@@ -180,15 +180,23 @@ function SeriesPage() {
         breakBefore={legChange}
         events={legEvents}
         eventLabels={{ leg: p.copy('chart', 'leg').label }}
-        caption={`${history.length} pregões com negócio em ${sessionSpan} do lake · preço = último negócio do dia, não cotação${legEvents.length ? ' · a linha não liga pernas diferentes' : ''}`}
+        caption={p.copy('series', 'history_caption', {
+          count: history.length,
+          span: sessionSpan,
+          legs: legEvents.length ? p.copy('series', 'history_legs').label : '',
+        }).label}
       />
-      {data.flags.length > 0 && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {data.flags.map((code) => p.flag(code).label).join(' · ')}</p>}
+      {data.flags.length > 0 && (
+        <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
+          {p.copy('flag', 'list', { items: data.flags.map((code) => p.flag(code).label).join(' · ') }).label}
+        </p>
+      )}
 
-      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Últimos pregões</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('screen', 'last_sessions').label}</h2>
       <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
         <TableHeader>
             <TableRow>
-              <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Data</TableHead>
+              <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('table', 'date').label}</TableHead>
               <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('spot', 'close').label}</TableHead>
               <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('iv_pct').label}</TableHead>
               <TableHead className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('delta').label}</TableHead>

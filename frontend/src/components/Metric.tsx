@@ -39,7 +39,8 @@ export function Metric({
   const resolved = useCopy(term ?? 'metric.generic', variant, params)
   const displayLabel = label ?? resolved.label
   const generic = useCopy('metric.generic', undefined, { ...params, label: displayLabel })
-  const help = hint ?? resolved.help ?? generic.help
+  // Com term, a ajuda é a da chave semântica; sem term, a genérica com o rótulo.
+  const help = hint ?? (term ? resolved.help : generic.help)
 
   const classes = [
     'block min-h-[44px] bg-card px-[12px] py-[10px] text-left text-foreground',

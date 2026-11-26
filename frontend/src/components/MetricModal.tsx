@@ -43,12 +43,16 @@ export function MetricModal({
   // O slug é sempre de `metricKeys.ts`; a chave semântica só decide texto.
   const semantic = target ? (target.term ?? presentationKeyForField(target.field)) : null
   const copy = useCopy(semantic ?? 'metric.generic', target?.variant ?? undefined, target?.params)
-  const title = target?.label ?? copy.label
+  // Com chave semântica, o rótulo resolvido vence o texto legado da superfície.
+  const title = semantic ? copy.label : (target?.label ?? copy.label)
   const help = semantic ? copy.help : undefined
   const eyebrow = useCopy('glossary', 'eyebrow').label
   const loadingLabel = useCopy('glossary', 'loading').label
   const errorLabel = useCopy('glossary', 'error').label
   const missingLabel = useCopy('glossary', 'missing').label
+  const panelLabel = useCopy('glossary', 'panel_label').label
+  const whatLabel = useCopy('glossary', 'what').label
+  const mistakeLabel = useCopy('glossary', 'mistake').label
   const entry = useQuery({
     queryKey: ['glossary', key],
     queryFn: ({ signal }) => apiGet<GlossaryDetail>(`/api/glossary/${key}`, signal),
@@ -75,14 +79,14 @@ export function MetricModal({
       {target && (
         <div className="grid gap-4">
           <div className="grid gap-1 rounded-[6px] border border-border bg-muted/30 p-4">
-            <span className="lg:text-label text-muted-foreground">no painel</span>
+            <span className="lg:text-label text-muted-foreground">{panelLabel}</span>
             <span className={`${num} lg:text-metric`}>{target.value}</span>
             {help && <span className="lg:text-label text-muted-foreground">{help}</span>}
           </div>
           {entry.isError && <ErrorState error={entry.error} title={errorLabel} />}
           {entry.isLoading && <p className="lg:text-label text-muted-foreground">{loadingLabel}</p>}
-          <Block title="O que é" text={definition} />
-          <Block title="Erro comum" text={mistake} />
+          <Block title={whatLabel} text={definition} />
+          <Block title={mistakeLabel} text={mistake} />
           {!key && (
             <p className="lg:text-label text-muted-foreground">
               {missingLabel}

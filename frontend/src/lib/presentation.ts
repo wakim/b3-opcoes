@@ -90,6 +90,34 @@ export const PRESENTATION = {
     'Métrica', 'Métrica', 'O que é {label}', 'O que é {label}',
   ),
 
+  help: e(
+    'Ajuda', 'Ajuda',
+    'Explicação curta sobre o termo.',
+    'Explicação curta sobre o número.',
+  ),
+
+  summary: e(
+    'Resumo', 'Resumo do recorte',
+    'Contagem do que foi considerado no recorte.',
+    'Quantos papéis entraram na contagem.',
+    undefined,
+    {
+      universe: v('Universo', 'papéis acompanhados'),
+      metric: v('Com métrica', 'papéis com número'),
+      excluded: v('Excluídos', 'papéis sem número'),
+    },
+  ),
+
+  table: e(
+    'Tabela', 'Tabela',
+    undefined, 'Lista de valores em colunas.',
+    undefined,
+    {
+      date: v('Data', 'data do pregão'),
+      price: v('Preço', 'preço de fechamento'),
+    },
+  ),
+
   language: e(
     'Idioma', 'Idioma', 'Alterna a leitura técnica e a leitura simples.',
     'Escolha como os termos aparecem na tela.',
@@ -108,7 +136,7 @@ export const PRESENTATION = {
     'iv-atm-30d',
     {
       median: v('Volatilidade implícita mediana', 'Volatilidade implícita (IV) mediana'),
-      option: v('Volatilidade implícita', 'Volatilidade implícita (IV)'),
+      option: v('IV ATM 30d', 'Volatilidade implícita (IV) no dinheiro (ATM), 30 dias'),
       entry: v('Volatilidade implícita 30d na entrada', 'Volatilidade implícita (IV) no dinheiro (ATM) na entrada'),
       session: v('Volatilidade implícita 30d na sessão', 'Volatilidade implícita (IV) no dinheiro (ATM) na sessão'),
       close: v('Volatilidade implícita 30d no fechamento', 'Volatilidade implícita (IV) no dinheiro (ATM) no fechamento'),
@@ -122,8 +150,9 @@ export const PRESENTATION = {
     'volatilidade-implicita-iv',
     {
       column: v('IV', 'Volatilidade implícita (IV)'),
-      entry: v('IV na entrada', 'Volatilidade implícita (IV) na entrada'),
-      shift: v('Deslocamento de IV', 'Mudança da volatilidade implícita (IV)'),
+      entry: v('Volatilidade implícita na entrada', 'Volatilidade implícita (IV) na entrada'),
+      entry_compact: v('IV na entrada', 'Volatilidade implícita (IV) na entrada'),
+      shift: v('Deslocamento de IV {shift}', 'Mudança da volatilidade implícita (IV) {shift}'),
     },
   ),
 
@@ -145,7 +174,7 @@ export const PRESENTATION = {
     'vrp',
     {
       median: v('Prêmio de volatilidade mediano', 'Prêmio de volatilidade (VRP) mediano'),
-      option: v('Prêmio de volatilidade', 'Prêmio de volatilidade (VRP)'),
+      option: v('VRP', 'Prêmio de volatilidade (VRP)'),
     },
   ),
 
@@ -200,6 +229,12 @@ export const PRESENTATION = {
     'Data em que a opção expira.',
     'Data em que a opção deixa de valer.',
     'strike-e-vencimento',
+    {
+      previous: v('Vencimento anterior', 'Vencimento anterior'),
+      choose: v('Escolher vencimento', 'Escolher a data de vencimento'),
+      next: v('Próximo vencimento', 'Próximo vencimento'),
+      plural: v('vencimentos', 'datas de vencimento'),
+    },
   ),
   sessions_to_expiry: e(
     'Sessões até vencimento', 'Pregões até o vencimento',
@@ -281,13 +316,13 @@ export const PRESENTATION = {
     {
       expanded: v('Preço de exercício', 'Preço de exercício (strike)'),
       current: v('Strike atual', 'Preço de exercício (strike) atual'),
-      plural: v('Strikes', 'Preços de exercício (strikes)'),
+      plural: v('strikes', 'preços de exercício (strikes)'),
     },
   ),
 
   spread: e(
     'Spread', 'Spread (diferença entre compra e venda)',
-    'Diferença entre o melhor preço de compra e o de venda.',
+    'Spread percentual do fechamento; reais quando não há percentual',
     'Distância entre o preço de compra e o de venda.',
     'spread',
     {
@@ -297,7 +332,7 @@ export const PRESENTATION = {
   ),
 
   bid_ask: e(
-    'Bid/ask', 'Oferta de compra e venda (bid/ask)',
+    'Ofertas (bid/ask)', 'Ofertas de compra e venda (bid/ask)',
     'Melhor preço de compra e melhor preço de venda.',
     'Preços que o mercado está disposto a pagar e a cobrar.',
     'premio-bid-e-ask',
@@ -309,7 +344,10 @@ export const PRESENTATION = {
     'Último preço negociado da ação na sessão; o painel é sempre D-1.',
     'Preço da ação no fim do pregão.',
     'preco-spot-fechamento',
-    { close: v('Fechamento', 'Preço de fechamento (spot)') },
+    {
+      close: v('Fechamento', 'Preço de fechamento (spot)'),
+      form: v('Preço (spot / fechamento)', 'Preço de fechamento (spot)'),
+    },
   ),
 
   call: e(
@@ -349,6 +387,9 @@ export const PRESENTATION = {
     {
       unavailable: v('payoff indisponível', 'resultado no vencimento indisponível'),
       chart: v('Payoff', 'Resultado no vencimento (payoff)'),
+      unbounded_loss: v('ilimitada', 'sem limite'),
+      unbounded_gain: v('ilimitado', 'sem limite'),
+      maturity_aria: v('Payoff no vencimento de {ticker}', 'Resultado no vencimento da posição de {ticker}'),
     },
   ),
 
@@ -357,6 +398,7 @@ export const PRESENTATION = {
     'Preço em que a posição não tem lucro nem prejuízo.',
     'Preço em que a posição empata.',
     'breakeven',
+    { plural: v('Breakevens', 'preços de empate') },
   ),
   net_premium: e(
     'Prêmio líquido', 'Prêmio líquido da estrutura',
@@ -396,7 +438,9 @@ export const PRESENTATION = {
     'cenario-spot-iv-dias',
     {
       unavailable: v('cenários indisponíveis', 'cenários indisponíveis'),
-      day0: v('Dia 0', 'Dia de hoje (cenário inicial)'),
+      no_day0: v('sem cenário no dia 0', 'sem cenário para o dia de hoje'),
+      unavailable_reason: v('cenários indisponíveis: {reason}. O payoff no vencimento continua calculado.', 'cenários indisponíveis: {reason}. O resultado no vencimento continua calculado.'),
+      day0: v('Cenários no dia 0 (spot e choque de IV do backend)', 'Cenários no dia de hoje (preço e choque de volatilidade vindos do servidor)'),
     },
   ),
 
@@ -405,6 +449,23 @@ export const PRESENTATION = {
     'Conjunto de pernas montado.',
     'Conjunto de operações que formam a posição.',
     'perna-de-uma-posicao',
+    {
+      title: v('Montar estrutura', 'Montar uma estrutura'),
+      count: v('{count}/{max} pernas', '{count} de {max} operações'),
+      intro: v('Calculadora de payoff. {quantity}; a quantidade é em ações e não é multiplicada por 100. Nada é gravado.', 'Calculadora de resultado no vencimento. {quantity}; a quantidade conta ações e nada é multiplicado por 100. Nada é gravado.'),
+      empty: v('Expanda uma linha da cadeia e use {buy} ou {sell}, ou {add_stock} abaixo.', 'Abra uma linha das opções e use {buy} ou {sell}, ou {add_stock} abaixo.'),
+      empty_prefix: v('Expanda uma linha da cadeia e use ', 'Abra uma linha das opções e use '),
+      empty_or: v(' ou ', ' ou '),
+      empty_suffix: v(', ou {add_stock} abaixo.', ', ou {add_stock} abaixo.'),
+      remove_aria: v('Remover {ticker}', 'Remover a operação de {ticker}'),
+      quantity_aria: v('Quantidade de ações de {ticker}', 'Quantidade de ações da operação de {ticker}'),
+      stock_leg: v('Perna de ação', 'Operação com a ação'),
+      stock_side: v('Lado da ação', 'Comprar ou vender a ação'),
+      stock_quantity: v('Quantidade de ações da ação', 'Quantidade de ações'),
+      limit: v('Limite de {max} pernas atingido (o backend recusa mais).', 'Limite de {max} operações atingido; o servidor não aceita mais.'),
+      capital_over: v('O capital comprometido passa do capital informado.', 'O dinheiro necessário para a posição passa do limite informado.'),
+      summary: v('{maturity}{structure} {version} · sessão {session}{forward}', '{maturity}{structure} {version} · pregão {session}{forward}'),
+    },
   ),
   liquid_series: e(
     'Séries líquidas', 'Séries com negócio suficiente',
@@ -413,7 +474,7 @@ export const PRESENTATION = {
   ),
   volume: e(
     'Volume', 'Volume financeiro negociado',
-    'Valor financeiro negociado na sessão.',
+    'Volume financeiro da sessão, em reais',
     'Total em reais negociado no pregão.',
     'volume-e-open-interest',
   ),
@@ -445,6 +506,27 @@ export const PRESENTATION = {
       order_note: v('ordenado por liquidez; não é recomendação', 'ordenado por facilidade de negócio; não é recomendação'),
       empty_papers: v('nenhum papel com série líquida nesta sessão', 'nenhum papel com opções com negócio suficiente nesta sessão'),
       empty_series: v('nenhuma série líquida nesta sessão', 'nenhuma opção com negócio suficiente nesta sessão'),
+      papers_count: v('{count} papéis com série líquida', '{count} papéis com opções com negócio suficiente'),
+      paper_column: v('Papel', 'Papel'),
+      close_column: v('Fechamento', 'Preço de fechamento'),
+      liquid_series_column: v('Séries líquidas', 'Opções com negócio suficiente'),
+      expiries_column: v('Vencimentos', 'Datas de vencimento'),
+      iv_column: v('Volatilidade implícita 30d', 'Volatilidade implícita (IV) no dinheiro (ATM), 30 dias'),
+      vrp_column: v('Prêmio de volatilidade', 'Prêmio de volatilidade (VRP)'),
+      show_top: v('Mostrar top 10', 'Mostrar só os 10 primeiros'),
+      show_all: v('Ver todos os {count}', 'Ver todos os {count} papéis'),
+      showing: v('Mostrando {returned} de {total} séries por volume.', 'Mostrando {returned} de {total} opções, por volume.'),
+      series_column: v('Série', 'Opção'),
+      side_style_column: v('Lado / estilo', 'Compra ou venda / estilo'),
+      region_papers: v('Papéis com mais séries líquidas', 'Papéis com mais opções com negócio suficiente'),
+      region_series: v('Séries líquidas mais negociadas', 'Opções com negócio suficiente mais negociadas'),
+      type_header: v('Tipo de liquidez', 'Tipo de listagem: papéis ou opções'),
+      volume_header: v('{label}. {help}', '{label}. {help}'),
+      spread_header: v('{label}. {help}', '{label}. {help}'),
+      open_ticker: v('Abrir {ticker}', 'Abrir o papel {ticker}'),
+      open_series: v('Abrir {ticker}, vencimento {maturity}', 'Abrir a opção {ticker}, com vencimento em {maturity}'),
+      volume_cell: v('Volume financeiro: {value}', 'Total negociado em reais: {value}'),
+      liquid: v('líquida', 'com negócio suficiente'),
     },
   ),
 
@@ -478,6 +560,10 @@ export const PRESENTATION = {
     'Não foi possível avaliar porque faltou dado.',
     'sem-dados-void',
     {
+      metric_unavailable: v('métrica ausente na sessão', 'não havia valor da métrica nesse pregão'),
+      unsupported_metric: v('métrica não suportada', 'essa métrica não pode ser avaliada'),
+      invalid_observation: v('observado inválido', 'o valor observado não serve para avaliar'),
+      prediction_parent_missing: v('previsão sem pai válido', 'a previsão não está ligada a uma posição ou decisão'),
       reason: v('Motivo', 'Motivo da ausência de dado'),
       count: v('Sem dados', 'Quantidade sem dados'),
     },
@@ -525,6 +611,27 @@ export const PRESENTATION = {
     'Comparação entre as previsões e os resultados.',
     'Comparação das suas previsões com o que aconteceu.',
     'calibracao-pessoal',
+    {
+      evaluated: v('Previsões avaliadas', 'previsões com resultado para comparar'),
+      hits: v('Acertos', 'previsões confirmadas'),
+      misses: v('Erros', 'previsões não confirmadas'),
+      voids: v('Sem dados', 'sem dado para avaliar'),
+      rate: v('Taxa', 'Taxa de acerto'),
+      region: v('Calibração por métrica e horizonte', 'Comparação das previsões por medida e prazo'),
+      intro: v('Por métrica e horizonte.', 'A comparação é separada por medida e prazo.'),
+      note: v('Não há comparação com sinal nem recomendação.', 'Estes números não são um sinal nem uma recomendação.'),
+    },
+  ),
+
+  position: e(
+    'Posição', 'Posição',
+    'Operação aberta na carteira.',
+    'Operação que você mantém em andamento.',
+    undefined,
+    {
+      singular: v('posição aberta', 'posição em andamento'),
+      open_plural: v('Posições abertas', 'posições em andamento'),
+    },
   ),
 
   stamp_age: e(
@@ -554,6 +661,8 @@ export const PRESENTATION = {
     'Aviso curto sobre o número.',
     undefined,
     {
+      none: v('sem flags', 'sem alertas'),
+      list: v('flags: {items}', 'alertas: {items}'),
       near_expiry: v('vencimento próximo', 'vencimento próximo'),
       itm: v('dentro do dinheiro', 'dentro do dinheiro (ITM)'),
       delta_drift: v('delta mudou', 'o delta (Δ) mudou'),
@@ -564,6 +673,7 @@ export const PRESENTATION = {
       mark_missing: v('marcação ausente', 'sem marcação de preço'),
       gregas_parciais: v('gregas parciais', 'gregas incompletas'),
       unbounded_loss: v('perda ilimitada', 'perda sem teto'),
+      unbounded_gain: v('ganho ilimitado', 'ganho sem teto'),
       payoff_unavailable: v('payoff indisponível', 'resultado no vencimento indisponível'),
       payoff_truncated: v('payoff truncado', 'resultado no vencimento cortado'),
       close_snapshot_missing: v('snapshot do fechamento ausente', 'falta o retrato do fechamento'),
@@ -571,6 +681,8 @@ export const PRESENTATION = {
       iv_expired: v('iv_expired', 'vencimento no próprio dia: só valor intrínseco'),
       no_rates: v('no_rates', 'sem curva de taxa na sessão'),
       no_forward: v('no_forward', 'sem preço a termo utilizável'),
+      forward_unavailable: v('forward_unavailable', 'sem preço a termo utilizável'),
+      no_iv: v('no_iv', 'sem volatilidade implícita'),
       sparse_chain: v('sparse_chain', 'grade de opções esparsa'),
       no_trade_5d: v('no_trade_5d', 'sem negócio na série'),
       crossing_inconsistent_slope: v('crossing_inconsistent_slope', 'cruzamento de paridade inconsistente'),
@@ -579,6 +691,40 @@ export const PRESENTATION = {
       invalid_tenor: v('invalid_tenor', 'prazo inválido'),
       forward_outlier: v('forward_outlier', 'preço a termo fora do esperado'),
       leg_ambiguity: v('leg_ambiguity', 'perna com identificação ambígua'),
+      inconsistent: v('inconsistent', 'série inconsistente'),
+      monotonicity_violation: v('monotonicity_violation', 'volatilidade não obedece à ordem dos preços de exercício'),
+      butterfly_violation: v('butterfly_violation', 'curvatura do smile inconsistente'),
+      bfly_negative: v('bfly_negative', 'curvatura do smile negativa'),
+      calendar_violation: v('calendar_violation', 'volatilidade menor no vencimento seguinte'),
+      t_estimated: v('t_estimated', 'prazo estimado pelo calendário'),
+      wide_spread: v('wide_spread', 'diferença entre compra e venda larga'),
+      american_call_ex_div: v('american_call_ex_div', 'call americana com provento antes do vencimento'),
+      american_call_itm: v('american_call_itm', 'call americana dentro do dinheiro'),
+      scale_event: v('scale_event', 'desdobramento ou grupamento na sessão'),
+      scale_adjusted: v('scale_adjusted', 'preços anteriores ajustados pelo desdobramento'),
+      dividends_not_adjusted: v('dividends_not_adjusted', 'proventos não descontados dos preços'),
+      no_event_coverage: v('no_event_coverage', 'sem cobertura de evento corporativo na série'),
+      earnings_before_expiry: v('earnings_before_expiry', 'resultado previsto antes do vencimento'),
+      illiquid_leg: v('illiquid_leg', 'perna sem negócio suficiente'),
+      scenarios_unavailable: v('scenarios_unavailable', 'cenários indisponíveis'),
+      zero_strike: v('zero_strike', 'preço de exercício zerado'),
+      leg_mismatch: v('leg_mismatch', 'perna com preço de exercício divergente'),
+      style_unknown: v('style_unknown', 'estilo da opção não informado'),
+      iv_extrapolated: v('iv_extrapolated', 'volatilidade extrapolada'),
+      no_short_expiry: v('no_short_expiry', 'sem vencimento curto'),
+      no_expiry: v('no_expiry', 'sem vencimento'),
+      invalid_variance: v('invalid_variance', 'variância inválida'),
+      no_pairs: v('no_pairs', 'sem pares para a paridade'),
+      no_otm_crossing: v('no_otm_crossing', 'sem cruzamento fora do dinheiro'),
+      ols_few_pairs: v('ols_few_pairs', 'poucos pares para o ajuste'),
+      ols_nonpositive_slope: v('ols_nonpositive_slope', 'inclinação do ajuste não positiva'),
+      put_not_european: v('put_not_european', 'put não europeia'),
+      invalid_quote: v('invalid_quote', 'cotação inválida'),
+      duplicate_strike: v('duplicate_strike', 'preço de exercício repetido'),
+      no_90d: v('no_90d', 'sem janela de 90 pregões'),
+      oi_unavailable: v('oi_unavailable', 'posições em aberto indisponíveis'),
+      volume_unavailable: v('volume_unavailable', 'volume indisponível'),
+      iv_inconsistent_input: v('iv_inconsistent_input', 'preço da opção inconsistente'),
     },
   ),
 
@@ -713,6 +859,7 @@ export const PRESENTATION = {
       frontend_missing: v('Não foi possível carregar', 'interface não disponível'),
       glossary_missing: v('Não foi possível carregar', 'verbete indisponível'),
       lake_missing: v('Não foi possível carregar', 'arquivos de dados indisponíveis'),
+      lake_unavailable: v('Saúde do lake indisponível', 'arquivos de dados indisponíveis'),
       storage_error: v('Não foi possível carregar', 'falha ao salvar'),
       bad_config: v('Não foi possível carregar', 'configuração inválida'),
       internal_error: v('Não foi possível carregar', 'erro interno'),
@@ -747,6 +894,7 @@ export const PRESENTATION = {
     undefined,
     {
       options: v('nenhuma série neste recorte', 'nenhuma opção neste recorte'),
+      chain_side: v('nenhuma série neste lado', 'nenhuma opção deste lado (compra ou venda)'),
       series: v('nenhuma série neste recorte', 'nenhuma série neste recorte'),
       papers: v('nenhum papel nesta seção do recorte', 'nenhum papel nesta seção'),
       positions: v('nenhuma posição aberta', 'nenhuma posição aberta'),
@@ -788,6 +936,9 @@ export const PRESENTATION = {
       close: v('Token para fechar', 'Chave para encerrar'),
       change: v('Trocar token', 'Trocar chave'),
       description: v('A leitura é liberada na tailnet. O token libera apenas as escritas desta carteira.', 'A leitura é liberada na tailnet. A chave libera apenas as escritas desta carteira.'),
+      description_journal: v('A leitura do diário é liberada na tailnet. O token libera apenas o registro de decisões.', 'A leitura do diário é liberada na tailnet. A chave libera só o registro das suas decisões.'),
+      description_close: v('O registro grava um evento append-only e exige o token de escrita.', 'O encerramento grava um registro que só acrescenta e exige a chave de escrita.'),
+      register: v('Token para registrar', 'Chave para registrar'),
       compact_description: v('O fechamento grava um evento no journal e exige o token de escrita.', 'O encerramento grava um registro e exige a chave de escrita.'),
       note: v('Fica somente neste navegador e é enviado no cabeçalho das escritas. Não aparece na tela nem no log.', 'Fica somente neste navegador e é enviado nas escritas. Não aparece na tela nem no log.'),
       required_error: v('digite o token do aplicativo', 'digite a chave do aplicativo'),
@@ -804,14 +955,15 @@ export const PRESENTATION = {
       sell: v('Vender', 'Vender'),
       add_stock: v('Adicionar ação', 'Adicionar ação'),
       add_option: v('Adicionar opção', 'Adicionar opção'),
-      remove: v('Remover', 'Remover'),
+      remove: v('remover', 'remover'),
       calculate: v('Calcular', 'Calcular'),
-      calculating: v('Calculando…', 'Calculando…'),
+      calculate_count: v('Calcular ({count})', 'Calcular ({count})'),
+      calculating: v('calculando…', 'calculando…'),
       clear: v('Limpar', 'Limpar'),
       new_position: v('Nova posição', 'Nova posição'),
       new_decision: v('Nova decisão', 'Nova decisão'),
       register_position: v('Registrar posição', 'Registrar posição'),
-      registering: v('Registrando…', 'Registrando…'),
+      registering: v('registrando…', 'registrando…'),
       register_decision: v('Registrar decisão', 'Registrar decisão'),
       close_position: v('Fechar posição', 'Encerrar posição'),
       confirm_close: v('Confirmar fechamento', 'Confirmar encerramento'),
@@ -826,6 +978,155 @@ export const PRESENTATION = {
       liquid: v('Líquidas', 'Com negócio suficiente'),
       all: v('Todas', 'Todas'),
       understand: v('Entendi', 'Entendi'),
+      clear_draft: v('Fechar formulário', 'Limpar o que foi preenchido'),
+    },
+  ),
+
+  form: e(
+    'Formulário', 'Formulário',
+    'Campos usados nas fichas de posição e decisão.',
+    'Campos para preencher a posição ou a decisão.',
+    undefined,
+    {
+      metric: v('Métrica', 'Medida usada na previsão'),
+      operator: v('Operador', 'Comparação'),
+      value: v('Valor', 'Valor de referência'),
+      evaluate_on: v('Avaliar em', 'Data para conferir'),
+      thesis: v('Tese', 'Por que você decidiu isso'),
+      context: v('Contexto', 'Situação na decisão'),
+      notes: v('Notas', 'Anotações'),
+      underlying: v('Ativo-objeto', 'Ação da operação'),
+      quantity: v('Quantidade', 'Quantidade de ações'),
+      entry_price: v('Preço de entrada', 'Preço pago na entrada'),
+      entry_strike: v('Strike de entrada', 'Preço de exercício na entrada'),
+      leg_type: v('Tipo de perna', 'Tipo de operação'),
+      capital_limit: v('Limite de capital', 'Valor máximo para a posição'),
+      prediction_checkbox: v('Registrar previsão', 'Quero conferir esta decisão depois'),
+      session_optional: v('Sessão (opcional)', 'Data do pregão (pode ficar em branco)'),
+      session_date_optional: v('Data da sessão (opcional)', 'Data do pregão (pode ficar em branco)'),
+      horizon_sessions: v('Horizonte (sessões)', 'Prazo em pregões'),
+      decision_type: v('Tipo de decisão', 'Que decisão você registrou'),
+      ticker: v('Ticker', 'Código do papel'),
+      ticker_leg: v('Ticker da perna {n}', 'Código do papel da perna {n}'),
+      type_leg: v('Tipo da perna {n}', 'Tipo de operação da perna {n}'),
+      side_leg: v('Lado da perna {n}', 'Compra ou venda da perna {n}'),
+      quantity_leg: v('Quantidade de ações da perna {n}', 'Quantidade de ações da perna {n}'),
+      actions: v('Ações', 'Quantidade de ações'),
+      legs_plural: v('Pernas', 'Operações da posição'),
+      optional: v('(opcional)', '(pode ficar em branco)'),
+      price_optional: v('(R$, opcional)', '(em reais, pode ficar em branco)'),
+      quantity_note: v('A quantidade é em ações. 100 ações = 1 contrato padrão; nada é multiplicado por 100.', 'A quantidade informada conta ações. Cada 100 ações formam 1 contrato padrão; nada é multiplicado por 100.'),
+      position_data: v('Dados da posição', 'Campos da posição'),
+      decision_data: v('Dados da decisão', 'Campos da decisão'),
+      add_prediction: v('Adicionar previsão avaliável', 'Quero conferir este resultado depois'),
+      prediction_note: v('Notas continuam texto livre. Só os campos abaixo entram na calibração.', 'As notas são texto livre; só os campos abaixo viram resultado para conferir.'),
+      context_placeholder: v('contexto da decisão', 'por que você decidiu isso'),
+      notes_placeholder: v('o que você decidiu e por quê', 'o que você decidiu e por quê'),
+    },
+  ),
+
+  screen: e(
+    'Tela', 'Tela',
+    undefined, 'Nome da tela aberta.',
+    undefined,
+    {
+      hoje: v('Hoje', 'Painel de hoje'),
+      carteira: v('Carteira', 'Minhas posições'),
+      diario: v('Diário', 'Diário de decisões'),
+      serie: v('Série', 'Histórico da opção'),
+      portfolio_note: v('Posições e marcação EOD do journal', 'Posições e preços de fechamento registrados no diário'),
+      positions: v('Posições', 'Minhas posições'),
+      chain_title: v('Cadeia de opções', 'Opções disponíveis'),
+      iv_term_title: v('Volatilidade implícita por vencimento', 'Volatilidade implícita (IV) em cada data de vencimento'),
+      history_title: v('Histórico', 'Histórico da opção'),
+      last_sessions: v('Últimos pregões', 'Últimos dias de pregão'),
+      counts: v('{expiries} vencimentos · {strikes} strikes · {history} dias de histórico', '{expiries} datas de vencimento · {strikes} preços de exercício · {history} dias de histórico'),
+      history_days: v('dias de histórico', 'dias de histórico'),
+      iv_term_aria: v('{iv} por vencimento de {ticker}', '{iv} em cada vencimento de {ticker}'),
+      iv_rv_title: v('{iv} vs {rv}', '{iv} comparada com {rv}'),
+      iv_rv_aria: v('{iv} e {rv} de {ticker}', '{iv} e {rv} do papel {ticker}'),
+      term_caption: v('{iv} em {with_iv} de {total} vencimentos{illiquid} · {axis}', '{iv} em {with_iv} de {total} vencimentos{illiquid} · {axis}'),
+      term_caption_illiquid: v(' · {count} com ATM sem séries líquidas', ' · {count} sem opções com negócio suficiente no dinheiro'),
+      term_detail: v('{count} séries líquidas{forward}', '{count} opções com negócio suficiente{forward}'),
+      term_detail_forward: v(' · {forward} {value}', ' · {forward} {value}'),
+      term_with_iv: v('Vencimentos com {iv}', 'Vencimentos com {iv}'),
+      term_note: v('{iv} é a do {strike} de |{delta}| mais próximo de 0,5; {liquid} = séries líquidas no vencimento.', '{iv} é a medida da opção de {strike} mais próxima do dinheiro; {liquid} são as opções do vencimento.'),
+      term_without_iv: v('Ver os {count} vencimentos sem {iv}', 'Ver os {count} vencimentos sem {iv}'),
+      chain_filter: v('Filtro da cadeia', 'Filtro das opções'),
+    },
+  ),
+
+  detail: e(
+    'Detalhe', 'Detalhe da posição',
+    undefined, 'Campos e tabelas da ficha de posição.',
+    undefined,
+    {
+      record: v('Registro', 'Identificação da posição'),
+      opened: v('Aberta em', 'Data da entrada'),
+      closed: v('Fechada em', 'Data do encerramento'),
+      ticker: v('Ticker', 'Código do papel'),
+      actions: v('Ações', 'Quantidade de ações'),
+      entry: v('Entrada', 'Valores na entrada'),
+      marks_title: v('Marcação da sessão', 'Preços da última sessão'),
+      mark: v('Marca', 'Preço marcado'),
+      one_sided: v('Um lado', 'Oferta de um lado só'),
+      thesis_title: v('Tese vs realidade', 'O que você esperava e o que aconteceu'),
+      condition: v('Condição', 'Comparação prevista'),
+      eval_on: v('Avaliar em', 'Data para conferir'),
+      registered_legs: v('Pernas registradas', 'Operações registradas'),
+      legs_region: v('Tabela horizontal das pernas registradas', 'Tabela das operações registradas'),
+      marks_region: v('Tabela horizontal da marcação da sessão', 'Tabela dos preços da última sessão'),
+      no_prediction: v('Sem previsão estruturada; esta posição não entra na calibração.', 'Sem previsão registrada; esta posição não entra na comparação.'),
+      entry_prices_note: v('Preços de entrada do journal; o backend calcula todos os pontos.', 'Preços de entrada vindos do diário; o servidor calcula todos os pontos.'),
+      close_title: v('Fechamento', 'Encerramento'),
+      close_note: v('Em branco, o backend usa a última sessão disponível.', 'Se ficar em branco, o servidor usa a última sessão disponível.'),
+    },
+  ),
+
+  series: e(
+    'Série', 'Série da opção',
+    undefined, 'Histórico de uma opção.',
+    undefined,
+    {
+      contract: v('Contrato', 'Identificação da opção'),
+      side_style: v('Lado / estilo', 'Compra ou venda / estilo'),
+      chart_aria: v('Série do gráfico', 'Linha do gráfico da opção'),
+      last_point: v('Último ponto · {date}', 'Último registro · {date}'),
+      history_caption: v('{count} pregões com negócio em {span} do lake · preço = último negócio do dia, não cotação{legs}', '{count} pregões com negócio em {span} no arquivo · preço = último negócio do dia, não cotação{legs}'),
+      history_legs: v(' · a linha não liga pernas diferentes', ' · a linha não liga operações com preços de exercício diferentes'),
+      no_trade_before: v('pregões sem negócio antes', 'dias sem negócio antes'),
+      no_trade_before_one: v('{count} pregão sem negócio antes', '{count} dia sem negócio antes'),
+      no_trade_before_many: v('{count} pregões sem negócio antes', '{count} dias sem negócio antes'),
+      strike_value: v('{strike} {value}', '{strike} {value}'),
+    },
+  ),
+
+  journal: e(
+    'Diário', 'Diário de decisões',
+    undefined, 'Registro das suas decisões e previsões.',
+    undefined,
+    {
+      title: v('Diário', 'Diário de decisões'),
+      intro: v('Decisões, previsões estruturadas e desfecho {eod}', 'Decisões, previsões e resultados de {eod}'),
+      no_decision: v('Nenhuma decisão registrada.', 'Você ainda não registrou nenhuma decisão.'),
+      no_prediction: v('Sem previsão estruturada; esta decisão não entra na calibração.', 'Sem previsão registrada; esta decisão não entra na comparação.'),
+    },
+  ),
+
+  error_title: e(
+    'Não foi possível carregar', 'Não foi possível carregar',
+    undefined, 'Motivo da falha.',
+    undefined,
+    {
+      wallet: v('Carteira indisponível', 'Não foi possível abrir a carteira'),
+      position: v('Posição indisponível', 'Não foi possível abrir a posição'),
+      close: v('Fechamento não registrado', 'Não foi possível registrar o encerramento'),
+      calibration: v('Calibração indisponível', 'Não foi possível mostrar a comparação'),
+      journal: v('Diário indisponível', 'Não foi possível abrir o diário'),
+      search: v('Busca indisponível', 'Não foi possível buscar papéis'),
+      decision: v('Decisão não registrada', 'Não foi possível registrar a decisão'),
+      create_position: v('Posição não registrada', 'Não foi possível registrar a posição'),
+      structure: v('Estrutura não avaliada', 'Não foi possível calcular a estrutura'),
     },
   ),
 
@@ -835,14 +1136,14 @@ export const PRESENTATION = {
     undefined,
     {
       no_iv: v('sem IV', 'sem volatilidade implícita'),
-      hollow: v('ponto vazado', 'ponto sem série líquida'),
-      band: v('faixa sem IV', 'faixa sem volatilidade implícita'),
-      dashed: v('tracejado', 'linha tracejada'),
+      hollow: v('ponto vazado: ATM sem série líquida', 'ponto vazio: no dinheiro (ATM) sem opção com negócio suficiente'),
+      band: v('faixa: intervalo sem IV', 'faixa: intervalo sem volatilidade implícita'),
+      dashed: v('traço tracejado: intervalo sem IV', 'linha tracejada: intervalo sem volatilidade implícita'),
       adjustment: v('ajuste de strike', 'mudança no preço de exercício'),
       pnl: v('P&L', 'Lucro/prejuízo (P&L)'),
       breakeven: v('breakeven', 'preço de empate'),
       axis_hint: v('eixo x proporcional ao tempo', 'eixo horizontal proporcional ao tempo'),
-      no_data: v('sem dado', 'sem dado para desenhar'),
+      no_data: v('sem pontos suficientes para desenhar', 'sem pontos suficientes para desenhar'),
       price_title: v('Fechamento do papel', 'Preço de fechamento da ação'),
       option_title: v('Histórico', 'Histórico'),
       corporate: v('provento / desdobramento', 'provento ou desdobramento'),
@@ -851,6 +1152,29 @@ export const PRESENTATION = {
       leg: v('troca de perna', 'mudança no preço de exercício'),
       no_trade_gap: v('tracejado: pregões sem negócio', 'linha tracejada: dias sem negócio'),
       no_trade: v('sem negócio no pregão', 'sem negócio neste dia'),
+      maximum: v('máx {value}', 'valor máximo: {value}'),
+      minimum: v('mín {value}', 'valor mínimo: {value}'),
+      keyboard_points: v('Use as setas para percorrer os pontos.', 'Use as setas do teclado para percorrer os pontos do gráfico.'),
+      keyboard_payoff: v('Use as setas para percorrer o payoff.', 'Use as setas do teclado para percorrer o resultado no vencimento.'),
+      vertical_dashed: v('tracejado vertical: {label}', 'linha tracejada vertical: {label}'),
+      axis_price: v('eixo x: preço do papel (R$)', 'eixo horizontal: preço da ação, em reais'),
+      price_tip: v('Preço {value}', 'Preço do papel {value}'),
+      mark_dividend: v('data ex de provento', 'data em que o provento deixa de contar'),
+      mark_dividend_value: v('data ex de provento ({value}/ação, medido no strike)', 'data em que o provento deixa de contar ({value} por ação, medido no preço de exercício)'),
+      mark_scale: v('desdobramento/grupamento ×{value} — preços anteriores ajustados', 'desdobramento ou grupamento ×{value} — preços anteriores ajustados'),
+      mark_indeterminate: v('ajuste de strike não classificado (pode ser provento ou escala)', 'mudança no preço de exercício sem classificar (pode ser provento ou desdobramento)'),
+      mark_earnings_estimated: v('resultado (data estimada)', 'divulgação de resultado (data estimada)'),
+      mark_earnings_actual: v('resultado entregue à CVM', 'resultado informado à CVM'),
+      mark_gap: v('abertura a {value}× do fechamento anterior, sem evento de strike', 'abertura a {value} vezes o fechamento anterior, sem mudança no preço de exercício'),
+      shock_note: v('pregão dominante: {share} da variância de 30 pregões', 'um pregão domina a oscilação: {share} da variância dos últimos 30 pregões'),
+      price_caption_count: v('{traded} de {total} pregões com negócio ({start} a {end})', '{traded} de {total} pregões com negociação (de {start} a {end})'),
+      price_caption_scale: v('desdobramento/grupamento aplicado às barras anteriores ao evento', 'desdobramento ou grupamento aplicado aos preços anteriores ao evento'),
+      price_caption_dividend: v('proventos não descontados', 'proventos não foram descontados dos preços'),
+      price_aria: v('Fechamento de {ticker} nos últimos {total} pregões', 'Preço de fechamento de {ticker} nos últimos {total} pregões'),
+      price_error: v('Fechamento indisponível', 'Não foi possível mostrar o preço de fechamento'),
+      note_empty: v('prices: janela vazia', 'a janela de preços está vazia'),
+      note_no_trade: v('{ticker} não negociou no mercado à vista (010) na janela', '{ticker} não teve negociação no mercado à vista nesta janela'),
+      note_no_options: v('{ticker} não tem opção na janela: o B2 não detecta desdobramento nem provento deste papel, e um salto pode ser evento sem ajuste', '{ticker} não tem opções nesta janela: o sistema não detecta desdobramentos nem proventos deste papel, e uma variação brusca pode ser um evento sem ajuste'),
     },
   ),
 
@@ -871,6 +1195,8 @@ export const PRESENTATION = {
       out_universe: v('fora do universo', 'fora do universo'),
       with_options: v('com opções', 'com opções'),
       without_options: v('sem opções', 'sem opções'),
+      region_with_options: v('Papéis com opções', 'Papéis com negociação de opções nesta sessão'),
+      region_without_options: v('Papéis sem opções', 'Papéis sem negociação de opções nesta sessão'),
     },
   ),
 
@@ -883,6 +1209,9 @@ export const PRESENTATION = {
       eyebrow: v('verbete', 'verbete'),
       source: v('glossário: {title}', 'glossário: {title}'),
       panel: v('Ficha do verbete', 'Ficha de explicação'),
+      panel_label: v('no painel', 'no painel'),
+      what: v('O que é', 'O que significa'),
+      mistake: v('Erro comum', 'Erro comum'),
       loading: v('carregando verbete…', 'carregando explicação…'),
       error: v('Verbete indisponível', 'Explicação indisponível'),
       missing: v('esta métrica ainda não tem verbete no glossário.', 'esta métrica ainda não tem explicação no glossário.'),
@@ -893,6 +1222,13 @@ export const PRESENTATION = {
     undefined, 'Janela aberta sobre a tela.',
     undefined,
     { close: v('Fechar', 'Fechar') },
+  ),
+
+  navigation: e(
+    'Navegação', 'Navegação',
+    undefined, 'Caminhos para as telas do aplicativo.',
+    undefined,
+    { primary: v('Navegação principal', 'Menu principal do aplicativo') },
   ),
 
   ruler: e(
@@ -916,7 +1252,8 @@ export const PRESENTATION = {
     {
       loading: v('carregando sessão…', 'carregando sessão…'),
       unavailable: v('sessão indisponível', 'sessão indisponível'),
-      offline: v('offline · sessão indisponível', 'sem rede · sessão indisponível'),
+      online: v('sessão {session}', 'pregão {session}'),
+      offline: v('sessão {session} · offline', 'último pregão {session} · sem rede'),
     },
   ),
   offline: e(
@@ -966,10 +1303,14 @@ export const PRESENTATION = {
     {
       marker: v('†', '†', undefined, 'Marca os papéis cuja oscilação recente vem de um só pregão.'),
       banner: v(
-        'Em {count} de {total} papéis com métrica, um único pregão responde por metade ou mais da oscilação dos últimos 30 pregões.',
-        'Em {count} de {total} papéis, um único pregão explica metade ou mais da oscilação recente.',
+        'Em {count} de {total} papéis com métrica, um único pregão responde por metade ou mais da oscilação dos últimos 30 pregões. Nesses papéis (marcados com †) a volatilidade realizada, o prêmio de volatilidade e os desvios-padrão do prêmio refletem esse dia: o número é real, mas não descreve o regime típico.',
+        'Em {count} de {total} papéis com número, um único pregão explica metade ou mais da oscilação dos últimos 30 pregões. Nesses papéis (marcados com †) a oscilação observada, o prêmio de volatilidade e os desvios do prêmio vêm desse dia: o número é real, mas não mostra o comportamento habitual.',
       ),
-      help: v('{share} da variância de 30 pregões veio de {date}', 'Um só pregão explicou {share} da oscilação recente, em {date}'),
+      help: v(
+        '{share} de tudo o que o papel oscilou nos últimos 30 pregões veio de um só dia ({date}). A volatilidade realizada, o prêmio de volatilidade e os desvios-padrão do prêmio refletem esse dia: o número é real, mas não descreve o regime típico do papel.',
+        '{share} da oscilação do papel nos últimos 30 pregões veio de um só dia ({date}). A oscilação observada, o prêmio de volatilidade e os desvios do prêmio vêm desse dia: o número é real, mas não mostra o comportamento habitual do papel.',
+      ),
+      what: v('O que é isso', 'O que isso significa'),
     },
   ),
 } satisfies Record<string, PresentationEntry>
@@ -1005,10 +1346,14 @@ export interface PresentationApi {
   style(code: string): string
   decisionType(code: string): PresentationCopy
   predictionStatus(code: string, context: 'journal' | 'position'): PresentationCopy
+  voidReason(code: string): PresentationCopy
   positionKind(code: string): PresentationCopy
   positionStatus(code: string): string
   legType(type: string, optionSide?: string | null): string
   metric(field: string): PresentationKey | null
+  /** Rótulo único de métrica: resolve chave + variante sem mapa local na tela.
+   *  Código desconhecido continua visível como contrato. */
+  metricLabel(field: string): string
   error(code: string): PresentationCopy
 }
 
@@ -1027,6 +1372,7 @@ export function usePresentation(): PresentationApi {
       mode,
       code,
     ),
+    voidReason: (code) => copyOrFallback('void', code, mode, code),
     positionKind: (code) => copyOrFallback('position_kind', code, mode, code),
     positionStatus: (code) => copyOrFallback('position_status', code, mode, code).label,
     legType: (type, optionSide) => {
@@ -1034,6 +1380,17 @@ export function usePresentation(): PresentationApi {
       return copyOrFallback('leg_type', code, mode, type).label
     },
     metric: (field) => presentationKeyForField(field),
+    metricLabel: (field) => {
+      const key = presentationKeyForField(field)
+      if (!key) return field
+      // Mesmas variantes dos formulários: spot→form e IV/VRP→option.
+      const variant = field === 'spot'
+        ? 'form'
+        : field === 'iv_atm_30d' || field === 'vrp'
+          ? 'option'
+          : undefined
+      return copyOf(key, mode, variant).label
+    },
     error: (code) => copyOrFallback('error', code, mode, code),
   }), [mode])
 }

@@ -10,6 +10,20 @@ const STAMP =
  * Offline não se sabe a idade — mostra a data persistida + "offline" e nenhum
  * `D-n`.
  */
+const SESSION_TOKEN = '{session}'
+
+/** Separa o template do dicionário para destacar a sessão sem mudar a geometria. */
+function stampParts(template: string): { before: string; tail: string } {
+  const at = template.indexOf(SESSION_TOKEN)
+  if (at < 0) return { before: template, tail: '' }
+  const after = template.slice(at + SESSION_TOKEN.length)
+  const dot = after.lastIndexOf('·')
+  return {
+    before: template.slice(0, at),
+    tail: dot < 0 ? '' : after.slice(dot + 1).trim(),
+  }
+}
+
 export function Stamp({
   session,
   loading,
@@ -26,19 +40,25 @@ export function Stamp({
   if (!session) {
     return <span className={STAMP}>{p.copy('stamp', 'unavailable').label}</span>
   }
+  const subject = <strong className="whitespace-nowrap font-medium text-primary">{session}</strong>
   if (offline) {
+    // Nunca mostra D-n: sem rede não há idade verificável. Ordem: sessão · offline.
+    const { before, tail } = stampParts(p.copy('stamp', 'offline').label)
     return (
       <span className={STAMP}>
-        sessão <strong className="whitespace-nowrap font-medium text-primary">{session}</strong>
+        {before}
+        {subject}
         <span className="px-[6px] text-muted-foreground">·</span>
-        offline
+        {tail}
       </span>
     )
   }
+  const { before } = stampParts(p.copy('stamp', 'online').label)
   const age = typeof ageSessions === 'number' ? ageSessions : null
   return (
     <span className={STAMP}>
-      sessão <strong className="whitespace-nowrap font-medium text-primary">{session}</strong>
+      {before}
+      {subject}
       {age != null && (
         <>
           <span className="px-[6px] text-muted-foreground">·</span>

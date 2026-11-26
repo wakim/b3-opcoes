@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react'
 import { brl, fmt } from '../lib/format'
 import type { ChainData, ChainRow } from '../lib/api'
 import type { OpenMetric } from './metricKeys'
-import { usePresentation } from '../lib/presentation'
+import { usePresentation, type CopyParams, type PresentationKey } from '../lib/presentation'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 
@@ -46,11 +46,17 @@ function DetailRow({
   value,
   field,
   onMetric,
+  term,
+  variant,
+  params,
 }: {
   label: string
   value: string
   field?: string
   onMetric?: OpenMetric
+  term?: PresentationKey
+  variant?: string
+  params?: CopyParams
 }) {
   const content = (
     <>
@@ -63,7 +69,7 @@ function DetailRow({
       <button
         type="button"
         className="flex min-h-[44px] w-full cursor-pointer items-center justify-between gap-[8px] border-b border-border bg-transparent py-[3px] text-left text-[calc(11px*var(--font-scale))] text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-detail"
-        onClick={() => onMetric(field, label, value)}
+        onClick={() => onMetric(field, label, value, term, variant, params)}
       >
         {content}
       </button>
@@ -95,7 +101,7 @@ function SideDetail({
   }
   const book = row.bid_brl != null && row.ask_brl != null
     ? `${brl(row.bid_brl)} / ${brl(row.ask_brl)}`
-    : 'sem oferta'
+    : p.copy('bid_ask', 'none').label
   const parsed = Number.parseInt(quantity, 10)
   const canAdd = Number.isInteger(parsed) && parsed > 0
   return (
@@ -103,23 +109,29 @@ function SideDetail({
       <div className="mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
         {title} <span className="font-mono text-muted-foreground">{row.ticker}</span>
       </div>
-      <DetailRow label={p.copy('iv_pct').label} value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} />
+      <DetailRow label={p.copy('iv_pct').label} value={fmt(row.iv_pct)} field="iv_pct" onMetric={onMetric} term="iv_pct" />
       <DetailRow
         label={p.copy('spread', 'bid_ask').label}
         value={`${brl(row.spread_brl)} · ${fmt(row.spread_pct, 1)}%`}
         field="spread_brl"
         onMetric={onMetric}
+        term="spread"
+        variant="bid_ask"
       />
-      <DetailRow label={p.copy('delta', 'per_real').label} value={fmt(row.delta, 3)} field="delta" onMetric={onMetric} />
+      <DetailRow label={p.copy('delta', 'per_real').label} value={fmt(row.delta, 3)} field="delta" onMetric={onMetric} term="delta" variant="per_real" />
       <DetailRow
-        label="Preço"
+        label={p.copy('spot', 'form').label}
         value={brl(row.mid_brl ?? row.close_brl)}
         field="mid_brl"
         onMetric={onMetric}
+        term="spot"
+        variant="form"
       />
-      <DetailRow label={p.copy('bid_ask').label} value={book} field="bid_brl" onMetric={onMetric} />
+      <DetailRow label={p.copy('bid_ask').label} value={book} field="bid_brl" onMetric={onMetric} term="bid_ask" />
       <div className="mt-[8px] text-[calc(10.5px*var(--font-scale))] text-muted-foreground [overflow-wrap:anywhere] lg:text-detail">
-        {row.flags.length > 0 ? row.flags.map((code) => p.flag(code).label).join(' · ') : 'sem flags'}
+        {row.flags.length > 0
+          ? p.copy('flag', 'list', { items: row.flags.map((code) => p.flag(code).label).join(' · ') }).label
+          : p.copy('flag', 'none').label}
       </div>
       {onAddLeg && (
         <div className="mt-[10px] flex flex-wrap items-center gap-[8px] border-t border-border pt-[10px]">

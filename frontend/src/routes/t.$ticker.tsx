@@ -43,7 +43,8 @@ function TickerPage() {
     legId.current += 1
     return legId.current
   }
-  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
+  const openMetric: OpenMetric = (field, label, value, term, variant, params) =>
+    setModal({ field, label, value, term, variant, params })
   const addLeg = (row: ChainRow, side: 'long' | 'short', quantity: number) => {
     setLegs((prev) =>
       prev.length >= 60
@@ -99,16 +100,19 @@ function TickerPage() {
   const lastWithIv = term.reduce((acc, point, index) => (point.iv_atm != null ? index : acc), -1)
   const termWindow = firstWithIv >= 0 ? term.slice(firstWithIv, lastWithIv + 1) : []
   const illiquidAtm = withIv.filter((point) => point.n_liquid_strikes === 0).length
+  const termIlliquidNote = illiquidAtm > 0
+    ? p.copy('screen', 'term_caption_illiquid', { count: illiquidAtm }).label
+    : ''
 
   return (
     <>
       <Link className={`${back} lg:text-label`} to="/">
-        <span aria-hidden="true">‹</span> Hoje
+        <span aria-hidden="true">‹</span> {p.copy('screen', 'hoje').label}
       </Link>
       <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">{ticker}</h1>
       <p className="mb-[16px] font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
-        {data.counts.term} vencimentos · {data.counts.smile}{' '}
-        <InfoTip term="strike" variant="expanded"><abbr className="underline decoration-dotted" aria-label={`${p.copy('strike').label}: ${p.copy('strike', 'expanded').label}`}>{p.copy('strike', 'plural').label}</abbr></InfoTip> · {data.counts.history} dias de histórico
+        {data.counts.term} {p.copy('maturity', 'plural').label} · {data.counts.smile}{' '}
+        <InfoTip term="strike" variant="expanded"><abbr className="underline decoration-dotted" aria-label={`${p.copy('strike').label}: ${p.copy('strike', 'expanded').label}`}>{p.copy('strike', 'plural').label}</abbr></InfoTip> · {data.counts.history} {p.copy('screen', 'history_days').label}
       </p>
 
       <MetricGrid>
@@ -197,10 +201,10 @@ function TickerPage() {
 
       {summary?.flags.includes('rv_shock_day') && (
         <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
-          {sharePct(summary.rv_shock_share_pct)} de tudo o que {ticker} oscilou nos últimos 30
-          pregões veio de um só dia ({dateBr(summary.rv_shock_date)}). A volatilidade realizada, o
-          prêmio de volatilidade e os desvios-padrão do prêmio refletem esse dia: o número é real,
-          mas não descreve o regime típico do papel.
+          {p.copy('rv_shock', 'help', {
+            share: sharePct(summary.rv_shock_share_pct),
+            date: dateBr(summary.rv_shock_date),
+          }).label}
         </p>
       )}
 
@@ -215,7 +219,7 @@ function TickerPage() {
         shockSharePct={summary?.rv_shock_share_pct}
       />
 
-      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Volatilidade implícita por vencimento</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('screen', 'iv_term_title').label}</h2>
       {withIv.length >= 2 ? (
         <LineChart
           labels={termWindow.map((point) => point.maturity.slice(5))}
@@ -225,9 +229,15 @@ function TickerPage() {
           gapStyle="band"
           tipLabels={termWindow.map((point) => dateBr(point.maturity))}
           details={termWindow.map((point) =>
-            `${point.n_liquid_strikes} ${p.copy('liquid_series').label}${
-              point.forward_brl != null ? ` · ${p.copy('forward').label} ${brl(point.forward_brl)}` : ''
-            }`,
+            p.copy('screen', 'term_detail', {
+              count: point.n_liquid_strikes,
+              forward: point.forward_brl != null
+                ? p.copy('screen', 'term_detail_forward', {
+                    forward: p.copy('forward').label,
+                    value: brl(point.forward_brl),
+                  }).label
+                : '',
+            }).label,
           )}
           series={[{
             label: p.copy('iv_pct').label,
@@ -235,8 +245,14 @@ function TickerPage() {
             hollow: termWindow.map((point) => point.n_liquid_strikes === 0),
           }]}
           formatValue={(v) => fmt(v, 1)}
-          ariaLabel={`${p.copy('iv_pct').label} por vencimento de ${ticker}`}
-          caption={`${p.copy('iv_pct').label} em ${withIv.length} de ${term.length} ${p.copy('maturity').label}${illiquidAtm > 0 ? ` · ${illiquidAtm} com ${p.copy('atm').label} sem ${p.copy('liquid_series').label}` : ''} · eixo x proporcional ao tempo`}
+          ariaLabel={p.copy('screen', 'iv_term_aria', { iv: p.copy('iv_pct').label, ticker }).label}
+          caption={p.copy('screen', 'term_caption', {
+            iv: p.copy('iv_pct').label,
+            with_iv: withIv.length,
+            total: term.length,
+            illiquid: termIlliquidNote,
+            axis: p.copy('chart', 'axis_hint').label,
+          }).label}
         />
       ) : (
         <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('chart', 'no_iv').label}</p>
@@ -244,22 +260,27 @@ function TickerPage() {
       {withIv.length > 0 && (
         <div className="mt-[8px]">
           <p className="mt-[12px] mb-[4px] text-[calc(11px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
-            Vencimentos com {p.copy('iv_pct', 'column').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withIv.length}</span>
+            {p.copy('screen', 'term_with_iv', { iv: p.copy('iv_pct', 'column').label }).label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withIv.length}</span>
           </p>
           <TermTable rows={withIv} />
           <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
-            {p.copy('iv_pct', 'column').label} é a do {p.copy('strike').label} de |{p.copy('delta').label}| mais próximo de 0,5; {p.copy('liquid_series').label} = séries líquidas no vencimento.
+            {p.copy('screen', 'term_note', {
+              iv: p.copy('iv_pct', 'column').label,
+              strike: p.copy('strike').label,
+              delta: p.copy('delta').label,
+              liquid: p.copy('liquid_series').label,
+            }).label}
           </p>
         </div>
       )}
       {withoutIv.length > 0 && (
         <details className="mt-[6px]">
-          <summary className="flex min-h-[44px] cursor-pointer items-center text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] marker:text-muted-foreground lg:text-label">Ver os {withoutIv.length} vencimentos sem {p.copy('iv_pct', 'column').label}</summary>
+          <summary className="flex min-h-[44px] cursor-pointer items-center text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] marker:text-muted-foreground lg:text-label">{p.copy('screen', 'term_without_iv', { count: withoutIv.length, iv: p.copy('iv_pct', 'column').label }).label}</summary>
           <TermTable rows={withoutIv} className="mt-[4px] mb-[8px]" />
         </details>
       )}
 
-      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('iv_pct').label} vs {p.copy('rv', 'd30').label}</h2>
+      <h2 className="mt-[24px] mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('screen', 'iv_rv_title', { iv: p.copy('iv_pct').label, rv: p.copy('rv', 'd30').label }).label}</h2>
       <LineChart
         compact
         labels={history.map((point) => point.date.slice(5))}
@@ -270,7 +291,7 @@ function TickerPage() {
           { label: p.copy('rv', 'd30').label, values: history.map((point) => point.rv30), dashed: true },
         ]}
         formatValue={(v) => fmt(v, 1)}
-        ariaLabel={`${p.copy('iv_pct').label} e ${p.copy('rv', 'd30').label} de ${ticker}`}
+        ariaLabel={p.copy('screen', 'iv_rv_aria', { iv: p.copy('iv_pct').label, rv: p.copy('rv', 'd30').label, ticker }).label}
         showPoints={false}
       />
 
@@ -282,7 +303,7 @@ function TickerPage() {
             variant="ghost"
             size="icon"
             className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[calc(18px*var(--font-scale))] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
-            aria-label="Vencimento anterior"
+            aria-label={p.copy('maturity', 'previous').label}
             disabled={maturityIndex <= 0}
             onClick={() => stepMaturity(-1)}
           >
@@ -290,7 +311,7 @@ function TickerPage() {
           </Button>
           <NativeSelect
             className="min-w-0 flex-1 border-border bg-card px-[10px] py-[8px] font-mono text-[calc(12px*var(--font-scale))] tabular-nums text-foreground dark:bg-card focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-control"
-            aria-label="Escolher vencimento"
+            aria-label={p.copy('maturity', 'choose').label}
             value={activeMaturity ?? ''}
             onChange={(event) => setPickedMaturity(event.target.value)}
           >
@@ -306,7 +327,7 @@ function TickerPage() {
             variant="ghost"
             size="icon"
             className="h-[44px] w-[44px] flex-none cursor-pointer rounded-[4px] border border-border bg-card font-mono text-[calc(18px*var(--font-scale))] font-normal leading-none text-[color:var(--text-2)] focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-metric"
-            aria-label="Próximo vencimento"
+            aria-label={p.copy('maturity', 'next').label}
             disabled={maturityIndex >= term.length - 1}
             onClick={() => stepMaturity(1)}
           >
@@ -316,13 +337,13 @@ function TickerPage() {
       )}
 
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
-        <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">Cadeia de opções</h2>
+        <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">{p.copy('screen', 'chain_title').label}</h2>
         <ToggleGroup
           type="multiple"
           value={[filter]}
           onValueChange={(values) => { if (values.length) setFilter(values[values.length - 1] as 'strict' | 'all') }}
           className="flex flex-wrap gap-[4px]"
-          aria-label="Filtro da cadeia"
+          aria-label={p.copy('screen', 'chain_filter').label}
         >
           <ToggleGroupItem
             value="strict"

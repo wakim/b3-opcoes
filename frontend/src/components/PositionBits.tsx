@@ -27,15 +27,19 @@ export function pnlTone(value: number | null): string | undefined {
 export function PositionFlags({ flags, emptyLabel }: { flags: string[]; emptyLabel?: string }) {
   const p = usePresentation()
   const unique = [...new Set(flags)]
-  if (unique.length === 0) return <span className={`${quiet} min-w-0 lg:text-label`}>{emptyLabel ?? 'sem flags'}</span>
+  if (unique.length === 0) {
+    return <span className={`${quiet} min-w-0 lg:text-label`}>{emptyLabel ?? p.copy('flag', 'none').label}</span>
+  }
   return (
     <span className="position-flags min-w-0 lg:text-label">
       {unique.map((code) => {
         const copy = p.flag(code)
-        const help = [copy.help, `código ${code}`].filter(Boolean).join(' · ')
+        // Código desconhecido já aparece como o próprio rótulo (fallback do
+        // dicionário); quando há variante, só o texto amigável é exibido.
+        if (!copy.help) return <span key={code} aria-label={copy.label}>{copy.label}</span>
         return (
-          <InfoTip key={code} text={help}>
-            <span aria-label={help}>{copy.label}</span>
+          <InfoTip key={code} text={copy.help}>
+            <span aria-label={copy.help}>{copy.label}</span>
           </InfoTip>
         )
       })}

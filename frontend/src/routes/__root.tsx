@@ -5,6 +5,7 @@ import { apiGet, type Health } from '../lib/api'
 import { ErrorState } from '../components/State'
 import { Stamp } from '../components/Stamp'
 import { LanguageProvider } from '../lib/language'
+import { useCopy } from '../lib/presentation'
 import { LanguageToggle } from '../components/LanguageToggle'
 import {
   OfflineBanner,
@@ -46,6 +47,8 @@ function RootLayout() {
 
 function AppShell() {
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const navigationLabel = useCopy('navigation', 'primary').label
+  const lakeErrorTitle = useCopy('error', 'lake_unavailable').label
   const health = useQuery({
     queryKey: ['health'],
     queryFn: ({ signal }) => apiGet<Health>('/api/health', signal),
@@ -83,13 +86,13 @@ function AppShell() {
       <main className="mx-auto w-full max-w-[900px] flex-1 px-[16px] pb-[88px] pt-[16px] lg:max-w-[1334px]">
         <OfflineBanner offline={offline} session={knownSession} />
         {health.isError && !offline && (
-          <ErrorState error={health.error} title="Saúde do lake indisponível" />
+          <ErrorState error={health.error} title={lakeErrorTitle} />
         )}
         <Outlet />
       </main>
       <nav
         className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-[repeat(4,1fr)] border-t border-border bg-card"
-        aria-label="Navegação principal"
+        aria-label={navigationLabel}
       >
         {NAV.map((item) => (
           <Link

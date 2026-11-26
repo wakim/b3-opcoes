@@ -71,20 +71,20 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
     <section className="mt-[24px] min-w-0 max-w-full" aria-labelledby="liquidity-title">
       <div className="mt-0 flex min-w-0 max-w-full flex-wrap items-center justify-between gap-[8px]">
         <h2 className="mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title" id="liquidity-title">
-          Liquidez <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{ranked.length} papéis com série líquida</span>
+          {p.copy('liquidity').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{p.copy('liquidity', 'papers_count', { count: ranked.length, n: ranked.length, total: ranked.length }).label}</span>
         </h2>
         <ToggleGroup
           type="multiple"
           value={[tab]}
           onValueChange={(values) => { if (values.length) setTab(values[values.length - 1] as 'papers' | 'series') }}
           className="flex max-w-full flex-wrap gap-[4px]"
-          aria-label="Tipo de liquidez"
+          aria-label={p.copy('liquidity', 'type_header').label}
         >
           <ToggleGroupItem value="papers" variant="outline" className={tabButtonClass}>
-            Papéis
+            {p.copy('liquidity', 'papers_title').label}
           </ToggleGroupItem>
           <ToggleGroupItem value="series" variant="outline" className={tabButtonClass}>
-            Séries mais negociadas
+            {p.copy('liquidity', 'series_title').label}
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -92,7 +92,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
 
       {tab === 'papers' ? (
         ranked.length === 0 ? (
-          <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhum papel com série líquida nesta sessão</p>
+          <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('liquidity', 'empty_papers').label}</p>
         ) : (
           <>
             <ScreenTable
@@ -100,20 +100,20 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
               wrapperProps={{
                 id: 'liquidity-papers',
                 role: 'region',
-                'aria-label': 'Papéis com mais séries líquidas',
+                'aria-label': p.copy('liquidity', 'region_papers').label,
                 tabIndex: 0,
               }}
               className="liquidity-table"
             >
               <TableHeader>
                   <TableRow>
-                    <TableHead scope="col" className={headClass}>Papel</TableHead>
-                    <TableHead scope="col" className={`text-right ${headClass}`}>Fechamento</TableHead>
-                    <TableHead scope="col" className={`text-right ${headClass}`}>Séries líquidas</TableHead>
-                    <TableHead scope="col" className={`text-right ${headClass}`}>Vencimentos</TableHead>
-                    <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita 30d</TableHead>
+                    <TableHead scope="col" className={headClass}>{p.copy('liquidity', 'paper_column').label}</TableHead>
+                    <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity', 'close_column').label}</TableHead>
+                    <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity', 'liquid_series_column').label}</TableHead>
+                    <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity', 'expiries_column').label}</TableHead>
+                    <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity', 'iv_column').label}</TableHead>
                     <InfoTip term="vrp">
-                      <TableHead scope="col" className={`text-right ${headClass}`} aria-label={`${p.copy('vrp').label}. ${p.copy('vrp').help ?? ''}`}>Prêmio de volatilidade</TableHead>
+                      <TableHead scope="col" className={`text-right ${headClass}`} aria-label={`${p.copy('vrp').label}. ${p.copy('vrp').help ?? ''}`}>{p.copy('liquidity', 'vrp_column').label}</TableHead>
                     </InfoTip>
                   </TableRow>
                 </TableHeader>
@@ -123,7 +123,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                       key={row.underlying}
                       role="link"
                       tabIndex={0}
-                      aria-label={`Abrir ${row.underlying}`}
+                      aria-label={p.copy('liquidity', 'open_ticker', { ticker: row.underlying }).label}
                       onClick={() => openTicker(row.underlying)}
                       onKeyDown={rowKeyDown(() => openTicker(row.underlying))}
                     >
@@ -133,7 +133,11 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                       <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.n_expiries}</TableCell>
                       <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.iv_atm_30d)}</TableCell>
                       {row.vrp != null && row.flags.includes('rv_shock_day') ? (
-                        <InfoTip text={p.copy('rv_shock', 'help', { share: sharePct(row.rv_shock_share_pct), date: dateBr(row.rv_shock_date) }).label}>
+                        <InfoTip
+                          term="rv_shock"
+                          variant="help"
+                          params={{ share: sharePct(row.rv_shock_share_pct), date: dateBr(row.rv_shock_date) }}
+                        >
                           <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">
                             {fmt(row.vrp)}
                             <span
@@ -161,7 +165,9 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                 aria-controls="liquidity-papers"
                 onClick={() => setShowAll((value) => !value)}
               >
-                {showAll ? 'Mostrar top 10' : `Ver todos os ${ranked.length}`}
+                {showAll
+                  ? p.copy('liquidity', 'show_top').label
+                  : p.copy('liquidity', 'show_all', { count: ranked.length, n: ranked.length }).label}
               </Button>
             )}
           </>
@@ -173,40 +179,40 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
       ) : !liquid.data ? (
         <Loading label={p.copy('loading', 'series').label} />
       ) : liquid.data.data.rows.length === 0 ? (
-        <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">nenhuma série líquida nesta sessão</p>
+        <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">{p.copy('liquidity', 'empty_series').label}</p>
       ) : (
         <>
           {liquid.data.meta?.truncated && (
             <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
-              Mostrando {liquid.data.meta.returned} de {liquid.data.meta.total} séries por volume.
+              {p.copy('liquidity', 'showing', { returned: liquid.data.meta.returned, total: liquid.data.meta.total }).label}
             </p>
           )}
           <ScreenTable
             wrapperClassName="table-wrap table-wrap--scroll min-w-0 max-w-full"
             wrapperProps={{
               role: 'region',
-              'aria-label': 'Séries líquidas mais negociadas',
+              'aria-label': p.copy('liquidity', 'region_series').label,
               tabIndex: 0,
             }}
             className="liquidity-table liquidity-table--series"
           >
             <TableHeader>
                 <TableRow>
-                  <TableHead scope="col" className={headClass}>Série</TableHead>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Papel</TableHead>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Lado / estilo</TableHead>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Strike</TableHead>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Vencimento</TableHead>
+                  <TableHead scope="col" className={headClass}>{p.copy('liquidity', 'series_column').label}</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity', 'paper_column').label}</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity', 'side_style_column').label}</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('strike').label}</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('maturity').label}</TableHead>
                   <InfoTip term="volume">
-                    <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Volume. Volume financeiro da sessão, em reais">Volume</TableHead>
+                    <TableHead scope="col" className={`text-right ${headClass}`} aria-label={p.copy('liquidity', 'volume_header', { label: p.copy('volume').label, help: p.copy('volume').help ?? '' }).label}>{p.copy('volume').label}</TableHead>
                   </InfoTip>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Negócios</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('trades').label}</TableHead>
                   <InfoTip term="spread">
-                    <TableHead scope="col" className={`text-right ${headClass}`} aria-label="Spread. Spread percentual do fechamento; reais quando não há percentual">Spread</TableHead>
+                    <TableHead scope="col" className={`text-right ${headClass}`} aria-label={p.copy('liquidity', 'spread_header', { label: p.copy('spread').label, help: p.copy('spread').help ?? '' }).label}>{p.copy('spread').label}</TableHead>
                   </InfoTip>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Volatilidade implícita</TableHead>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Delta</TableHead>
-                  <TableHead scope="col" className={`text-right ${headClass}`}>Liquidez</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('iv_pct').label}</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('delta').label}</TableHead>
+                  <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity').label}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -215,7 +221,7 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     key={`${row.ticker}:${row.maturity}`}
                     role="link"
                     tabIndex={0}
-                    aria-label={`Abrir ${row.ticker}, vencimento ${row.maturity}`}
+                    aria-label={p.copy('liquidity', 'open_series', { ticker: row.ticker, maturity: row.maturity }).label}
                     onClick={() => openSeries(row.ticker, row.maturity)}
                     onKeyDown={rowKeyDown(() => openSeries(row.ticker, row.maturity))}
                   >
@@ -224,14 +230,14 @@ export function LiquidityPanel({ rows }: { rows: ScreenRow[] }) {
                     <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{p.side(row.side)} / {row.style ? p.style(row.style) : p.copy('option_style', 'unknown').label}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{brl(row.strike_brl)}</TableCell>
                     <TableCell className="font-mono tabular-nums px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{dateBr(row.maturity)}</TableCell>
-                    <InfoTip text={`Volume financeiro: ${brl(row.volume_brl)}`}>
-                      <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table" aria-label={`Volume financeiro: ${brl(row.volume_brl)}`}>{brlCompact(row.volume_brl)}</TableCell>
+                    <InfoTip text={p.copy('liquidity', 'volume_cell', { value: brl(row.volume_brl) }).label}>
+                      <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table" aria-label={p.copy('liquidity', 'volume_cell', { value: brl(row.volume_brl) }).label}>{brlCompact(row.volume_brl)}</TableCell>
                     </InfoTip>
                     <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.trades}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{spreadLabel(row.spread_pct, row.spread_brl)}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.iv_pct)}</TableCell>
                     <TableCell className="px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{fmt(row.delta, 3)}</TableCell>
-                    <TableCell className="text-[color:var(--text-3)] px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.is_liquid ? 'líquida' : '—'}</TableCell>
+                    <TableCell className="text-[color:var(--text-3)] px-[8px] py-[12px] leading-[calc(20px*var(--font-scale))] lg:leading-table">{row.is_liquid ? p.copy('liquidity', 'liquid').label : '—'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

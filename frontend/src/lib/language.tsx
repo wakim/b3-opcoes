@@ -53,8 +53,11 @@ export function LanguageProvider({ children }: { children: ReactNode }): ReactNo
 
   useEffect(() => {
     function onStorage(event: StorageEvent) {
-      if (event.key !== LANGUAGE_STORAGE_KEY) return
-      // Outra aba escreveu: só sincroniza o estado, nunca regrava a chave.
+      // `localStorage.clear()` dispara com `key === null`: significa que a
+      // preferência foi removida, então volta ao default sem regravar.
+      if (event.key !== LANGUAGE_STORAGE_KEY && event.key !== null) return
+      // Outra aba escreveu (ou limpou o storage): só sincroniza o estado,
+      // nunca regrava a chave.
       setModeState(isMode(event.newValue) ? event.newValue : DEFAULT_MODE)
     }
     window.addEventListener('storage', onStorage)

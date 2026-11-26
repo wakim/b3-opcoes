@@ -20,8 +20,9 @@ export function HelpTip({
   params?: CopyParams
 }) {
   const copy = useCopy(term ?? 'metric.generic', variant, { ...params, label: label ?? '' })
+  const helpCopy = useCopy('help')
   const resolvedText = text ?? copy.help ?? ''
-  const ariaLabel = label ?? copy.label ?? 'Ajuda'
+  const ariaLabel = label ?? (term ? copy.label : helpCopy.label)
   const id = useId()
   const [open, setOpen] = useState(false)
   const ignoreClickUntil = useRef(0)

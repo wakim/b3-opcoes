@@ -38,25 +38,25 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
       wrapperClassName="table-wrap table-wrap--scroll min-w-0 max-w-full"
       wrapperProps={{
         role: 'region',
-        'aria-label': withOptions ? 'Papéis com opções' : 'Papéis sem opções',
+        'aria-label': p.copy('search', withOptions ? 'region_with_options' : 'region_without_options').label,
         tabIndex: 0,
       }}
     >
       <TableHeader>
           <TableRow>
-            <TableHead scope="col" className={headClass}>Papel</TableHead>
-            <TableHead scope="col" className={`text-right ${headClass}`}>Fechamento</TableHead>
+            <TableHead scope="col" className={headClass}>{p.copy('liquidity', 'paper_column').label}</TableHead>
+            <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('spot', 'close').label}</TableHead>
             {withOptions && (
               <>
                 <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('iv_atm_30d').label}</TableHead>
                 <InfoTip term="vrp">
                   <TableHead scope="col" className={`text-right ${headClass}`} aria-label={`${p.copy('vrp').label}. ${p.copy('vrp').help ?? ''}`}>{p.copy('vrp').label}</TableHead>
                 </InfoTip>
-                <TableHead scope="col" className={`text-right ${headClass}`}>Séries líquidas</TableHead>
-                <TableHead scope="col" className={`text-right ${headClass}`}>Vencimentos</TableHead>
+                <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquid_series').label}</TableHead>
+                <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('liquidity', 'expiries_column').label}</TableHead>
               </>
             )}
-            <TableHead scope="col" className={`text-right ${headClass}`}>Situação</TableHead>
+            <TableHead scope="col" className={`text-right ${headClass}`}>{p.copy('exclusion').label}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -76,7 +76,11 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
                 <>
                   <TableCell className="px-[8px] py-[10px]">{fmt(row.iv_atm_30d)}</TableCell>
                   {row.vrp != null && row.flags.includes('rv_shock_day') ? (
-                    <InfoTip text={p.copy('rv_shock', 'help', { share: sharePct(row.rv_shock_share_pct), date: dateBr(row.rv_shock_date) }).label}>
+                    <InfoTip
+                      term="rv_shock"
+                      variant="help"
+                      params={{ share: sharePct(row.rv_shock_share_pct), date: dateBr(row.rv_shock_date) }}
+                    >
                       <TableCell className="px-[8px] py-[10px]">
                         {fmt(row.vrp)}
                         <span
@@ -105,7 +109,8 @@ function PapersTable({ rows, withOptions }: { rows: ScreenRow[]; withOptions: bo
 function Hoje() {
   const p = usePresentation()
   const [modal, setModal] = useState<ModalTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
+  const openMetric: OpenMetric = (field, label, value, term, variant, params) =>
+    setModal({ field, label, value, term, variant, params })
   const screen = useQuery({
     queryKey: ['screen', 'all'],
     queryFn: ({ signal }) => fetchScreenAll(signal),
@@ -120,15 +125,15 @@ function Hoje() {
 
   return (
     <>
-      <h1 className="mb-[16px] mt-[4px] text-[calc(28px*var(--font-scale))] font-medium leading-normal tracking-[-0.02em] lg:text-screen-title lg:leading-title">Hoje</h1>
+      <h1 className="mb-[16px] mt-[4px] text-[calc(28px*var(--font-scale))] font-medium leading-normal tracking-[-0.02em] lg:text-screen-title lg:leading-title">{p.copy('screen', 'hoje').label}</h1>
       <p className="mb-[16px] text-[calc(12.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-lede lg:leading-body">{p.copy('descriptive_note').label}</p>
 
       <TickerSearch />
 
       <MetricGrid>
-        <Metric label="Universo" value={summary.total} />
-        <Metric label="Com métrica" value={summary.ok} emphasis />
-        <Metric label="Excluídos" value={summary.excluded} />
+        <Metric term="summary" variant="universe" value={summary.total} />
+        <Metric term="summary" variant="metric" value={summary.ok} emphasis />
+        <Metric term="summary" variant="excluded" value={summary.excluded} />
         <GlossaryMetric
           field="iv_atm_30d"
           term="iv_atm_30d"
@@ -147,21 +152,24 @@ function Hoje() {
 
       {summary.rv_shock_count > 0 && (
         <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
-          Em {summary.rv_shock_count} de {summary.ok} papéis com métrica, um único pregão responde
-          por metade ou mais da oscilação dos últimos 30 pregões
+          {p.copy('rv_shock', 'banner', { count: summary.rv_shock_count, total: summary.ok }).label}
           {summary.rv_shock_dates.length > 0 && (
             <> ({summary.rv_shock_dates.map((item) => `${dateBr(item.date)} em ${item.count}`).join(', ')})</>
-          )}
-          . Nesses papéis (marcados com †) a volatilidade realizada e o prêmio de volatilidade
-          refletem esse dia: o número é real, mas não descreve o regime típico.{' '}
+          )}{' '}
           <Button
             type="button"
             variant="link"
             size="sm"
             className="h-[44px] justify-start rounded-none px-0 font-normal whitespace-normal text-foreground underline underline-offset-2 focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-[-2px] focus-visible:outline-primary lg:text-label"
-            onClick={() => openMetric('rv_shock_share_pct', p.copy('rv', 'shock').label, `${summary.rv_shock_count} papéis`)}
+            onClick={() => openMetric(
+              'rv_shock_share_pct',
+              p.copy('rv_shock', 'what').label,
+              `${summary.rv_shock_count} ${p.copy('action', 'papers').label}`,
+              'rv_shock',
+              'what',
+            )}
           >
-            O que é isso
+            {p.copy('rv_shock', 'what').label}
           </Button>
         </p>
       )}
@@ -170,14 +178,14 @@ function Hoje() {
 
       <section className="min-w-0 max-w-full">
         <h2 className="mb-[8px] mt-[24px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
-          {p.copy('search', 'with_options').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withOptions.length} papéis</span>
+          {p.copy('search', 'region_with_options').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withOptions.length} {p.copy('action', 'papers').label}</span>
         </h2>
         <PapersTable rows={withOptions} withOptions />
       </section>
 
       <section className="mt-[8px] min-w-0 max-w-full">
         <h2 className="mb-[8px] mt-[24px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
-          {p.copy('search', 'without_options').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withoutOptions.length} papéis</span>
+          {p.copy('search', 'region_without_options').label} <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">{withoutOptions.length} {p.copy('action', 'papers').label}</span>
         </h2>
         <PapersTable rows={withoutOptions} withOptions={false} />
       </section>

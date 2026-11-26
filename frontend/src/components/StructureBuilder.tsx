@@ -92,26 +92,39 @@ export function StructureBuilder({
   const scenariosUnavailable = result
     ? result.scenarios === null || result.flags.includes('scenarios_unavailable')
     : false
+  const scenarioReason = [
+    result?.flags.includes('no_iv') ? p.copy('iv_pct').label : null,
+    result?.flags.includes('no_rates') ? p.flag('no_rates').label : null,
+    result?.flags.includes('forward_unavailable') ? p.copy('forward').label : null,
+  ].filter(Boolean).join(', ')
+  const resultMaturity = result?.maturity
+    ? `${p.copy('maturity').label} ${result.maturity} · `
+    : ''
+  const resultForward = result?.forward_brl != null
+    ? p.copy('screen', 'term_detail_forward', {
+        forward: p.copy('forward').label,
+        value: brl(result.forward_brl),
+      }).label
+    : ''
 
   return (
     <section className="mt-[28px] border-t border-border pt-[4px]" aria-labelledby="builder-title">
       <div className="mt-[24px] flex flex-wrap items-center justify-between gap-[8px]">
         <h2 className="mt-0 mb-[8px] text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title" id="builder-title">
-          Montar estrutura
+          {p.copy('structure', 'title').label}
         </h2>
         <span className="ml-[8px] font-mono text-[calc(11px*var(--font-scale))] font-normal text-muted-foreground lg:text-label">
-          {legs.length}/{MAX_LEGS} pernas
+          {p.copy('structure', 'count', { count: legs.length, max: MAX_LEGS }).label}
         </span>
       </div>
       <p className="mb-[8px] text-[calc(11px*var(--font-scale))] leading-[1.45] text-muted-foreground lg:text-label lg:leading-body">
-        Calculadora de payoff. 100 ações = 1 contrato; a quantidade é em ações e não é multiplicada
-        por 100. Nada é gravado.
+        {p.copy('structure', 'intro', { quantity: p.copy('quantity_contract').label }).label}
       </p>
 
       {legs.length === 0 ? (
         <p className="my-[8px] text-[calc(11.5px*var(--font-scale))] text-muted-foreground lg:text-detail">
-          Expanda uma linha da cadeia e use <strong>{p.copy('action', 'buy').label}</strong> ou{' '}
-          <strong>{p.copy('action', 'sell').label}</strong>, ou adicione a ação abaixo.
+          {p.copy('structure', 'empty_prefix').label}<strong>{p.copy('action', 'buy').label}</strong>{p.copy('structure', 'empty_or').label}
+          <strong>{p.copy('action', 'sell').label}</strong>{p.copy('structure', 'empty_suffix', { add_stock: p.copy('action', 'add_stock').label }).label}
         </p>
       ) : (
         <ul className="mb-[8px] overflow-hidden rounded-[6px] border border-border">
@@ -120,11 +133,11 @@ export function StructureBuilder({
               <span className="flex min-w-[92px] flex-[1_1_120px] flex-col">
                 <span className="font-mono tabular-nums text-primary">{leg.ticker}</span>
                 <span className="text-muted-foreground lg:text-label">
-                  {leg.kind === 'stock' ? 'ação' : 'opção'} · {p.copy('position_side', leg.side).label}
+                  {p.legType(leg.kind)} · {p.copy('position_side', leg.side).label}
                 </span>
               </span>
               <label className="inline-flex items-center gap-[6px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
-                <span className="text-muted-foreground lg:text-label">ações</span>
+                <span className="text-muted-foreground lg:text-label">{p.copy('form', 'actions').label}</span>
                 <Input
                   type="number"
                   inputMode="numeric"
@@ -133,7 +146,7 @@ export function StructureBuilder({
                   value={leg.quantity}
                   variant="builder"
                   className="w-[96px] min-w-[96px] max-w-[96px]"
-                  aria-label={`Quantidade de ações de ${leg.ticker}`}
+                  aria-label={p.copy('structure', 'quantity_aria', { ticker: leg.ticker }).label}
                   onChange={(event) => setQuantity(leg.id, event.target.value)}
                 />
               </label>
@@ -142,7 +155,7 @@ export function StructureBuilder({
                 variant="link"
                 size="sm"
                 builder="remove"
-                aria-label={`Remover ${leg.ticker}`}
+                aria-label={p.copy('structure', 'remove_aria', { ticker: leg.ticker }).label}
                 onClick={() => removeLeg(leg.id)}
               >
                 {p.copy('action', 'remove').label}
@@ -153,13 +166,13 @@ export function StructureBuilder({
       )}
 
       <div className="mt-[8px] mb-[12px] grid gap-[12px] min-[720px]:grid-cols-[minmax(0,1fr)_auto] min-[720px]:items-end">
-        <div className="grid grid-cols-[minmax(0,1fr)_104px] items-end gap-[8px] min-[720px]:grid-cols-[156px_104px_auto]" role="group" aria-label="Perna de ação">
+        <div className="grid grid-cols-[minmax(0,1fr)_104px] items-end gap-[8px] min-[720px]:grid-cols-[156px_104px_auto]" role="group" aria-label={p.copy('structure', 'stock_leg').label}>
           <label className="flex min-w-0 flex-col gap-[4px]">
-            <span className="text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Perna de ação</span>
+            <span className="text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('structure', 'stock_leg').label}</span>
             <NativeSelect
               variant="builder"
               value={stockSide}
-              aria-label="Lado da ação"
+              aria-label={p.copy('structure', 'stock_side').label}
               onChange={(event) => setStockSide(event.target.value as LegSide)}
             >
               <option value="long">{p.copy('position_side', 'long').label}</option>
@@ -167,7 +180,7 @@ export function StructureBuilder({
             </NativeSelect>
           </label>
           <label className="flex min-w-0 flex-col gap-[4px]">
-            <span className="text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Ações</span>
+            <span className="text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('form', 'actions').label}</span>
             <Input
               type="number"
               inputMode="numeric"
@@ -175,7 +188,7 @@ export function StructureBuilder({
               step={1}
               variant="builder"
               value={stockQuantity}
-              aria-label="Quantidade de ações da ação"
+              aria-label={p.copy('structure', 'stock_quantity').label}
               onChange={(event) => setStockQuantity(event.target.value)}
             />
           </label>
@@ -197,7 +210,9 @@ export function StructureBuilder({
             onClick={() => calc.mutate()}
             disabled={legs.length === 0 || calc.isPending}
           >
-            {calc.isPending ? p.copy('action', 'calculating').label : `${p.copy('action', 'calculate').label} (${legs.length})`}
+            {calc.isPending
+              ? p.copy('action', 'calculating').label
+              : p.copy('action', 'calculate_count', { count: legs.length }).label}
           </Button>
           <Button
             type="button"
@@ -212,10 +227,10 @@ export function StructureBuilder({
       </div>
 
       {legs.length >= MAX_LEGS && (
-        <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">Limite de {MAX_LEGS} pernas atingido (o backend recusa mais).</p>
+        <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('structure', 'limit', { max: MAX_LEGS }).label}</p>
       )}
 
-      {calc.isError && <ErrorState error={calc.error} title="Estrutura não avaliada" />}
+      {calc.isError && <ErrorState error={calc.error} title={p.copy('error_title', 'structure').label} />}
 
       {result && (
         <div className="mt-[8px]">
@@ -226,17 +241,17 @@ export function StructureBuilder({
               emphasis
             />
             <Metric
-              label="Breakevens"
-              term={p.metric('breakeven_brl') ?? undefined}
+              term="breakeven"
+              variant="plural"
               value={result.breakeven_brl.length > 0 ? result.breakeven_brl.map((v) => brl(v)).join(' · ') : '—'}
             />
             <Metric
               term="max_loss"
-              value={unboundedLoss ? 'ilimitada' : brl(result.max_loss_brl)}
+              value={unboundedLoss ? p.copy('payoff', 'unbounded_loss').label : brl(result.max_loss_brl)}
             />
             <Metric
               term="max_gain"
-              value={unboundedGain ? 'ilimitado' : brl(result.max_gain_brl)}
+              value={unboundedGain ? p.copy('payoff', 'unbounded_gain').label : brl(result.max_gain_brl)}
             />
             <Metric term="capital" value={brl(result.capital_committed_brl)} />
             <Metric term="delta" variant="aggregate" value={fmt(result.delta, 3)} />
@@ -246,33 +261,35 @@ export function StructureBuilder({
           </MetricGrid>
 
           <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
-            {result.maturity ? `${p.copy('maturity').label} ${result.maturity} · ` : ''}
-            {p.copy('structure').label} {result.structure_version} · sessão {calc.data?.as_of_session ?? '—'}
-            {result.forward_brl != null && ` · ${p.copy('forward').label} ${brl(result.forward_brl)}`}
+            {p.copy('structure', 'summary', {
+              maturity: resultMaturity,
+              structure: p.copy('structure').label,
+              version: result.structure_version,
+              session: calc.data?.as_of_session ?? '—',
+              forward: resultForward,
+            }).label}
           </p>
 
           {result.capital_over && (
             <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
-              O capital comprometido passa do capital informado.
+              {p.copy('structure', 'capital_over').label}
             </p>
           )}
           {result.flags.length > 0 && (
-            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">flags: {result.flags.map((code) => p.flag(code).label).join(' · ')}</p>
+            <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">
+              {p.copy('flag', 'list', { items: result.flags.map((code) => p.flag(code).label).join(' · ') }).label}
+            </p>
           )}
 
           <PayoffChart
             points={result.payoff}
             breakevens={result.breakeven_brl}
-            ariaLabel={`Payoff no vencimento de ${underlying}`}
+            ariaLabel={p.copy('payoff', 'maturity_aria', { ticker: underlying }).label}
           />
 
           {scenariosUnavailable ? (
             <p className="mb-[16px] border-l-2 border-input pl-[10px] text-[calc(11.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label" role="status">
-              {p.copy('scenarios', 'unavailable').label}
-              {result.flags.includes('no_iv') && ` (série sem ${p.copy('iv_pct').label})`}
-              {result.flags.includes('no_rates') && ' (curva de juros ausente)'}
-              {result.flags.includes('forward_unavailable') && ` (${p.copy('forward').label} ausente)`}
-              . O payoff no vencimento continua calculado.
+              {p.copy('scenarios', 'unavailable_reason', { reason: scenarioReason }).label}
             </p>
           ) : (
             <ScenariosTable scenarios={result.scenarios ?? []} />
@@ -292,7 +309,7 @@ function ScenariosTable({
   const p = usePresentation()
   const zeroDay = scenarios.filter((row) => row.days_forward === 0)
   if (zeroDay.length === 0) {
-    return <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('empty', 'scenarios').label}</p>
+    return <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('scenarios', 'no_day0').label}</p>
   }
   const spots = [...new Set(zeroDay.map((row) => row.spot_brl))].sort((a, b) => a - b)
   const shifts = [...new Set(zeroDay.map((row) => row.iv_shift_pts))].sort((a, b) => a - b)
@@ -303,11 +320,10 @@ function ScenariosTable({
       <ScreenTable wrapperClassName="overflow-x-auto rounded-[6px] border border-border">
         <TableHeader>
             <TableRow>
-              <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">Preço</TableHead>
+              <TableHead className="px-[8px] py-[10px] font-normal text-[color:var(--text-2)] lg:text-table-head">{p.copy('table', 'price').label}</TableHead>
               {shifts.map((shift) => (
                 <TableHead key={shift} className="px-[8px] py-[10px] text-right font-normal text-[color:var(--text-2)] lg:text-table-head">
-                  {p.copy('iv_pct', 'shift').label} {shift > 0 ? '+' : ''}
-                  {fmt(shift, 0)}
+                  {p.copy('iv_pct', 'shift', { shift: `${shift > 0 ? '+' : ''}${fmt(shift, 0)}` }).label}
                 </TableHead>
               ))}
             </TableRow>

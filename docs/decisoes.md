@@ -688,7 +688,7 @@ Em qualquer outro caso: adote o default, registre, siga.
 
 ## ADR-049 — F9: apresentação Expert × Leigo com persistência local
 
-- **Data:** 2026-11-25 · **Status:** provisória — implementada, salvo ratificação do dono · **Custo de reverter:** baixo (contexto/dicionário/seletor)
+- **Data:** 2026-11-25 · **Status:** provisória — implementada; validação final e ratificação do dono pendentes · **Custo de reverter:** baixo (contexto/dicionário/seletor)
 - **Contexto:** o dono pediu um perfil global de linguagem no PWA. A tradução não pode mudar números, campos, fórmulas, ordem, API, journal ou `model_version`; a ficha completa também não pode ser duplicada no frontend.
 - **Decisão:**
   1. `LanguageProvider` em `frontend/src/lib/language.tsx`, acima do `AppShell`, com chave `b3o:language` e valores exatos `expert`/`leigo`; ausente, inválido, corrompido ou storage bloqueado cai para **Expert**.

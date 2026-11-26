@@ -106,7 +106,7 @@ export function PayoffChart({
         className="chart__svg"
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`${ariaLabel}. Use as setas para percorrer o payoff.`}
+        aria-label={`${ariaLabel}. ${p.copy('chart', 'keyboard_payoff').label}`}
         tabIndex={0}
         onPointerMove={handlePointerMove}
         onPointerDown={handlePointerMove}
@@ -164,7 +164,7 @@ export function PayoffChart({
           }}
           aria-hidden="true"
         >
-          <div className="chart__tip-head">Preço {brl(activePoint.spot_brl)}</div>
+          <div className="chart__tip-head">{p.copy('chart', 'price_tip', { value: brl(activePoint.spot_brl) }).label}</div>
           <div className="chart__tip-row">
             <span>{p.copy('pnl', 'chart').label}</span>
             <span className={num}>{brl(activePoint.pnl_brl)}</span>
@@ -172,16 +172,20 @@ export function PayoffChart({
         </div>
       )}
       <p className={visuallyHidden} aria-live="polite">
-        {activePoint != null ? `Preço ${brl(activePoint.spot_brl)}: ${p.copy('pnl', 'chart').label} ${brl(activePoint.pnl_brl)}` : ''}
+        {activePoint != null
+          ? `${p.copy('chart', 'price_tip', { value: brl(activePoint.spot_brl) }).label}: ${p.copy('pnl', 'chart').label} ${brl(activePoint.pnl_brl)}`
+          : ''}
       </p>
       <div className="chart__legend lg:text-chart">
         <span>
           <i className="chart__key" aria-hidden="true" />
           {p.copy('pnl', 'chart').label}
         </span>
-        <span className="chart__legend-note">eixo x: preço do papel (R$)</span>
+        <span className="chart__legend-note">{p.copy('chart', 'axis_price').label}</span>
         {breakevens.length > 0 && (
-          <span className="chart__legend-note">tracejado vertical: {p.copy('chart', 'breakeven').label}</span>
+          <span className="chart__legend-note">
+            {p.copy('chart', 'vertical_dashed', { label: p.copy('chart', 'breakeven').label }).label}
+          </span>
         )}
       </div>
     </div>

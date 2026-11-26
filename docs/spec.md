@@ -394,7 +394,7 @@ Gráficos recebem pontos já reduzidos (≤ 70).
 
 Mobile-first (412 px), breakpoints `≥ 600` (tablet, 2 colunas) e `≥ 1024` (desktop, menu lateral + tabela completa da cadeia).
 
-**Linguagem:** o PWA tem perfil global **Expert × Leigo**, default **Expert**. A preferência fica em `localStorage` (`b3o:language`, valores `expert`/`leigo`), sobrevive a reload/offline e não altera queries ou payloads. O seletor acessível fica no header de todas as rotas. Um dicionário único de apresentação resolve rótulo, ajuda curta e slug do glossário; no Leigo, o termo aparece expandido antes da sigla. A ficha completa continua vindo exclusivamente de `docs/glossario.md` via `/api/glossary`. Os três níveis do glossário não são perfis de idioma.
+**Linguagem:** o PWA tem perfil global **Expert × Leigo**, default **Expert**. A preferência fica em `localStorage` (`b3o:language`, valores `expert`/`leigo`), com leitura/escrita defensivas: ausente, inválido, corrompido ou storage bloqueado cai em Expert. A escolha sincroniza abas pelo evento `storage`, sem regravar a chave, sobrevive a reload/atualização/offline e não invalida nem refaz queries. O seletor acessível fica no header de todas as rotas. Um dicionário único de apresentação resolve rótulo, variante, ajuda curta e fallback explícito de códigos; no Leigo, o termo aparece expandido antes da sigla. `Metric`/`MetricModal` recebem a chave semântica, mas o slug do verbete continua vindo exclusivamente de `metricKeys.ts`. A ficha completa continua vindo só de `docs/glossario.md` via `/api/glossary`; os três níveis do glossário não são perfis de idioma.
 
 Ticker e Série **não são destinos** — são navegação. Ficam fora da barra inferior, com botão de voltar, e a barra passa a ter quatro itens de verdade:
 

@@ -7,7 +7,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchPricesAll, type PriceMark } from '../lib/api'
 import { brl, dateBr, fmt, sharePct } from '../lib/format'
-import { usePresentation } from '../lib/presentation'
+import { usePresentation, type PresentationApi } from '../lib/presentation'
 import { LineChart, type ChartEvent, type ChartEventKind } from './LineChart'
 import { ErrorState, Loading } from './State'
 
@@ -23,21 +23,35 @@ function markKind(mark: PriceMark): ChartEventKind {
   return 'corporate'
 }
 
-function markText(mark: PriceMark): string {
+function markText(p: PresentationApi, mark: PriceMark): string {
   switch (mark.kind) {
     case 'dividend':
-      return `data ex de provento${mark.value != null ? ` (${brl(mark.value)}/ação, medido no strike)` : ''}`
+      return mark.value != null
+        ? p.copy('chart', 'mark_dividend_value', { value: brl(mark.value) }).label
+        : p.copy('chart', 'mark_dividend').label
     case 'scale':
-      return `desdobramento/grupamento ×${fmt(mark.value, 4)} — preços anteriores ajustados`
+      return p.copy('chart', 'mark_scale', { value: fmt(mark.value, 4) }).label
     case 'indeterminate':
-      return 'ajuste de strike não classificado (pode ser provento ou escala)'
+      return p.copy('chart', 'mark_indeterminate').label
     case 'earnings':
-      return mark.detail === 'estimated' ? 'resultado (data estimada)' : 'resultado entregue à CVM'
+      return p.copy('chart', mark.detail === 'estimated' ? 'mark_earnings_estimated' : 'mark_earnings_actual').label
     case 'gap':
-      return `abertura a ${fmt(mark.value, 2)}× do fechamento anterior, sem evento de strike`
+      return p.copy('chart', 'mark_gap', { value: fmt(mark.value, 2) }).label
     default:
+      // Nota desconhecida do backend continua literal e explícita.
       return mark.kind
   }
+}
+
+function noteText(p: PresentationApi, note: string, ticker: string): string {
+  if (!note.trim()) return p.copy('chart', 'note_empty').label
+  if (note.includes('não negociou no mercado à vista')) {
+    return p.copy('chart', 'note_no_trade', { ticker }).label
+  }
+  if (note.includes('não tem opção na janela')) {
+    return p.copy('chart', 'note_no_options', { ticker }).label
+  }
+  return note
 }
 
 export function PriceChart({
@@ -56,7 +70,7 @@ export function PriceChart({
     staleTime: 10 * 60 * 1000,
   })
 
-  if (prices.isError) return <ErrorState error={prices.error} title="Fechamento indisponível" />
+  if (prices.isError) return <ErrorState error={prices.error} title={p.copy('chart', 'price_error').label} />
   if (prices.isLoading || !prices.data) return <Loading />
 
   const { points, marks, flags, notes } = prices.data.data
@@ -70,14 +84,14 @@ export function PriceChart({
     const index = indexOf.get(mark.date)
     if (index == null) continue
     events.push({ index, kind: markKind(mark) })
-    addNote(index, markText(mark))
+    addNote(index, markText(p, mark))
   }
   const shockIndex = shockDate ? indexOf.get(shockDate) : undefined
   if (shockIndex != null) {
     if (!events.some((event) => event.index === shockIndex && event.kind === 'jump')) {
       events.push({ index: shockIndex, kind: 'jump' })
     }
-    addNote(shockIndex, `pregão dominante: ${sharePct(shockSharePct)} da variância de 30 pregões`)
+    addNote(shockIndex, p.copy('chart', 'shock_note', { share: sharePct(shockSharePct) }).label)
   }
   points.forEach((point, index) => {
     if (!point.traded) addNote(index, p.copy('chart', 'no_trade').label)
@@ -85,11 +99,14 @@ export function PriceChart({
 
   const traded = points.filter((point) => point.traded).length
   const captionParts = [
-    `${traded} de ${points.length} pregões com negócio (${dateBr(points[0]?.date)} a ${dateBr(points[points.length - 1]?.date)})`,
-    flags.includes('scale_adjusted')
-      ? 'desdobramento/grupamento aplicado às barras anteriores ao evento'
-      : null,
-    'proventos não descontados',
+    p.copy('chart', 'price_caption_count', {
+      traded,
+      total: points.length,
+      start: dateBr(points[0]?.date),
+      end: dateBr(points[points.length - 1]?.date),
+    }).label,
+    flags.includes('scale_adjusted') ? p.copy('chart', 'price_caption_scale').label : null,
+    p.copy('chart', 'price_caption_dividend').label,
   ].filter(Boolean)
 
   return (
@@ -100,7 +117,7 @@ export function PriceChart({
         details={points.map((_, index) => notesByIndex.get(index)?.join(' · ') ?? null)}
         series={[{ label: p.copy('spot', 'close').label, values: points.map((point) => point.close_brl) }]}
         formatValue={(v) => brl(v)}
-        ariaLabel={`Fechamento de ${ticker} nos últimos ${points.length} pregões`}
+        ariaLabel={p.copy('chart', 'price_aria', { ticker, total: points.length }).label}
         showPoints={false}
         dashedGap={1}
         gapLabel={p.copy('chart', 'no_trade_gap').label}
@@ -113,7 +130,7 @@ export function PriceChart({
         caption={captionParts.join(' · ')}
       />
       {notes.map((note) => (
-        <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label" key={note}>{note}</p>
+        <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label" key={note}>{noteText(p, note, ticker)}</p>
       ))}
     </>
   )

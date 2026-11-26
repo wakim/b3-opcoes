@@ -36,7 +36,7 @@ import { GlossaryMetric, Metric, MetricGrid } from '../components/Metric'
 import { MetricModal } from '../components/MetricModal'
 import { ScreenTable } from '../components/ScreenTable'
 import type { ModalTarget, OpenMetric } from '../components/metricKeys'
-import { usePresentation, type PresentationApi } from '../lib/presentation'
+import { usePresentation } from '../lib/presentation'
 import { ErrorState, Loading } from '../components/State'
 import { TokenGate, useAppToken } from '../components/TokenGate'
 import { Button } from '../components/ui/button'
@@ -51,13 +51,6 @@ import {
 export const Route = createFileRoute('/diario')({
   component: Diario,
 })
-
-/** Rótulo de métrica projetado pelo dicionário; código desconhecido permanece
- *  visível como contrato, sem mapa local ao lado do dicionário. */
-function metricLabel(p: PresentationApi, metric: string): string {
-  const key = p.metric(metric)
-  return key ? p.copy(key).label : metric
-}
 
 function metricValue(value: number | null, unit: string | undefined): string {
   if (value == null) return '—'
@@ -80,7 +73,8 @@ function Diario() {
   const [tokenNotice, setTokenNotice] = useState<string | null>(null)
   const [writeNotice, setWriteNotice] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
+  const openMetric: OpenMetric = (field, label, value, term, variant, params) =>
+    setModal({ field, label, value, term, variant, params })
   const closeForm = useCallback(() => setFormOpen(false), [])
 
   const health = useQuery({
@@ -151,8 +145,8 @@ function Diario() {
     <>
       <div className="flex flex-wrap items-start justify-between gap-[12px] max-sm:block">
         <div>
-          <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>Diário</h1>
-          <p className={`${quietLine} lg:text-label`}>Decisões, previsões estruturadas e desfecho {p.copy('eod').label}</p>
+          <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>{p.copy('journal', 'title').label}</h1>
+          <p className={`${quietLine} lg:text-label`}>{p.copy('journal', 'intro', { eod: p.copy('eod').label }).label}</p>
         </div>
         {auth.hasToken && (
           <div className="flex flex-wrap items-center gap-[12px] max-sm:mt-[12px]">
@@ -168,7 +162,7 @@ function Diario() {
               {p.copy('action', 'new_decision').label}
             </Button>
             {auth.tokenRequired && (
-              <Button type="button" variant="link" size="sm" className="h-[44px] px-0 lg:text-label" onClick={changeToken}>
+              <Button type="button" variant="link" size="sm" className="h-[44px] min-w-[44px] px-0 lg:text-label" onClick={changeToken}>
                 {p.copy('token', 'change').label}
               </Button>
             )}
@@ -179,7 +173,7 @@ function Diario() {
       {!auth.hasToken && (
         <TokenGate
           notice={tokenNotice}
-          description="A leitura do diário é liberada na tailnet. O token libera apenas o registro de decisões."
+          description={p.copy('token', 'description_journal').label}
           onUnlock={() => setTokenNotice(null)}
         />
       )}
@@ -193,17 +187,16 @@ function Diario() {
       <section className="mt-[24px]" aria-labelledby="journal-calibration-title">
         <div className={blockHead}>
           <h2 className={`${blockTitleBase} mt-0 lg:text-block-title lg:leading-title`} id="journal-calibration-title">
-            Calibração pessoal
+            {p.copy('calibration').label}
           </h2>
           <span className={`${blockCount} lg:text-label`}>{calibration.data?.meta?.total ?? 0}</span>
         </div>
         <p className={`${chainNote} lg:text-label lg:leading-body`}>
-          Por métrica e horizonte. A taxa usa apenas acertos e erros; “sem dados” fica separado.
-          Não há comparação com sinal nem recomendação.
+          {p.copy('calibration', 'intro').label} {p.copy('calibration_note').label} {p.copy('calibration', 'note').label}
         </p>
         {calibration.isLoading && <Loading label={p.copy('loading', 'calibration').label} />}
         {calibration.isError && (
-          <ErrorState error={calibration.error} title="Calibração indisponível" />
+          <ErrorState error={calibration.error} title={p.copy('error_title', 'calibration').label} />
         )}
         {calibration.data && (
           <CalibrationReport data={calibration.data.data} onMetric={openMetric} />
@@ -218,7 +211,7 @@ function Diario() {
           <span className={`${blockCount} lg:text-label`}>{journal.data?.meta?.total ?? 0}</span>
         </div>
         {journal.isLoading && <Loading label={p.copy('loading', 'journal').label} />}
-        {journal.isError && <ErrorState error={journal.error} title="Diário indisponível" />}
+        {journal.isError && <ErrorState error={journal.error} title={p.copy('error_title', 'journal').label} />}
         {journal.data?.meta?.note && (
           <p className={`${notice} lg:text-label`} role="status">
             {journal.data.meta.note}
@@ -226,7 +219,7 @@ function Diario() {
         )}
         {journal.data && journal.data.data.decisions.length === 0 ? (
           <div className="rounded-[6px] border border-dashed border-input bg-card px-[16px] py-[24px]">
-            <p className="mx-0 mt-0 mb-[4px]">Nenhuma decisão registrada.</p>
+            <p className="mx-0 mt-0 mb-[4px]">{p.copy('journal', 'no_decision').label}</p>
             <p className={`${noteBase} m-0 lg:text-label`}>
               {auth.hasToken
                 ? 'Use “Nova decisão” para registrar, inclusive, uma escolha de não entrar.'
@@ -259,8 +252,8 @@ function Diario() {
             {!auth.hasToken && (
               <TokenGate
                 compact
-                title="Token para registrar"
-                description="O registro grava um evento append-only e exige o token de escrita."
+                title={p.copy('token', 'register').label}
+                description={p.copy('token', 'description_close').label}
                 autoFocus
                 notice={tokenNotice}
                 onUnlock={() => setTokenNotice(null)}
@@ -295,13 +288,13 @@ function CalibrationReport({
       <MetricGrid>
         <GlossaryMetric
           field="sample_n"
-          label="Previsões avaliadas"
+          label={p.copy('calibration', 'evaluated').label}
           term={p.metric('sample_n') ?? undefined}
           value={fmt(totals.n, 0)}
           onOpen={onMetric}
         />
-        <Metric label="Acertos" value={fmt(totals.hit, 0)} />
-        <Metric label="Erros" value={fmt(totals.miss, 0)} />
+        <Metric label={p.copy('calibration', 'hits').label} value={fmt(totals.hit, 0)} />
+        <Metric label={p.copy('calibration', 'misses').label} value={fmt(totals.miss, 0)} />
         <GlossaryMetric
           field="void_count"
           term="void"
@@ -317,27 +310,27 @@ function CalibrationReport({
         />
       </MetricGrid>
       {data.groups.length === 0 ? (
-        <p className={`${note} lg:text-label`}>Ainda não há previsão avaliada. O relatório não inventa taxa sem n.</p>
+        <p className={`${note} lg:text-label`}>{p.copy('empty', 'calibration').label}</p>
       ) : (
         <ScreenTable
           wrapperClassName="table-wrap table-wrap--scroll"
           wrapperProps={{
             role: 'region',
-            'aria-label': 'Calibração por métrica e horizonte',
+            'aria-label': p.copy('calibration', 'region').label,
             tabIndex: 0,
           }}
           className="min-w-[760px]"
         >
           <TableHeader>
               <TableRow>
-                <TableHead scope="col" className="font-normal lg:text-table-head">Métrica</TableHead>
-                <TableHead scope="col" className="font-normal lg:text-table-head">Horizonte</TableHead>
-                <TableHead scope="col" className="font-normal lg:text-table-head">n</TableHead>
-                <TableHead scope="col" className="font-normal lg:text-table-head">Acertos</TableHead>
-                <TableHead scope="col" className="font-normal lg:text-table-head">Erros</TableHead>
-                <TableHead scope="col" className="font-normal lg:text-table-head">Sem dados</TableHead>
-                <TableHead scope="col" className="font-normal lg:text-table-head">Taxa</TableHead>
-                <TableHead scope="col" className="min-w-[220px] font-normal lg:text-table-head">Motivo de void</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">{p.copy('metric.generic').label}</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">{p.copy('horizon').label}</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">{p.copy('sample_n').label}</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">{p.copy('calibration', 'hits').label}</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">{p.copy('calibration', 'misses').label}</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">{p.copy('void', 'count').label}</TableHead>
+                <TableHead scope="col" className="font-normal lg:text-table-head">{p.copy('calibration', 'rate').label}</TableHead>
+                <TableHead scope="col" className="min-w-[220px] font-normal lg:text-table-head">{p.copy('void', 'reason').label}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -352,12 +345,14 @@ function CalibrationReport({
                       onClick={() =>
                         onMetric(
                           group.metric,
-                          metricLabel(p, group.metric),
+                          p.metricLabel(group.metric),
                           metricValue(null, group.unit),
+                          p.metric(group.metric) ?? undefined,
+                          group.metric === 'spot' ? 'form' : group.metric === 'iv_atm_30d' || group.metric === 'vrp' ? 'option' : undefined,
                         )
                       }
                     >
-                      {metricLabel(p, group.metric)}
+                      {p.metricLabel(group.metric)}
                     </Button>
                   </TableHead>
                   <TableCell className={`${num} px-2 py-2.5`}>{sessionsLabel(group.horizon_sessions)}</TableCell>
@@ -375,7 +370,7 @@ function CalibrationReport({
                       : group.void_reasons
                           .map(
                             (item) =>
-                              `${p.copy('void', undefined, { reason: item.reason, code: item.reason }).label}: ${item.count}`,
+                              `${p.voidReason(item.reason).label}: ${item.count}`,
                           )
                           .join(' · ')}
                   </TableCell>
@@ -431,7 +426,7 @@ function DecisionCard({
       {prediction ? (
         <PredictionOutcome prediction={prediction} onMetric={onMetric} />
       ) : (
-        <p className={`${note} lg:text-label`}>Sem previsão estruturada; esta decisão não entra na calibração.</p>
+        <p className={`${note} lg:text-label`}>{p.copy('journal', 'no_prediction').label}</p>
       )}
     </article>
   )
@@ -450,30 +445,36 @@ function PredictionOutcome({
   return (
     <div className="mt-[8px] border-t border-t-border">
       <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[calc(11.5px*var(--font-scale))] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
-        <span className={`${quiet} lg:text-label`}>Previsão</span>
+        <span className={`${quiet} lg:text-label`}>{p.copy('prediction').label}</span>
         <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           <Button
             type="button"
             variant="link"
             size="sm"
             className="h-[44px] min-w-[44px] px-0 lg:text-label"
-            onClick={() => onMetric(prediction.metric, metricLabel(p, prediction.metric), threshold)}
+            onClick={() => onMetric(
+              prediction.metric,
+              p.metricLabel(prediction.metric),
+              threshold,
+              p.metric(prediction.metric) ?? undefined,
+              prediction.metric === 'spot' ? 'form' : prediction.metric === 'iv_atm_30d' || prediction.metric === 'vrp' ? 'option' : undefined,
+            )}
           >
-            {metricLabel(p, prediction.metric)}
+            {p.metricLabel(prediction.metric)}
           </Button>{' '}
           {prediction.operator} {threshold} · {sessionsLabel(prediction.horizon_sessions)} · avaliar em{' '}
           {dateBr(prediction.evaluate_on)}
         </span>
       </div>
       <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[calc(11.5px*var(--font-scale))] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
-        <span className={`${quiet} lg:text-label`}>Observado</span>
+        <span className={`${quiet} lg:text-label`}>{p.copy('observed').label}</span>
         <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           {observed}
           {prediction.evaluated_on ? ` · ${dateBr(prediction.evaluated_on)}` : ''}
         </span>
       </div>
       <div className="grid grid-cols-[minmax(92px,0.35fr)_minmax(0,1fr)] gap-[12px] border-b border-b-border py-[8px] text-[calc(11.5px*var(--font-scale))] max-sm:grid-cols-[minmax(0,1fr)] max-sm:gap-[2px] lg:text-label">
-        <span className={`${quiet} lg:text-label`}>Desfecho</span>
+        <span className={`${quiet} lg:text-label`}>{p.copy('prediction_status_journal').label}</span>
         <span className={`${num} min-w-0 text-right whitespace-normal [overflow-wrap:anywhere]`}>
           <Button
             type="button"
@@ -483,8 +484,10 @@ function PredictionOutcome({
             onClick={() =>
               onMetric(
                 'prediction_status',
-                'Desfecho da previsão',
+                p.copy('prediction_status_journal').label,
                 p.predictionStatus(prediction.status, 'journal').label,
+                'prediction_status_journal',
+                prediction.status,
               )
             }
           >
@@ -493,7 +496,7 @@ function PredictionOutcome({
           {prediction.status === 'void' && prediction.void_reason && (
             <span className="text-[color:var(--text-2)]">
               {' '}
-              · {p.copy('void', undefined, { reason: prediction.void_reason, code: prediction.void_reason }).label}
+              · {p.voidReason(prediction.void_reason).label}
             </span>
           )}
         </span>

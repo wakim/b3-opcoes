@@ -76,7 +76,8 @@ function PositionDetailPage() {
   const [tokenNotice, setTokenNotice] = useState<string | null>(null)
   const [writeNotice, setWriteNotice] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
+  const openMetric: OpenMetric = (field, label, value, term, variant, params) =>
+    setModal({ field, label, value, term, variant, params })
   const closeConfirm = useCallback(() => setConfirmOpen(false), [])
 
   const position = useQuery({
@@ -129,7 +130,7 @@ function PositionDetailPage() {
   }
 
   if (position.isLoading) return <Loading label={p.copy('loading', 'position').label} />
-  if (position.isError) return <ErrorState error={position.error} title="Posição indisponível" />
+  if (position.isError) return <ErrorState error={position.error} title={p.copy('error_title', 'position').label} />
   if (!position.data) return <Loading label={p.copy('loading', 'position').label} />
 
   const data = position.data.data
@@ -139,7 +140,7 @@ function PositionDetailPage() {
   return (
     <>
       <Link className={`${back} lg:text-label`} to="/carteira">
-        <span aria-hidden="true">‹</span> Carteira
+        <span aria-hidden="true">‹</span> {p.copy('screen', 'carteira').label}
       </Link>
 
       <div className={detailHead}>
@@ -165,7 +166,7 @@ function PositionDetailPage() {
       )}
 
       <p className="mb-[16px] text-[calc(11.5px*var(--font-scale))] lg:text-label">
-        <span className={`${quiet} lg:text-label`}>Flags da posição</span>{' '}
+        <span className={`${quiet} lg:text-label`}>{p.copy('flag').label}</span>{' '}
         <PositionFlags flags={data.flags} />
       </p>
 
@@ -204,15 +205,14 @@ function PositionDetailPage() {
         />
         <GlossaryMetric
           field="days_to_expiry"
-          label="Sessões até vencimento"
           term={p.metric('days_to_expiry') ?? undefined}
           value={fmt(data.days_to_expiry, 0)}
           onOpen={openMetric}
         />
         <GlossaryMetric
           field="breakeven_brl"
-          label="Breakevens"
           term="breakeven"
+          variant="plural"
           value={
             data.breakeven_brl.length > 0
               ? data.breakeven_brl.map((value) => brl(value)).join(' · ')
@@ -237,30 +237,30 @@ function PositionDetailPage() {
       </MetricGrid>
 
       <section className="mt-[24px]" aria-labelledby="position-identity-title">
-        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-identity-title">Registro</h2>
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-identity-title">{p.copy('detail', 'record').label}</h2>
         <dl className={identityGrid}>
           <div className={identityCell}>
-            <dt className={identityDt}>Capital comprometido</dt>
+            <dt className={identityDt}>{p.copy('capital').label}</dt>
             <dd className={identityNumDd}>{brl(data.capital_committed_brl)}</dd>
           </div>
           <div className={identityCell}>
-            <dt className={identityDt}>Limite de capital</dt>
+            <dt className={identityDt}>{p.copy('capital_limit').label}</dt>
             <dd className={identityNumDd}>{brl(data.capital_limit_brl)}</dd>
           </div>
           <div className={identityCell}>
-            <dt className={identityDt}>Aberta em</dt>
+            <dt className={identityDt}>{p.copy('detail', 'opened').label}</dt>
             <dd className={identityNumDd}>{dateBr(data.opened_session)}</dd>
           </div>
           <div className={identityCell}>
-            <dt className={identityDt}>Fechada em</dt>
+            <dt className={identityDt}>{p.copy('detail', 'closed').label}</dt>
             <dd className={identityNumDd}>{dateBr(data.closed_session)}</dd>
           </div>
           <div className={identityCell}>
-            <dt className={identityDt}>Vencimento</dt>
+            <dt className={identityDt}>{p.copy('maturity').label}</dt>
             <dd className={identityNumDd}>{dateBr(data.maturity)}</dd>
           </div>
           <div className={identityCell}>
-            <dt className={identityDt}>Status</dt>
+            <dt className={identityDt}>{p.copy('position_status').label}</dt>
             <dd className={identityDd}>{p.positionStatus(data.status)}</dd>
           </div>
         </dl>
@@ -269,32 +269,29 @@ function PositionDetailPage() {
 
       <section className="mt-[24px]" aria-labelledby="position-legs-title">
         <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-legs-title">
-          Pernas registradas
-          <HelpTip
-            label={`O que é ${p.copy('leg').label}?`}
-            text={p.copy('leg').help ?? 'Perna é cada operação que compõe a posição: uma ação ou uma opção, com lado (comprada/vendida) e quantidade.'}
-          />
+          {p.copy('detail', 'registered_legs').label}
+          <HelpTip term="leg" />
         </h2>
         <ScreenTable
           wrapperClassName={`table-wrap ${focusInset}`}
           wrapperProps={{
             role: 'region',
             tabIndex: 0,
-            'aria-label': 'Tabela horizontal das pernas registradas',
+            'aria-label': p.copy('detail', 'legs_region').label,
           }}
           className="min-w-[760px]"
         >
           <TableHeader>
               <TableRow>
-                <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Tipo</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Lado</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Ações</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Vencimento</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Entrada</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Strike</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Volatilidade implícita na entrada</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Delta entrada</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('detail', 'ticker').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('leg_type').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('position_side').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('detail', 'actions').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('maturity').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('detail', 'entry').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('strike').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('iv_pct', 'entry').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('delta', 'entry').label}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -316,21 +313,21 @@ function PositionDetailPage() {
       </section>
 
       <section className="mt-[24px]" aria-labelledby="position-marks-title">
-        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-marks-title">Marcação da sessão</h2>
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-marks-title">{p.copy('detail', 'marks_title').label}</h2>
         <ScreenTable
           wrapperClassName={`table-wrap ${focusInset}`}
           wrapperProps={{
             role: 'region',
             tabIndex: 0,
-            'aria-label': 'Tabela horizontal da marcação da sessão',
+            'aria-label': p.copy('detail', 'marks_region').label,
           }}
           className="min-w-[980px]"
         >
           <TableHeader>
               <TableRow>
-                <TableHead className="font-normal lg:text-table-head">Ticker</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Marca</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Strike vigente</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('detail', 'ticker').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('detail', 'mark').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('strike', 'current').label}</TableHead>
                 <TableHead className="font-normal lg:text-table-head">{p.copy('iv_pct', 'column').label}</TableHead>
                 <TableHead className="font-normal lg:text-table-head">{p.copy('delta').label}</TableHead>
                 <TableHead className="font-normal lg:text-table-head">{p.copy('gamma').label}</TableHead>
@@ -338,8 +335,8 @@ function PositionDetailPage() {
                 <TableHead className="font-normal lg:text-table-head">{p.copy('vega').label}</TableHead>
                 <TableHead className="font-normal lg:text-table-head">{p.copy('spread').label}</TableHead>
                 <TableHead className="font-normal lg:text-table-head">{p.copy('spread', 'pct').label}</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Um lado</TableHead>
-                <TableHead className="font-normal lg:text-table-head">Flags</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('detail', 'one_sided').label}</TableHead>
+                <TableHead className="font-normal lg:text-table-head">{p.copy('flag').label}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -366,7 +363,7 @@ function PositionDetailPage() {
       </section>
 
       <section className="mt-[24px]" aria-labelledby="position-thesis-title">
-        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-thesis-title">Tese vs realidade</h2>
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-thesis-title">{p.copy('detail', 'thesis_title').label}</h2>
         <div className="rounded-[6px] border border-border bg-card p-[16px]">
           <p className="mb-[16px] text-[calc(14px*var(--font-scale))] leading-[1.55] text-foreground [overflow-wrap:anywhere] lg:text-body lg:leading-body">
             {data.thesis_line ?? 'Nenhuma linha de tese retornada para esta posição.'}
@@ -374,56 +371,53 @@ function PositionDetailPage() {
           {data.prediction ? (
             <dl className={identityGrid}>
               <div className={identityCell}>
-                <dt className={identityDt}>Métrica</dt>
-                <dd className={identityNumDd}>{(() => {
-                  const key = p.metric(data.prediction.metric)
-                  return key ? p.copy(key).label : data.prediction.metric
-                })()}</dd>
+                <dt className={identityDt}>{p.copy('metric.generic').label}</dt>
+                <dd className={identityNumDd}>{p.metricLabel(data.prediction.metric)}</dd>
               </div>
               <div className={identityCell}>
-                <dt className={identityDt}>Condição</dt>
+                <dt className={identityDt}>{p.copy('detail', 'condition').label}</dt>
                 <dd className={identityNumDd}>
                   {data.prediction.operator} {fmt(data.prediction.value)}
                 </dd>
               </div>
               <div className={identityCell}>
-                <dt className={identityDt}>Horizonte</dt>
+                <dt className={identityDt}>{p.copy('horizon').label}</dt>
                 <dd className={identityNumDd}>{fmt(data.prediction.horizon_sessions, 0)} sessões</dd>
               </div>
               <div className={identityCell}>
-                <dt className={identityDt}>Avaliar em</dt>
+                <dt className={identityDt}>{p.copy('detail', 'eval_on').label}</dt>
                 <dd className={identityNumDd}>{dateBr(data.prediction.evaluate_on)}</dd>
               </div>
               <div className={identityCell}>
-                <dt className={identityDt}>Status</dt>
+                <dt className={identityDt}>{p.copy('prediction_status_position').label}</dt>
                 <dd className={identityDd}>{p.predictionStatus(data.prediction.status, 'position').label}</dd>
               </div>
               <div className={identityCell}>
-                <dt className={identityDt}>Observado</dt>
+                <dt className={identityDt}>{p.copy('observed').label}</dt>
                 <dd className={identityNumDd}>{fmt(data.prediction.observed)}</dd>
               </div>
             </dl>
           ) : (
-            <p className={`${note} lg:text-label`}>Sem previsão estruturada; esta posição não entra na calibração.</p>
+            <p className={`${note} lg:text-label`}>{p.copy('detail', 'no_prediction').label}</p>
           )}
         </div>
       </section>
 
       <section className="mt-[24px]" aria-labelledby="position-payoff-title">
-        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-payoff-title">Payoff no vencimento</h2>
-        <p className={`${chainNote} lg:text-label lg:leading-body`}>Preços de entrada do journal; o backend calcula todos os pontos.</p>
+        <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-payoff-title">{p.copy('payoff', 'chart').label}</h2>
+        <p className={`${chainNote} lg:text-label lg:leading-body`}>{p.copy('detail', 'entry_prices_note').label}</p>
         {!payoffTruncated && (
           <PayoffChart
             points={data.payoff}
             breakevens={data.breakeven_brl}
-            ariaLabel={`Payoff no vencimento da posição de ${data.underlying}`}
+            ariaLabel={`${p.copy('payoff', 'chart').label} da posição de ${data.underlying}`}
           />
         )}
       </section>
 
       {isOpen && (
         <section className="mt-[24px] border-t border-t-border pt-[16px]" aria-labelledby="position-close-title">
-          <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-close-title">Fechamento</h2>
+          <h2 className={`${blockTitle} lg:text-block-title lg:leading-title`} id="position-close-title">{p.copy('detail', 'close_title').label}</h2>
           {!auth.hasToken && !confirmOpen && (
             <TokenGate compact notice={tokenNotice} onUnlock={() => setTokenNotice(null)} />
           )}
@@ -467,7 +461,7 @@ function PositionDetailPage() {
               />
             )}
             <label className={field}>
-              <span className={`${fieldLabel} lg:text-label`}>Data da sessão (opcional)</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'session_date_optional').label}</span>
               <Input
                 type="date"
                 className="min-h-[44px] font-mono text-[calc(12px*var(--font-scale))] text-foreground tabular-nums focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-[-2px]"
@@ -477,8 +471,8 @@ function PositionDetailPage() {
                 disabled={close.isPending}
               />
             </label>
-            <p className={`${note} lg:text-label`}>Em branco, o backend usa a última sessão disponível.</p>
-            {close.isError && <ErrorState error={close.error} title="Fechamento não registrado" />}
+            <p className={`${note} lg:text-label`}>{p.copy('detail', 'close_note').label}</p>
+            {close.isError && <ErrorState error={close.error} title={p.copy('error_title', 'close').label} />}
             <div className="mt-[4px] flex flex-wrap justify-end gap-[8px] max-sm:grid max-sm:grid-cols-[minmax(0,1fr)]">
               <Button
                 type="button"

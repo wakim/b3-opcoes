@@ -120,7 +120,7 @@ function Aprender() {
   return (
     <>
       <h1 className="mt-[4px] mb-[16px] text-[calc(28px*var(--font-scale))] font-medium tracking-[-0.02em] lg:text-screen-title lg:leading-title">
-        Aprender
+        {p.copy('learn').label}
       </h1>
       <p className={`${note} lg:text-label`}>{p.copy('learn', 'intro').label}</p>
 

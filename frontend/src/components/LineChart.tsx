@@ -273,14 +273,14 @@ export function LineChart({
   return (
     <div className={`chart${compact ? ' chart--compact' : ''}`} ref={wrapRef}>
       <div className="chart__bounds lg:text-chart" aria-hidden="true">
-        <span>máx {formatValue(hi)}</span>
-        <span>mín {formatValue(lo)}</span>
+        <span>{p.copy('chart', 'maximum', { value: formatValue(hi) }).label}</span>
+        <span>{p.copy('chart', 'minimum', { value: formatValue(lo) }).label}</span>
       </div>
       <svg
         className="chart__svg"
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`${ariaLabel}. Use as setas para percorrer os pontos.`}
+        aria-label={`${ariaLabel}. ${p.copy('chart', 'keyboard_points').label}`}
         tabIndex={0}
         onPointerMove={handlePointerMove}
         onPointerDown={handlePointerMove}
@@ -433,7 +433,11 @@ export function LineChart({
             {s.label}
           </span>
         ))}
-        {marks.length > 0 && <span className="chart__legend-note">tracejado vertical: {p.copy('chart', 'adjustment').label}</span>}
+        {marks.length > 0 && (
+          <span className="chart__legend-note">
+            {p.copy('chart', 'vertical_dashed', { label: p.copy('chart', 'adjustment').label }).label}
+          </span>
+        )}
         {series.some((s) => s.hollow?.some(Boolean)) && (
           <span className="chart__legend-note">{p.copy('chart', 'hollow').label}</span>
         )}

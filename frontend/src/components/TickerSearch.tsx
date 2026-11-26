@@ -56,7 +56,7 @@ export function TickerSearch() {
       {debounced.length > 0 && (
         <div className="mt-[6px]" aria-live="polite">
           {search.isLoading && <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('loading', 'search').label}</p>}
-          {search.isError && <ErrorState error={search.error} title="Busca indisponível" />}
+          {search.isError && <ErrorState error={search.error} title={p.copy('error_title', 'search').label} />}
           {search.data && rows.length === 0 && (
             <p className="my-[8px] text-[calc(11px*var(--font-scale))] text-muted-foreground lg:text-label">{p.copy('search', 'empty', { q: debounced }).label}</p>
           )}

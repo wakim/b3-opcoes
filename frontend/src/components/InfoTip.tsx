@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -42,24 +41,14 @@ export function InfoTip({
   const [open, setOpen] = useState(false)
   const suppressCloseUntil = useRef(0)
   const preserveTouchOpen = useRef(false)
-  const closeTimer = useRef<number | null>(null)
-
-  useEffect(
-    () => () => {
-      if (closeTimer.current != null) window.clearTimeout(closeTimer.current)
-    },
-    [],
-  )
 
   function close() {
     suppressCloseUntil.current = 0
-    if (closeTimer.current != null) window.clearTimeout(closeTimer.current)
-    closeTimer.current = null
     setOpen(false)
   }
 
   function onPointerDown(event: PointerEvent) {
-    if (event.pointerType !== 'touch') return
+    if (event.pointerType === 'mouse') return
     preserveTouchOpen.current = !open
     if (open) {
       close()
@@ -67,7 +56,6 @@ export function InfoTip({
     }
     suppressCloseUntil.current = Date.now() + 500
     setOpen(true)
-    closeTimer.current = window.setTimeout(close, 5000)
   }
 
   function onKeyDown(event: KeyboardEvent) {

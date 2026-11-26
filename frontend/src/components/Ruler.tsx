@@ -30,7 +30,7 @@ export function Ruler({
     ? null
     : Math.max(0, Math.min(1, (value - min) / (max - min))) * 100
   const subject = describe ?? p.copy('ruler', 'position').label
-  const range = `${p.copy('ruler', 'range').label} ${format(min)} a ${format(max)}`
+  const range = p.copy('ruler', 'range', { min: format(min), max: format(max) }).label
   const aria = value == null
     ? `${subject}: ${p.copy('ruler', 'unavailable').label}; ${range}`
     : `${subject}: ${format(value)}; ${range}${clamped ? `; ${p.copy('ruler', 'outside').label}` : ''}`

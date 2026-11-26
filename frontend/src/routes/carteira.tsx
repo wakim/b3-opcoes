@@ -57,7 +57,8 @@ function Carteira() {
   const [tokenNotice, setTokenNotice] = useState<string | null>(null)
   const [writeNotice, setWriteNotice] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalTarget | null>(null)
-  const openMetric: OpenMetric = (field, label, value) => setModal({ field, label, value })
+  const openMetric: OpenMetric = (field, label, value, term, variant, params) =>
+    setModal({ field, label, value, term, variant, params })
   const closeForm = useCallback(() => setFormOpen(false), [])
 
   const portfolio = useQuery({
@@ -103,8 +104,8 @@ function Carteira() {
     <>
       <div className={portfolioHead}>
         <div>
-          <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>Carteira</h1>
-          <p className={`${quietLine} lg:text-label`}>Posições e marcação EOD do journal</p>
+          <h1 className={`${screenTitle} lg:text-screen-title lg:leading-title`}>{p.copy('screen', 'carteira').label}</h1>
+          <p className={`${quietLine} lg:text-label`}>{p.copy('screen', 'portfolio_note').label}</p>
         </div>
         {auth.hasToken && (
           <div className={actionsRow}>
@@ -133,7 +134,7 @@ function Carteira() {
       )}
 
       {portfolio.isLoading && <Loading label={p.copy('loading', 'wallet').label} />}
-      {portfolio.isError && <ErrorState error={portfolio.error} title="Carteira indisponível" />}
+      {portfolio.isError && <ErrorState error={portfolio.error} title={p.copy('error_title', 'wallet').label} />}
 
       {writeNotice && (
         <p className={`${notice} lg:text-label`} role="status">
@@ -144,21 +145,24 @@ function Carteira() {
       {portfolio.data && (
         <>
           <p className={`${quietLine} lg:text-label`}>
-            sessão {portfolio.data.data.session} · {portfolio.data.data.totals.open_positions}{' '}
-            {portfolio.data.data.totals.open_positions === 1 ? 'posição aberta' : 'posições abertas'}
+            {p.copy('stamp', 'online', { session: portfolio.data.data.session }).label} · {portfolio.data.data.totals.open_positions}{' '}
+            {p.copy('position', portfolio.data.data.totals.open_positions === 1 ? 'singular' : 'open_plural').label}
           </p>
 
           {(portfolio.data.meta?.truncated || portfolio.data.meta?.note) && (
             <p className={`${notice} lg:text-label`} role="status">
               {portfolio.data.meta.note ??
-                `Mostrando ${portfolio.data.meta.returned} de ${portfolio.data.meta.total} posições abertas.`}
+                p.copy('notice', 'truncated_positions', {
+                  returned: portfolio.data.meta.returned,
+                  total: portfolio.data.meta.total,
+                }).label}
             </p>
           )}
 
           <PositionTotalsGrid totals={portfolio.data.data.totals} onMetric={openMetric} />
 
           <div className={blockHead}>
-            <h2 className={`${blockTitleBase} lg:text-block-title lg:leading-title`}>Posições</h2>
+            <h2 className={`${blockTitleBase} lg:text-block-title lg:leading-title`}>{p.copy('screen', 'positions').label}</h2>
             <span className={`${blockCount} lg:text-label`}>{portfolio.data.data.positions.length}</span>
           </div>
 
@@ -208,7 +212,7 @@ function Carteira() {
             {!auth.hasToken && (
               <TokenGate
                 compact
-                title="Token para registrar"
+                title={p.copy('token', 'register').label}
                 autoFocus
                 notice={tokenNotice}
                 onUnlock={() => setTokenNotice(null)}
@@ -234,10 +238,11 @@ function PositionTotalsGrid({
   totals: PositionTotals
   onMetric: OpenMetric
 }) {
+  const p = usePresentation()
   return (
     <>
       <MetricGrid>
-        <Metric label="Posições abertas" value={fmt(totals.open_positions, 0)} />
+        <Metric term="position" variant={totals.open_positions === 1 ? 'singular' : 'open_plural'} value={fmt(totals.open_positions, 0)} />
         <GlossaryMetric
           field="capital_committed_brl"
           term="capital"
@@ -293,7 +298,7 @@ function PositionTotalsGrid({
         />
       </MetricGrid>
       <p className="mb-[16px] text-[calc(11.5px*var(--font-scale))] lg:text-label">
-        <span className={`${quiet} lg:text-label`}>Flags da carteira</span>{' '}
+        <span className={`${quiet} lg:text-label`}>{p.copy('flag').label}</span>{' '}
         <PositionFlags flags={totals.flags} />
       </p>
     </>
@@ -327,10 +332,10 @@ function PositionCard({
       </header>
 
       <div className="mb-[12px] flex flex-wrap gap-x-[16px] gap-y-[4px] font-mono text-[calc(11px*var(--font-scale))] text-muted-foreground tabular-nums lg:text-label">
-        <span>aberta em {dateBr(position.opened_session)}</span>
-        {position.closed_session && <span>fechada em {dateBr(position.closed_session)}</span>}
-        {position.maturity && <span>vencimento {dateBr(position.maturity)}</span>}
-        <span>limite {brl(position.capital_limit_brl)}</span>
+        <span>{p.copy('detail', 'opened').label} {dateBr(position.opened_session)}</span>
+        {position.closed_session && <span>{p.copy('detail', 'closed').label} {dateBr(position.closed_session)}</span>}
+        {position.maturity && <span>{p.copy('maturity').label} {dateBr(position.maturity)}</span>}
+        <span>{p.copy('capital_limit').label} {brl(position.capital_limit_brl)}</span>
       </div>
 
       <MetricGrid inCard>
@@ -368,14 +373,14 @@ function PositionCard({
         />
         <GlossaryMetric
           field="days_to_expiry"
-          label="Sessões até vencimento"
+          term={p.metric('days_to_expiry') ?? undefined}
           value={fmt(position.days_to_expiry, 0)}
           onOpen={onMetric}
         />
       </MetricGrid>
 
       <div className={`${positionRow} lg:text-label`}>
-        <span className={`${quiet} lg:text-label`}>Breakevens</span>
+        <span className={`${quiet} lg:text-label`}>{p.copy('breakeven', 'plural').label}</span>
         <span className={`${num} text-right`}>
           {breakevens.length > 0 ? breakevens.map((value) => brl(value)).join(' · ') : '—'}
         </span>
@@ -384,7 +389,7 @@ function PositionCard({
       {position.notes && <p className="border-t border-t-border py-[12px] text-[calc(12.5px*var(--font-scale))] leading-[1.55] [overflow-wrap:anywhere] whitespace-pre-wrap text-[color:var(--text-2)] lg:text-body lg:leading-body">{position.notes}</p>}
 
       <div className={`${positionRow} lg:text-label`}>
-        <span className={`${quiet} lg:text-label`}>Flags</span>
+        <span className={`${quiet} lg:text-label`}>{p.copy('flag').label}</span>
         <PositionFlags flags={position.flags} />
       </div>
 

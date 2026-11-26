@@ -41,20 +41,15 @@ const focusToggle =
   'focus-visible:outline-2 focus-visible:outline-offset-[2px] focus-visible:outline-primary'
 
 const DRAFT_KEY = 'b3o:journal-draft'
-const METRICS: Array<{ value: PredictionMetric; label: string; unit: string }> = [
-  { value: 'spot', label: 'Preço (spot / fechamento)', unit: 'R$' },
-  { value: 'iv_atm_30d', label: 'IV ATM 30d', unit: '% a.a.' },
-  { value: 'vrp', label: 'VRP', unit: 'pontos de vol' },
-  { value: 'rr25', label: 'RR25', unit: 'pontos de vol' },
+/** Rótulo vem do dicionário; aqui só ficam o valor enviado à API, a variante
+ *  semântica e a unidade (inalterada). */
+const METRICS: Array<{ value: PredictionMetric; variant?: string; unit: string }> = [
+  { value: 'spot', variant: 'form', unit: 'R$' },
+  { value: 'iv_atm_30d', variant: 'option', unit: '% a.a.' },
+  { value: 'vrp', variant: 'option', unit: 'pontos de vol' },
+  { value: 'rr25', unit: 'pontos de vol' },
 ]
-const TYPES: Array<{ value: DecisionType; label: string }> = [
-  { value: 'no_entry', label: 'Não entrei' },
-  { value: 'entry', label: 'Entrada' },
-  { value: 'exit', label: 'Saída' },
-  { value: 'hold', label: 'Manter' },
-  { value: 'watch', label: 'Observação' },
-  { value: 'other', label: 'Outra' },
-]
+const TYPES: DecisionType[] = ['no_entry', 'entry', 'exit', 'hold', 'watch', 'other']
 
 interface DraftState {
   clientDecisionId: string
@@ -80,7 +75,7 @@ function loadDraft(): DraftState | null {
     const raw = sessionStorage.getItem(DRAFT_KEY)
     if (!raw) return null
     const value = JSON.parse(raw) as Record<string, unknown>
-    const decisionType = TYPES.some((item) => item.value === value.decisionType)
+    const decisionType = TYPES.some((item) => item === value.decisionType)
       ? (value.decisionType as DecisionType)
       : 'no_entry'
     const metric = METRICS.some((item) => item.value === value.metric)
@@ -281,7 +276,7 @@ export function DecisionForm({
           size="icon"
           className="absolute top-4 right-4"
           onClick={clearDraft}
-          aria-label="Fechar formulário"
+          aria-label={p.copy('action', 'clear_draft').label}
           disabled={create.isPending}
         >
           <span aria-hidden="true">×</span>
@@ -293,10 +288,10 @@ export function DecisionForm({
           className="contents m-0 min-w-0 border-none p-0"
           disabled={create.isPending}
         >
-          <legend className={visuallyHidden}>Dados da decisão</legend>
+          <legend className={visuallyHidden}>{p.copy('form', 'decision_data').label}</legend>
           <div className="grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
             <label className={field}>
-              <span className={`${fieldLabel} lg:text-label`}>Ativo-objeto</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'underlying').label}</span>
               <Input
                 className={`${fieldControl} lg:text-control`}
                 value={underlying}
@@ -310,7 +305,7 @@ export function DecisionForm({
               />
             </label>
             <label className={field}>
-              <span className={`${fieldLabel} lg:text-label`}>Sessão (opcional)</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'session_optional').label}</span>
               <Input
                 className={`${fieldControl} lg:text-control`}
                 type="date"
@@ -319,21 +314,21 @@ export function DecisionForm({
               />
             </label>
             <label className={field}>
-              <span className={`${fieldLabel} lg:text-label`}>Tipo de decisão</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'decision_type').label}</span>
               <NativeSelect
                 className={`${fieldControl} lg:text-control`}
                 value={decisionType}
                 onChange={(event) => setDecisionType(event.target.value as DecisionType)}
               >
                 {TYPES.map((item) => (
-                  <option key={item.value} value={item.value}>
-                    {p.decisionType(item.value).label}
+                  <option key={item} value={item}>
+                    {p.decisionType(item).label}
                   </option>
                 ))}
               </NativeSelect>
             </label>
             <label className={field}>
-              <span className={`${fieldLabel} lg:text-label`}>Contexto (opcional)</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'context').label} {p.copy('form', 'optional').label}</span>
               <Input
                 className={`${fieldControl} lg:text-control`}
                 value={context}
@@ -343,12 +338,12 @@ export function DecisionForm({
               />
             </label>
             <label className={`${field} col-span-full`}>
-              <span className={`${fieldLabel} lg:text-label`}>Notas</span>
+              <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'notes').label}</span>
               <Textarea
                 className={`${textareaControl} lg:text-control lg:leading-body`}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="o que você decidiu e por quê"
+                placeholder={p.copy('form', 'notes_placeholder').label}
                 maxLength={4000}
                 rows={4}
               />
@@ -357,7 +352,7 @@ export function DecisionForm({
 
           <fieldset className="m-0 min-w-0 border-none p-0" disabled={create.isPending}>
             <legend className="mb-[8px] flex min-h-[44px] items-center p-0 text-[calc(13px*var(--font-scale))] font-medium lg:text-block-title lg:leading-title">
-              Previsão estruturada
+              {p.copy('prediction').label}
             </legend>
             <label className="flex min-h-[44px] cursor-pointer items-center gap-[8px] text-[calc(12.5px*var(--font-scale))] text-[color:var(--text-2)] lg:text-label">
               <Checkbox
@@ -366,15 +361,15 @@ export function DecisionForm({
                 onCheckedChange={(checked) => setPredictionEnabled(checked === true)}
                 disabled={create.isPending}
               />
-              <span>Adicionar previsão avaliável</span>
+              <span>{p.copy('form', 'add_prediction').label}</span>
             </label>
             <p className={`${chainNote} lg:text-label lg:leading-body`}>
-              Notas continuam texto livre. Só os campos abaixo entram na calibração.
+              {p.copy('form', 'prediction_note').label}
             </p>
             {predictionEnabled && (
               <div className="mt-[12px] grid grid-cols-[minmax(0,1fr)] gap-[12px] sm:grid-cols-2">
                 <label className={`${field} col-span-full`}>
-                  <span className={`${fieldLabel} lg:text-label`}>Métrica</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'metric').label}</span>
                   <NativeSelect
                     className={`${fieldControl} lg:text-control`}
                     value={metric}
@@ -382,13 +377,13 @@ export function DecisionForm({
                   >
                     {METRICS.map((item) => (
                       <option key={item.value} value={item.value}>
-                        {p.copy(item.value).label}
+                        {p.copy(item.value, item.variant).label}
                       </option>
                     ))}
                   </NativeSelect>
                 </label>
                 <label className={field}>
-                  <span className={`${fieldLabel} lg:text-label`}>Operador</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'operator').label}</span>
                   <NativeSelect
                     className={`${fieldControl} lg:text-control`}
                     value={operator}
@@ -404,7 +399,7 @@ export function DecisionForm({
                 </label>
                 <label className={field}>
                   <span className={`${fieldLabel} lg:text-label`}>
-                    Valor {unit && `(${unit})`}
+                    {p.copy('form', 'value').label} {unit && `(${unit})`}
                   </span>
                   <Input
                     className={`${fieldControl} lg:text-control`}
@@ -417,7 +412,7 @@ export function DecisionForm({
                   />
                 </label>
                 <label className={field}>
-                  <span className={`${fieldLabel} lg:text-label`}>Horizonte (sessões)</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'horizon_sessions').label}</span>
                   <Input
                     className={`${fieldControl} lg:text-control`}
                     type="number"
@@ -430,7 +425,7 @@ export function DecisionForm({
                   />
                 </label>
                 <label className={field}>
-                  <span className={`${fieldLabel} lg:text-label`}>Avaliar em</span>
+                  <span className={`${fieldLabel} lg:text-label`}>{p.copy('form', 'evaluate_on').label}</span>
                   <Input
                     className={`${fieldControl} lg:text-control`}
                     type="date"
@@ -451,7 +446,7 @@ export function DecisionForm({
               {validationError}
             </p>
           )}
-          {create.isError && <ErrorState error={create.error} title="Decisão não registrada" />}
+          {create.isError && <ErrorState error={create.error} title={p.copy('error_title', 'decision').label} />}
           <div className="mt-[4px] flex flex-wrap justify-end gap-[8px] max-sm:grid max-sm:grid-cols-[minmax(0,1fr)]">
             <Button
               type="button"

@@ -225,6 +225,39 @@ def parse_session(value: str | None, health: dict[str, Any]) -> str:
         ) from exc
 
 
+def health_sessions(health: dict[str, Any]) -> tuple[str | None, str | None]:
+    """Par (as_of_session, last_session) declarado por /api/health."""
+    return (
+        health.get("as_of_session"),
+        (health.get("data") or {}).get("last_session"),
+    )
+
+
+def guard_session(health: dict[str, Any], requested: str | None) -> None:
+    """--date tem que bater com as_of_session E last_session; falha explícita."""
+    as_of, last = health_sessions(health)
+    if requested is not None and (requested != as_of or requested != last):
+        raise BenchError(
+            "session_mismatch",
+            f"--date {requested} não bate com /api/health "
+            f"(as_of_session={as_of}, last_session={last})",
+            "use a sessão congelada do lake; nunca capture outra data",
+        )
+    if not as_of or as_of != last:
+        raise BenchError(
+            "health_inconsistent",
+            f"/api/health divergiu internamente (as_of_session={as_of}, last_session={last})",
+            "confira o serviço app e o prepare antes de capturar",
+        )
+    model_version = health.get("model_version")
+    if not isinstance(model_version, int) or isinstance(model_version, bool):
+        raise BenchError(
+            "model_version_invalid",
+            f"/api/health declarou model_version inválido: {model_version!r}",
+            "model_version deve ser inteiro (como no P3); sem versão não há comparabilidade",
+        )
+
+
 def parse_limit(value: str) -> int:
     try:
         limit = int(value)
@@ -570,20 +603,63 @@ def cleanup(created: list[tuple[Path, Path]]) -> None:
             pass
 
 
-def load_reusable(manifest: Path, key: str) -> dict[str, Any] | None:
+def load_reusable(
+    manifest: Path, key: str, session: str, model_version: int
+) -> dict[str, Any] | None:
+    """Reutiliza só se manifesto, sessão, modelo, arquivos e SHA conferem."""
     if not manifest.exists():
         return None
     try:
         existing = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+    if not isinstance(existing, dict):
+        return None
     if (
-        isinstance(existing, dict)
-        and existing.get("capture_key") == key
-        and existing.get("complete") is True
+        existing.get("capture_key") != key
+        or existing.get("reference_date") != session
+        or existing.get("model_version") != model_version
+        or existing.get("complete") is not True
     ):
-        return existing
-    return None
+        return None
+    guard = existing.get("session_guard") or {}
+    if (
+        guard.get("same") is not True
+        or guard.get("before") != session
+        or guard.get("after") != session
+    ):
+        return None
+    series = existing.get("series") or []
+    counts = existing.get("counts") or {}
+    if not series or len(series) != counts.get("captured"):
+        return None
+    records: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for item in series:
+        name = item.get("file") if isinstance(item, dict) else None
+        if (
+            not isinstance(name, str)
+            or not name
+            or name in names
+            or "/" in name
+            or "\\" in name
+        ):
+            return None
+        names.add(name)
+        try:
+            record = json.loads((manifest.parent / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if (
+            not isinstance(record, dict)
+            or record.get("reference_date") != session
+            or record.get("capture_key") != key
+        ):
+            return None
+        records.append(record)
+    if hashlib.sha256(canonical(records).encode("utf-8")).hexdigest() != existing.get("sha256"):
+        return None
+    return existing
 
 
 def capture(
@@ -840,6 +916,7 @@ def build_manifest(
 def run(args: argparse.Namespace) -> int:
     health_before = fetch_health()
     session = parse_session(args.date, health_before)
+    guard_session(health_before, args.date)
     tickers = normalize_tickers(args.tickers)
     limit = parse_limit(args.limit)
     key = capture_key(session, tickers, limit)
@@ -847,7 +924,11 @@ def run(args: argparse.Namespace) -> int:
         Path(args.output_dir) if args.output_dir else DEFAULT_OUTPUT_ROOT / session / "b3lab"
     )
     manifest = output_dir / "manifest.json"
-    existing = None if args.force else load_reusable(manifest, key)
+    existing = (
+        None
+        if args.force
+        else load_reusable(manifest, key, session, health_before["model_version"])
+    )
     if existing is not None:
         print(
             json.dumps(
@@ -856,6 +937,8 @@ def run(args: argparse.Namespace) -> int:
                     "capture_key": key,
                     "reference_date": session,
                     "manifest": str(manifest),
+                    "sha256": existing.get("sha256"),
+                    "files_verified": len(existing.get("series") or []),
                     "complete": existing.get("complete"),
                     "captured": len(existing.get("series") or []),
                 },
@@ -905,15 +988,23 @@ def run(args: argparse.Namespace) -> int:
         series, skipped, raw_records = capture(planned, session, key, output_dir, created)
         ended_at = datetime.now(TZ_BR).isoformat()
         health_after = fetch_health()
-        guard = health_before.get("as_of_session") == health_after.get("as_of_session")
-        if not guard:
+        guard_session(health_after, session)
+        before_pair = health_sessions(health_before)
+        after_pair = health_sessions(health_after)
+        if before_pair != after_pair:
             raise BenchError(
                 "session_changed",
-                (
-                    "sessão mudou durante a captura: "
-                    f"{health_before.get('as_of_session')} → {health_after.get('as_of_session')}"
-                ),
+                f"sessão mudou durante a captura: {before_pair} → {after_pair}",
                 "abortar e limpar temporários; a comparação exige a mesma sessão do lake",
+            )
+        if health_after.get("model_version") != health_before.get("model_version"):
+            raise BenchError(
+                "model_version_changed",
+                (
+                    "model_version mudou durante a captura: "
+                    f"{health_before.get('model_version')} → {health_after.get('model_version')}"
+                ),
+                "abortar e limpar temporários; o histórico não pode misturar modelos",
             )
         manifest_value = build_manifest(
             session,

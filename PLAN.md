@@ -25,7 +25,7 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. **F5 entregue e aceito**: PWA (Hoje, Ticker, Série, Aprender, builder de estrutura, liquidez) servido pelo FastAPI, instalado no celular via `tailscale serve` 8443 (só tailnet) e offline pelo service worker. **F6 implementado e validado** (ADR-041/045): journal PostgreSQL append-only, carteira com marcação EOD, P&L, gregas, alertas e payoff; aceitação no uso real (ADR-047). **F7 implementado e validado** (ADR-042): Diário de decisões com previsão estruturada, avaliação automática no lote EOD e calibração pessoal; aceitação no uso real (ADR-047). **F8 entregue e aceita** (ADR-043/044/046/047): interface em shadcn + Tailwind, CSS global reduzido a tokens, base e as exceções da ADR-046; avaliação manual do dono aprovada em 25/11/2026. |
 | Retomar em | **F8 aceita; começar a usar F6/F7 (ADR-047).** (1) **Diário todo pregão**: uma decisão real por sessão na app da 8083/8443 (inclusive "não entrei"), com previsão estruturada quando houver tese — a aceitação F7 conta 30 sessões consecutivas e ≥ 10 previsões avaliadas pelo lote. (2) **Duas posições reais** registradas na Carteira na data da execução, e o P&L conferido com o extrato da corretora (F6.6). A F9 está implementada, com validação final pendente; defeito achado no uso vira correção pontual. |
 | Novo pedido | **F9 — níveis de linguagem Expert/Leigo**, pedido do dono em 24/11/2026. Implementação concluída; validação final pendente. É apresentação, não altera dado, cálculo ou a aceitação de uso de F6/F7. |
-| Benchmark externo | **F10 — benchmark de métricas**, pedido do dono em 25/11/2026. Planejado abaixo; **não iniciado**. Validação pontual contra OBM, OpçõesBR e B3Lab, sem dado vivo nem mudança de fórmula apenas para acompanhar site externo. |
+| Benchmark externo | **F10 — benchmark de métricas**, pedido do dono em 25/11/2026, revisado em 26/11 para cobrir **todas** as métricas de mercado. Planejado abaixo; **não iniciado**. Fontes: OBM, opcoes.net.br e a calculadora do B3Lab, capturados por scripts Python + Playwright na mesma sessão do lake; sem dado vivo nem mudança de fórmula apenas para acompanhar site externo. |
 | Dados baixados | COTAHIST 2024–2026 (2026: 221 sessões, 3.537.186 linhas dos 6 mercados; 722 sessões no total), OI (10 sessões), curva DI (722 sessões: 1 PRE + 721 Selic plana), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
@@ -707,44 +707,109 @@ ordens, rotas e contratos da API.
 # F10 — Benchmark externo de métricas
 
 **Pedido do dono (25/11/2026):** comparar as métricas do painel com referências externas.
-**Status:** planejado; **não executar agora**. Não reabre F6/F7/F9 nem altera a aceitação de uso real.
+**Revisão (26/11/2026):** o dono exigiu cobertura para **todas** as métricas de mercado, podendo combinar
+sites. Fontes investigadas no navegador em 26/11/2026 (sessão 25/11 nos sites e no lake).
+**Status:** planejado; **não iniciado**. Não reabre F6/F7/F9 nem altera a aceitação de uso real.
 
-**Objetivo:** medir a aderência de IV, Gregas, smile/termo e estruturas a implementações externas,
-separando divergência de metodologia de erro real — sem transformar site de terceiro em dono da verdade.
-**Estimativa:** 1 sessão · **Depende de:** F1, F3 e F4. É independente de F9 e da aceitação de uso de F6/F7.
+**Objetivo:** medir a aderência de todas as métricas de mercado a referências externas, separando
+divergência de metodologia de erro real — sem transformar site de terceiro em dono da verdade.
+**Estimativa:** 2 sessões (~7 h) · **Depende de:** F1, F3 e F4. É independente de F9 e da aceitação de uso de F6/F7.
 
-**Referências escolhidas:**
-- **OBM:** principal referência EOD independente para IV por série, IV ATM, smile, estrutura a termo,
-  IV rank/percentil e delta/Gregas.
-- **OpçõesBR:** segunda referência EOD para grade, IV por série/ATM, volume, OI, put/call e Gregas.
-  A metodologia pública informa ATM como média das 4 séries mais próximas e RV30 como desvio-padrão
-  fechamento-a-fechamento em 21 pregões; portanto não é equivalente ao nosso ATM 30d nem ao Yang-Zhang.
-- **B3Lab (calculadora Black-Scholes):** auditoria de preço teórico, IV e das cinco Gregas com inputs
-  controlados. Não é referência para rank, VRP ou definição de ATM.
-- **OpLab:** opcional, apenas como referência de produto/convenções; dado ao vivo e métricas proprietárias
-  não entram na comparação numérica do EOD.
+## Fontes (medidas em 26/11/2026)
+
+| Fonte | Acesso | O que entrega | Restrição |
+|---|---|---|---|
+| **OBM** — `obm.com.br` | Público, sem login. As páginas carregam JSON de `/api/v1/…` | Cadeia por vencimento (`/opcoes/{T}`, JSON `/api/v1/opcoes/{T}?venc=AAAA-MM-DD`: `premio`, `bid`, `ask`, `spread_ratio`, `vi_ratio`, Δ Γ Θ ν ρ, `oi`, `volume`, `liq`, `du`); agregado (`/api/v1/opcoes/{T}/agregado-diario`: `iv_atm_30d/60d/90d_ratio`, `skew_25d_30d_ratio`, OI e volume do papel); `vi-historico` (VI ATM de 252 sessões); `/opcoes/{t}/volatilidade` (smile, VI ATM por vencimento, superfície); `/acoes/{t}` (OHLC diário de 1 ano com `volume_financial` e `trades_count`, embutido no payload RSC); `/tesouro-direto/curva` (ETTJ prefixada ANBIMA em du/252); `/calendario-dividendos` (proventos por data ex); `/opcoes/montador` (payoff no servidor: custo, breakeven, lucro/perda máximos, gregas somadas, choque de tempo e vol, exercício A/E) | **Só o último pregão**: `?date=`/`?data=` são ignorados. `robots.txt` bloqueia `/api/` para robôs: o script abre as **páginas públicas** e guarda o JSON que elas já carregam, sem chamar `/api/v1` direto. A API oficial (`api.obm.com.br`, chave grátis) não tem dataset de opções. |
+| **opcoes.net.br** (o "OpçõesBR" do plano anterior — a confirmar, ver F10.1) | Público, sem login, para a grade e o cabeçalho | Grade `/opcoes/bovespa/{T}` (DataTable `#tblListaOpc`: tipo, **estilo `Mod.` A/E**, strike, último, negócios, volume, IV, Δ, Γ, Θ R$, **Θ %**, ν, coberto/travado/descoberto); cabeçalho com VH e IV calls/puts com rank, percentil, mín e máx; calculadora B&S `/calculadora-Black-Scholes` | **Só o último pregão**; um vencimento por vez na grade; forçar "Último pregão", nunca "Tempo real". A grade vem por shared worker + SignalR: ler o DataTable já renderizado. Tabela de volatilidades por ação, histórico, skew e simulador pedem login — **fora** do plano. |
+| **B3Lab** — `b3lab.com.br/calculadora-black-scholes` | Público, sem login, cálculo no navegador | Preço teórico, IV e as 5 gregas a partir de S, K, vencimento (data, dias corridos ou **dias úteis**), r, σ e q; campos React com id terminando em `-spot`, `-strike`, `-rate`, `-sigma`, `-dividend-yield` | Black-Scholes com `q`: Black-76 equivale a `S = F`, `q = r`. Convenção de `r` (contínua × composta) a calibrar. A **grade pública não serve**: em 25/11 usava spot 40,55 (fechamento 41,36) e só 3 vencimentos. |
+| **OpLab** | — | Só referência de produto/convenções | Dado ao vivo e métricas proprietárias não entram na comparação. |
+
+## Matriz de cobertura
+
+**Direto** = a fonte publica o número. **Recalculado** = dado externo + fórmula reimplementada no script de
+benchmark, fora de `backend/src/b3o` (confere dado e código, não metodologia de terceiro — o relatório marca
+assim). **Descritivo** = regra diferente; só se descreve, sem gate numérico.
+
+| Métrica | Fonte principal | Segunda fonte | Tipo |
+|---|---|---|---|
+| Spot / fechamento | OBM (OHLC) | opcoes.net.br | direto |
+| Strike, vencimento, du | OBM (`du`) | opcoes.net.br (`d.u.`) | direto |
+| Estilo A/E | opcoes.net.br (`Mod.`) | — | direto |
+| Prêmio, bid/ask, `spread_pct` | OBM (`premio`, `bid`, `ask`, `spread_ratio`) | opcoes.net.br (último) | direto |
+| `iv` por série | OBM `vi_ratio` | opcoes.net.br; B3Lab invertendo o prêmio | direto |
+| `delta`, `gamma`, `vega_brl`, `theta_brl`, `rho` | OBM | opcoes.net.br (sem ρ); B3Lab com os nossos inputs | direto |
+| `theta_pct` | opcoes.net.br | B3Lab | direto |
+| `iv_atm_30d` | OBM `iv_atm_30d_ratio` | opcoes.net.br (ATM de 4 séries — metodologia diferente) | direto |
+| Estrutura a termo (IV ATM por vencimento) | OBM `/volatilidade` | — | direto |
+| `ts_slope_30_90` | OBM (`iv_atm_30d` e `iv_atm_90d`) | — | recalculado |
+| Smile | OBM `/volatilidade` | opcoes.net.br (IV por strike) | direto |
+| `rr25` | OBM `skew_25d_30d_ratio` (definição a confirmar) | 25Δ recalculado do smile do OBM com a nossa definição | direto + recalculado |
+| `bfly25` | smile do OBM nos pontos 25Δ | smile do opcoes.net.br | recalculado |
+| `iv_rank_252`, `iv_pct_252` | OBM (rank + `vi-historico`) | opcoes.net.br (rank/percentil, calls e puts separados) | direto + recalculado |
+| `rv20`, `rv30`, `rv60` (Yang-Zhang) | OHLC do OBM + Yang-Zhang reimplementado | opcoes.net.br VH (fechamento a fechamento) | recalculado; VH só descritivo |
+| Pregão dominante (`rv_shock_day`) | OHLC do OBM | — | recalculado |
+| `vrp`, `vrp_z_252` | IV ATM do OBM − RV recalculada; z pelo `vi-historico` | — | recalculado |
+| `exp_move_1s_30d` | `iv_atm_30d` do OBM | — | recalculado |
+| DF / curva | ETTJ prefixada ANBIMA (via OBM) | — | direto (fonte independente da DI da B3) |
+| `forward_30d` | S·e^{rt} − VP dos proventos (ETTJ + calendário do OBM) | — | recalculado |
+| `implied_div_yield_30d` | proventos com data ex na janela (calendário do OBM) | — | recalculado |
+| Volume, negócios | OBM (`volume_financial`, `trades_count`) | opcoes.net.br | direto |
+| OI coberto/descoberto/total | OBM `oi` | opcoes.net.br (coberto, travado, descoberto) | direto |
+| `days_to_liquidate` | OI e volume do OBM | — | recalculado |
+| `is_liquid` | OBM `liq` | — | descritivo |
+| Preço teórico | B3Lab (`S = F`, `q = r`) | calculadora do opcoes.net.br | direto |
+| Estrutura (F4): prêmio líquido, breakeven, perda/ganho máximo, gregas somadas, cenário tempo × vol | montador do OBM — trava de alta, trava de baixa, straddle, put caixa | — | direto |
+| Venda coberta (perna de ação) | montador do OBM, **se** aceitar perna de ação (F10.1) | — | direto ou fonte única |
+| P&L da posição, exposição delta em R$ | `premio` e `delta` do OBM × quantidade | — | recalculado |
+
+**Fora do benchmark:** Diário, previsão, desfecho e calibração pessoal (não são métricas de mercado; nenhuma
+fonte publica equivalente — verificação por recontagem interna) e `signal_class` (fora do produto, ADR-023).
+
+## Execução
+
+- **Amostra:** 5 papéis (PETR4, VALE3, BOVA11, B3SA3, ITUB4), 2 vencimentos mensais por papel (o do smile e o
+  seguinte), todas as séries com cotação nos dois sites; calls/puts europeias líquidas no gate de IV/Gregas.
+- **A captura depende do dia; a comparação não.** OBM e opcoes.net.br só mostram o último pregão. A captura
+  lê `/api/health` e **aborta** se a data de qualquer fonte for diferente da sessão do lake; grava os dados
+  brutos com URL e horário de acesso. A comparação roda depois, quantas vezes for preciso, sobre o que foi gravado.
+- **Scripts** (em `backend/scripts/`, sem suíte de testes — ADR-019):
+  - `bench_capture.py` — Playwright; OBM (cadeia, agregado, `vi-historico`, volatilidade, OHLC, ETTJ,
+    proventos) e opcoes.net.br (grade por vencimento + cabeçalho) → `data/bench/AAAA-MM-DD/`.
+  - `bench_b3lab.py` — Playwright; preenche a calculadora com os inputs das nossas séries (F, DF, du/252, σ)
+    e grava as saídas. Não depende da sessão.
+  - `bench_structures.py` — Playwright; monta no montador do OBM as estruturas de referência e grava o resultado.
+  - `bench_compare.py` — sem Playwright, no serviço `test`; lê o bruto e o nosso lado pela `QueryService`/`/api`,
+    casa por `(ticker, vencimento, strike)`, normaliza unidades (`vi_ratio` × 100, Θ por dia corrido/útil,
+    ν por 1 ponto/1%, ação × contrato) e escreve o relatório.
+- **Container:** os três scripts de Playwright rodam num serviço `bench` do compose (profile próprio, imagem
+  oficial `mcr.microsoft.com/playwright/python`). Playwright **não** entra no `pyproject.toml` do produto.
+- **Volume:** uma captura por sessão, poucas dezenas de páginas, sem paralelismo.
 
 | ID | Tarefa | Est. |
 |---|---|---|
-| F10.1 | Fixar protocolo e amostra: 5 papéis (PETR4, VALE3, BOVA11, B3SA3, ITUB4), 2 vencimentos por papel, calls/puts europeias líquidas; mesma sessão, fechamento, forward, curva DI, dias úteis, strike e estilo; registrar URL, data de acesso e valor externo | 30 min |
-| F10.2 | Comparar IV por série, IV ATM, smile e estrutura a termo contra OBM e OpçõesBR; reportar `n`, mediana, P90 e máximo das diferenças em pontos de volatilidade | 1 h |
-| F10.3 | Comparar preço teórico, delta, gamma, theta, vega e rho contra a calculadora B3Lab com os mesmos inputs e unidades; conferir payoff/breakeven de estruturas em pelo menos um simulador externo | 45 min |
-| F10.4 | Tratar IV rank/percentil, RV e VRP separadamente: só comparar numericamente definições equivalentes; metodologias diferentes entram como divergência explicada, não como falha | 30 min |
-| F10.5 | Relatório em `data/out/benchmark-AAAA-MM-DD.md`: amostra, valores, diferenças, outliers e classificação (`metodologia`, `liquidez`, `dado externo`, `bug interno`); registrar aprendizado no `AGENTS.md` e abrir correção só para bug reproduzido | 45 min |
+| F10.1 | **Verificações antes do gate:** (a) confirmar que "OpçõesBR" é o opcoes.net.br pela metodologia publicada (ATM de 4 séries, RV30 em 21 pregões); (b) definição e sinal do `skew_25d_30d_ratio` do OBM; (c) convenção de `r` do B3Lab, calibrada num caso conhecido; (d) se o montador do OBM aceita perna de ação; (e) como trocar de vencimento na grade do opcoes.net.br pelo Playwright. Registrar cada resposta com data | 45 min |
+| F10.2 | `bench_capture.py` + serviço `bench`; capturar a sessão do lake com guarda de data | 1 h 30 |
+| F10.3 | `bench_b3lab.py` e `bench_structures.py` | 1 h |
+| F10.4 | `bench_compare.py`: IV por série/ATM/smile/termo, Gregas e preço — `n`, mediana, P90 e máximo das diferenças (pontos de vol para IV) | 1 h 30 |
+| F10.5 | Recalculados: RV Yang-Zhang, `rv_shock_day`, VRP/z, rank/percentil, `rr25`/`bfly25`, `ts_slope_30_90`, forward, dividendo implícito, DF, `days_to_liquidate`, expected move, P&L/exposição | 1 h 30 |
+| F10.6 | Relatório em `data/out/benchmark-AAAA-MM-DD.md`: matriz preenchida (fonte, URL, data de acesso, `n`, estatística), outliers e classificação (`metodologia`, `liquidez`, `dado externo`, `bug interno`); registrar aprendizado no `AGENTS.md` e abrir correção só para bug reproduzido | 45 min |
 
 **Aceitação F10**
+- [ ] toda métrica de mercado da matriz tem ao menos uma referência externa no relatório (direta ou
+      recalculada), e as que ficam fora do benchmark aparecem listadas com o motivo
 - [ ] toda comparação usa a mesma sessão e o mesmo contrato; spot/forward, strike, vencimento, estilo,
-      taxa, prazo e unidade estão declarados, com fonte e data de acesso externas
+      taxa, prazo e unidade estão declarados, com fonte, URL e data de acesso externas
 - [ ] IV por série/ATM/smile/termo tem duas referências EOD na amostra, com estatística de diferença e
       outliers individuais explicados
 - [ ] preço teórico e Gregas são conferidos com inputs idênticos na calculadora; diferenças de unidade
       (por ação/contrato, por dia corrido/dia útil, por 1 ponto/1% de vol) não são confundidas com erro
-- [ ] IV rank/percentil, RV e VRP só têm gate numérico quando a construção é equivalente; RV30 do
-      OpçõesBR e Yang-Zhang do painel, por exemplo, ficam explicitamente fora da comparação direta
+- [ ] métricas recalculadas aparecem marcadas como tal; IV rank/percentil, RV e VRP só têm gate numérico
+      quando a construção é equivalente (VH do opcoes.net.br × Yang-Zhang fica descritivo)
+- [ ] as cinco verificações do F10.1 estão respondidas e registradas
 - [ ] toda divergência material tem causa classificada; só vira correção após reprodução independente no
       dado interno — nunca apenas para igualar o site externo
-- [ ] relatório salvo fora do git; nenhum scraping, serviço pago ou cotação ao vivo vira dependência do
-      produto; se um bug mudar fórmula, `model_version` sobe e o histórico é recalculado inteiro
+- [ ] relatório e brutos salvos fora do git; Playwright, scraping, serviço pago ou cotação ao vivo não viram
+      dependência do produto; se um bug mudar fórmula, `model_version` sobe e o histórico é recalculado inteiro
 
 ---
 
@@ -779,7 +844,7 @@ O F1b é o portão: se o sinal não se sustenta, nada depois dele é construído
 |---|---|
 | Contagem de linhas | `GROUP BY refdate` no TXT vs no Parquet |
 | Legs | 5 tickers com ajuste conhecido + 1 evento de escala |
-| IV | paridade call E × put E; benchmark externo F10 (OBM + OpçõesBR; B3Lab para preço/Gregas) |
+| IV | paridade call E × put E; benchmark externo F10 (OBM + opcoes.net.br; B3Lab para preço/Gregas) |
 | Forward | OTM-only vs ITM-only, mesma data |
 | ATM 30d | série de 60 dias, procurar descontinuidade em rolagem |
 | Payoff | desenhar no papel e comparar com `structure_eval` |

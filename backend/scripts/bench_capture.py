@@ -623,8 +623,14 @@ def check_turnstile(page: Any, url: str) -> None:
     try:
         title = (page.title() or "").lower()
         body = (page.locator("body").inner_text()[:3000] or "").lower()
-    except Exception:
-        return
+    except Exception as exc:
+        raise CaptureError(
+            "turnstile_check_failed",
+            f"{url}: não foi possível inspecionar a página para Turnstile: {exc}",
+            "Sem inspeção não há como afirmar que a navegação não foi "
+            "interceptada; falha explícita, sem tratar como sucesso e sem "
+            "bypass de desafio.",
+        ) from exc
     blob = f"{title}\n{body}"
     if any(marker in blob for marker in TURNSTILE_MARKERS):
         raise CaptureError(
@@ -633,6 +639,22 @@ def check_turnstile(page: Any, url: str) -> None:
             "Falha explícita, sem bypass: capture no navegador do dono e reexecute; "
             "nunca trate o desafio como sucesso.",
         )
+
+
+def unique_artifact_name(base: str, artifacts: list[Artifact]) -> str:
+    """Nome determinístico e único entre os artefatos já acumulados.
+
+    Duas respostas com a mesma URL/maturidade não podem sobrescrever o mesmo
+    bruto nem gerar entradas de manifesto apontando para arquivo sobrescrito.
+    O sufixo é contado a partir da lista ``artifacts`` — sem aleatoriedade.
+    """
+    taken = {item.name for item in artifacts}
+    if base not in taken:
+        return base
+    counter = 2
+    while f"{base}-{counter}" in taken:
+        counter += 1
+    return f"{base}-{counter}"
 
 
 def save_intercepted(
@@ -669,8 +691,9 @@ def save_intercepted(
                 "; fields[] preservado no bruto, inclusive a descrição de "
                 "skew_25d_30d_ratio (definição pendente, F10.1)"
             )
+        base = f"obm_{kind_hint}_{label}{segment}{suffix}"
         artifact = Artifact(
-            name=f"obm_{kind_hint}_{label}{segment}{suffix}",
+            name=unique_artifact_name(base, artifacts),
             url=response_url,
             source="obm",
             kind=kind_hint,

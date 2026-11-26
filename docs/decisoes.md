@@ -714,3 +714,19 @@ Em qualquer outro caso: adote o default, registre, siga.
 - **Consequência:** nenhuma fórmula muda; `model_version` segue **2**. Cada página de `prices` custa ~1,6 s (leituras pequenas do lake); a tela faz 5 páginas com `staleTime` de 10 min. Não há tool MCP `prices` nesta versão.
 - **Revisar em:** se o dono quiser o preço ajustado por provento (retorno total) ou a série de preço no MCP.
 
+## ADR-051 — P5/F10: put caixa sem controle público no OBM, ausência ratificada
+
+- **Data:** 2026-11-26 · **Status:** ratificada pelo dono · **Custo de reverter:** baixo (uma decisão de ausência; nenhum número externo é fabricado e nenhuma fórmula, contrato, dado ou `model_version` muda)
+- **Contexto:** decisão explícita do dono em 2026-11-26. A inspeção de DOM, ARIA, JavaScript público e teclado da UI pública do montador do OBM mostrou que não existe controle legítimo para montar uma put caixa de uma perna sozinha (e o montador público também não aceita perna de ação para a venda coberta — F10.1 alínea (d)). Obter as saídas exigiria artifício — manipular React, usar `qty=0`, criar perna sintética ou chamar `/api/v1` do OBM diretamente —, todos proibidos.
+- **Decisão:**
+  1. Aceitar a ausência explícita `no_public_single_leg_control` para a put caixa: a estrutura fica com `outputs: null`, motivo explícito e `external_output_valid=false`. O mecanismo P5 pode ser commitado nesse estado.
+  2. A venda coberta permanece `unsupported_external` (montador público sem perna de ação), com o baseline bruto do `POST /api/structure`, sem spot sintético e sem tentativa de contorno.
+  3. Esta decisão **não** marca P5/F10 como aceitos e **não** fecha nenhum critério do `PLAN.md`. A comparação futura (P6) não pode inventar número externo para essas duas estruturas: ausência registrada continua ausência.
+  4. Continuam proibidos: manipular React, usar `qty=0`, criar perna sintética e chamar `/api/v1` do OBM diretamente. A guarda de sessão lê somente os dois endpoints públicos carregados pela página.
+  5. A guarda de sessão do montador deve validar **positivamente** `classes[asset_class="Opções"].last_real_date` e `sources[source="b3_option_prices"].reference_date` contra a sessão do lake. A mera presença da data em fonte acessória, ou em outra classe/fonte, não é prova e não autoriza a captura.
+  6. Breakevens e máximos do OBM podem vir da grade de payoff de passo 0,50 e são **metodologia externa**, não bug interno. No straddle observado: `net_cost` **379**, `max_loss` externo **-360** na grade contra **-379** analítico. Ambos são preservados, cada qual com sua origem (`be_source`/`max_source = grade_do_obm` ou `analitico`); a reconstrução da grade é conferida antes de comparar com o analítico, com tolerância de meia grade.
+  7. O campo `spot` default **40** do OBM é parâmetro bruto da UI e não substitui o spot do lake em nenhum cálculo, preço ou normalização.
+- **Por quê:** o produto não pode fabricar número externo para estruturas que a fonte pública não oferece — falha explícita (`null` + flag) vale mais que preenchimento artificial (P-N). A guarda positiva impede que uma data acessória disfarce sessão desatualizada. Registrar a origem `grade_do_obm` dos breakevens/máximos evita abrir bug interno para diferença que pertence à metodologia do site.
+- **Consequência:** o mecanismo P5 pode ser commitado com a put caixa ausente e a venda coberta `unsupported_external`; a matriz do F10 fica com duas células externas vazias **por decisão do dono**, não por captura pendente. Nenhum checkbox do `PLAN.md` é marcado, o F10 não é concluído e `model_version` segue **2**. Não houve captura, navegador, rede externa, relatório final nem escrita em `data/`/`out/` nesta decisão.
+- **Revisar em:** se o OBM passar a expor controle público legítimo para perna única (put caixa) ou perna de ação; ou quando a captura/comparação do F10 for autorizada.
+

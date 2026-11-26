@@ -74,6 +74,8 @@ REF_KEYS = {
     "asofsession",
     "lastsession",
     "dataref",
+    # A cadeia do OBM usa este nome de envelope (não "reference_date").
+    "quotereferencedate",
 }
 REF_CONTAINERS = ("data", "latest", "meta", "result", "payload")
 # Fallback textual exige associação explícita à referência/ao pregão — nunca
@@ -225,9 +227,16 @@ class Artifact:
     extracted: dict[str, Any] | None = None
     reference_date: str | None = None
     note: str | None = None
+    reason: str | None = None
+    status: str = "ok"
 
-    def finalize(self) -> None:
-        """Descobre/valida a data de referência contra a sessão do lake."""
+    def finalize(self, required: bool = True) -> None:
+        """Descobre/valida a data de referência contra a sessão do lake.
+
+        ``required=False`` vale só para páginas HTML brutas do OBM: ausência
+        vira ``null`` + motivo (regra 5 do AGENTS.md). Divergência, quando há
+        data explícita, continua fatal em qualquer caso.
+        """
         if self.reference_date is not None:
             return
         found = ref_dates_from_json(_decoded_json(self.body))
@@ -238,7 +247,32 @@ class Artifact:
             page_text = self.extracted.get("page_text")
             if isinstance(page_text, str):
                 found |= ref_dates_from_text(page_text)
+            # A grade do opcoes.net.br traz a data do pregão na coluna
+            # "Data/Hora" do DataTable (f10_1-verificacoes.md:117). Séries
+            # ilíquidas conservam a data do último negócio (mais antiga), que
+            # NÃO é a referência do snapshot: usa-se a MAIS RECENTE, casada com
+            # o "último pregão" do cabeçalho. O bruto não é alterado.
+            columns = self.extracted.get("columns")
+            rows = self.extracted.get("rows")
+            if isinstance(columns, list) and isinstance(rows, list):
+                datahora_cols = [
+                    i
+                    for i, col in enumerate(columns)
+                    if normalized_key(col) == "datahora"
+                ]
+                quoted_days: set[date] = set()
+                for i in datahora_cols:
+                    for row in rows:
+                        if isinstance(row, (list, tuple)) and i < len(row):
+                            day = parse_day_token(row[i])
+                            if day is not None:
+                                quoted_days.add(day)
+                if quoted_days:
+                    found.add(max(quoted_days))
         if not found:
+            if not required:
+                self.reason = self.reason or "no_explicit_reference_date_on_page"
+                return
             raise CaptureError(
                 "reference_date_missing",
                 f"{self.name}: nenhuma data de referência explícita encontrada",
@@ -247,6 +281,15 @@ class Artifact:
             )
         bad = sorted(day.isoformat() for day in found if day.isoformat() != self.session)
         if bad:
+            if not required:
+                # Páginas trazem datas de contexto (demonstrações, histórico)
+                # além da referência do pregão. Se a sessão aparece, ela vale;
+                # senão, ausência com motivo — nunca abortar por data incidental.
+                if any(day.isoformat() == self.session for day in found):
+                    self.reference_date = self.session
+                else:
+                    self.reason = self.reason or "page_reference_dates_not_session"
+                return
             raise CaptureError(
                 "reference_date_mismatch",
                 f"{self.name}: fonte traz {bad}, lake está em {self.session}",
@@ -272,8 +315,8 @@ class Artifact:
             "accessed_at": self.accessed_at,
             "reference_date": self.reference_date,
             "sha256": sha256_hex(self.body),
-            "status": "ok",
-            "reason": None,
+            "status": self.status,
+            "reason": self.reason,
             "content_type": self.content_type,
             "http_status": self.http_status,
             "bytes": len(self.body),
@@ -691,6 +734,16 @@ def save_intercepted(
                 "; fields[] preservado no bruto, inclusive a descrição de "
                 "skew_25d_30d_ratio (definição pendente, F10.1)"
             )
+        # Só respostas de EOD de opções são snapshots da sessão. Metadados
+        # globais (assets/*, analytics/*) e históricos de série NÃO trazem data
+        # de referência do pregão — o "as_of" de freshness é o dia do site, não
+        # a sessão do lake. Guardam o bruto com reference_date=null + motivo.
+        payload = _decoded_json(body)
+        session_scoped = (
+            "/opcoes/" in urlparse(response_url).path
+            and isinstance(payload, dict)
+            and any(normalized_key(key) in REF_KEYS for key in payload)
+        )
         base = f"obm_{kind_hint}_{label}{segment}{suffix}"
         artifact = Artifact(
             name=unique_artifact_name(base, artifacts),
@@ -706,8 +759,14 @@ def save_intercepted(
             loaded_by=loaded_by,
             intercepted=True,
             note=note,
+            reason=(
+                None
+                if session_scoped
+                else "auxiliary_endpoint_no_session_reference"
+            ),
         )
-        artifact.finalize()
+        if session_scoped:
+            artifact.finalize()
         artifacts.append(artifact)
         if maturity:
             captured_maturities.append(maturity)
@@ -753,10 +812,16 @@ def capture_obm(
             url = f"{OBM_ORIGIN}{path}"
             response = goto_public(page, url, collector)
             body = navigation_body(response, url)
+            http_status = response.status if hasattr(response, "status") else 200
+            # Página pública indisponível (4xx/5xx) é ausência com motivo: o
+            # HTML de erro é preservado como bruto, mas não vira "ok" nem é
+            # usado como prova de referência da sessão (regra 5 do AGENTS.md).
+            unavailable = http_status is not None and http_status >= 400
             extracted = {
                 "rsc_push_count": body.count(b"self.__next_f.push"),
                 "raw_html_preserved": True,
                 "venc_query": wanted,
+                "http_status": http_status,
             }
             name = f"obm_{kind}_{slug}_page"
             if wanted:
@@ -774,10 +839,12 @@ def capture_obm(
                     else "text/html; charset=utf-8"
                 )
                 or "text/html; charset=utf-8",
-                http_status=response.status if hasattr(response, "status") else 200,
+                http_status=http_status,
                 ticker=ticker,
                 maturity=wanted,
                 extracted=extracted,
+                status=("unavailable" if unavailable else "ok"),
+                reason=("page_http_error" if unavailable else None),
                 note=(
                     "HTML/RSC bruto da Response de navegação; extração não altera "
                     f"o original. {OBM_VENC_QUERY_PROVEN}"
@@ -786,8 +853,11 @@ def capture_obm(
                     "altera o original"
                 ),
             )
-            artifact.finalize()
+            if not unavailable:
+                artifact.finalize(required=False)
             artifacts.append(artifact)
+            if unavailable:
+                continue
             for maturity in save_intercepted(
                 collector, session, artifacts, kind, ticker
             ):
@@ -815,6 +885,8 @@ def capture_obm(
         url = f"{OBM_ORIGIN}{path}"
         response = goto_public(page, url, collector)
         body = navigation_body(response, url)
+        http_status = response.status if hasattr(response, "status") else 200
+        unavailable = http_status is not None and http_status >= 400
         artifact = Artifact(
             name=f"obm_{kind}_page",
             url=url,
@@ -823,12 +895,17 @@ def capture_obm(
             body=body,
             session=session,
             content_type="text/html; charset=utf-8",
-            http_status=200,
-            extracted={"raw_html_preserved": True},
+            http_status=http_status,
+            extracted={"raw_html_preserved": True, "http_status": http_status},
+            status=("unavailable" if unavailable else "ok"),
+            reason=("page_http_error" if unavailable else None),
             note="HTML bruto da Response de navegação; extração não altera o original",
         )
-        artifact.finalize()
+        if not unavailable:
+            artifact.finalize(required=False)
         artifacts.append(artifact)
+        if unavailable:
+            continue
         save_intercepted(collector, session, artifacts, kind, None)
     return captured
 
@@ -1011,10 +1088,37 @@ def publish(temp_dir: Path, final_dir: Path, force: bool) -> str | None:
             )
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         backup_dir = final_dir.with_name(f"{final_dir.name}.bak-{stamp}")
-        final_dir.rename(backup_dir)
+        _relocate_tree(final_dir, backup_dir)
         backup = str(backup_dir)
-    temp_dir.rename(final_dir)
+    _relocate_tree(temp_dir, final_dir)
     return backup
+
+
+def _relocate_tree(src: Path, dst: Path) -> None:
+    """Move ``src`` para ``dst``; fallback para binds onde rename dá EACCES.
+
+    No bind do Windows o ``os.rename``/``os.replace`` de diretório falha mesmo
+    com destino novo (medido no P3). Copiar arquivo para diretório recém-criado
+    funciona; se a cópia falha, o destino parcial é removido — nenhum manifesto
+    de sucesso parcial é publicado.
+    """
+    try:
+        src.rename(dst)
+        return
+    except OSError:
+        pass
+    dst.mkdir(parents=True, exist_ok=False)
+    try:
+        for item in src.iterdir():
+            target = dst / item.name
+            if item.is_file():
+                shutil.copyfile(item, target)
+            elif item.is_dir():
+                shutil.copytree(item, target, copy_function=shutil.copyfile)
+    except Exception:
+        shutil.rmtree(dst, ignore_errors=True)
+        raise
+    shutil.rmtree(src, ignore_errors=True)
 
 
 def execute(args: argparse.Namespace, requested: str, final_dir: Path) -> int:
@@ -1099,6 +1203,11 @@ def execute(args: argparse.Namespace, requested: str, final_dir: Path) -> int:
             )
 
         entries = [artifact.to_manifest(temp_dir) for artifact in artifacts]
+        for entry in entries:
+            if entry["status"] != "ok":
+                flags.append(
+                    f"{entry['artifact']}:{entry['status']}:{entry.get('reason')}"
+                )
         manifest = {
             "status": "complete",
             "plan_version": PLAN_VERSION,
@@ -1115,6 +1224,10 @@ def execute(args: argparse.Namespace, requested: str, final_dir: Path) -> int:
                 "by_source": {
                     source: sum(1 for e in entries if e["source"] == source)
                     for source in sorted({e["source"] for e in entries})
+                },
+                "by_status": {
+                    status: sum(1 for e in entries if e["status"] == status)
+                    for status in sorted({e["status"] for e in entries})
                 },
             },
             "health_before": {

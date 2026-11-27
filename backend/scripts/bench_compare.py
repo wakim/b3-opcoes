@@ -34,6 +34,11 @@ Uso (tudo em container, pela raiz do repositório, serviço ``test``)::
     podman compose run --rm test python scripts/bench_compare.py --help
     podman compose run --rm test python scripts/bench_compare.py \
         --date 2026-11-25
+    podman compose run --rm test python scripts/bench_compare.py \
+        --date 2026-11-25 --reuse-registry /data/out/<registry>.json
+
+O `--reuse-registry` é opcional e só é lido depois de `guard_health(health_before)`;
+um health com `last_error` aborta antes de qualquer caminho do registry ser tocado.
 
 Sem rede externa: somente ``B3_HTTP_URL`` (default ``http://app:8080``).
 """
@@ -62,6 +67,8 @@ from urllib.request import Request, urlopen
 import bench_recalc as recalc
 
 SCHEMA = "b3o-bench-compare/1"
+REUSE_SCHEMA = "b3o-f10-reuse-registry/1"
+REUSE_RECORD_NAMES: tuple[str, ...] = ("P3", "P4", "P5")
 DEFAULT_HTTP_URL = os.environ.get("B3_HTTP_URL", "http://app:8080")
 DATA_DIR = os.environ.get("B3_DATA_DIR", "/data")
 DEFAULT_INPUT_DIR = Path(DATA_DIR) / "bench"
@@ -780,18 +787,19 @@ def guard_api_reference(
 def guard_manifest_model(
     name: str, declared: Any, expected: int, manifest: str | None
 ) -> None:
-    """Modelo declarado por P3/P4/P5 tem que ser o mesmo do health atual."""
+    """Modelo de P3/P4/P5 tem que bater com o esperado (health ou registry validado)."""
     if declared is None:
         raise CompareError(
             f"{name}_model_version_missing",
             f"{name}: manifesto {manifest or 'desconhecido'} não declara model_version",
-            "regrave a captura com o mesmo modelo do lake",
+            "regrave a captura com o modelo esperado (health ou registry validado)",
         )
     if isinstance(declared, bool) or not isinstance(declared, int) or declared != expected:
         raise CompareError(
             f"{name}_model_version_mismatch",
-            f"{name}: model_version={declared!r} no manifesto, health={expected}",
-            "capturas de modelos diferentes não podem entrar na mesma comparação",
+            f"{name}: model_version={declared!r} no manifesto, esperado={expected}",
+            "o esperado vem do health atual ou de registry validado; "
+            "capturas de modelos diferentes não entram na mesma comparação",
         )
 
 
@@ -1297,13 +1305,22 @@ def _health_is_red(health: Any, session: str) -> str | None:
     return None
 
 
-def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> SourceInfo:
+def verify_structures(
+    paths: Sequence[Path],
+    session: str,
+    notes: list[str],
+    expected_models: Mapping[str, int] | None = None,
+) -> SourceInfo:
     """P5: sessão/modelo, `source_sha256` do plano e SHA canônico dos records.
 
     O `sha256` do plano não é o do arquivo: é o SHA canônico do objeto sem a
     própria chave `source_sha256`. O `sha256` de cada record é o SHA canônico
     sem a chave `sha256`. Ausências explícitas (`put_caixa` e `venda_coberta`)
     são mantidas com flag, não tratadas como falha.
+
+    ``expected_models`` (chave = manifesto resolvido) é a única forma de aceitar
+    captura de modelo diferente do health atual, e só é passado quando o registry
+    de reuso casou caminho+SHA do plano. Sem ele, nada muda.
     """
     info = SourceInfo("structures")
     if not paths:
@@ -1324,6 +1341,17 @@ def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> 
             red = _health_is_red(manifest.get("health_before"), session)
         model = manifest.get("model_version")
         _, health_model = _health_session_model(manifest.get("health_after"))
+        expected = (
+            expected_models.get(str(manifest_path.resolve())) if expected_models else None
+        )
+        if expected is not None and (
+            isinstance(model, bool) or not isinstance(model, int) or model != expected
+        ):
+            raise CompareError(
+                "reuse_registry_model",
+                f"{manifest_path}: model_version={model!r}, registry espera {expected}",
+                "o manifesto P5 casado com o registry não pode declarar outro modelo",
+            )
         if not is_number(model):
             red = red or "model_version_missing"
         elif health_model is not None and model != health_model:
@@ -1473,6 +1501,399 @@ def verify_structures(paths: Sequence[Path], session: str, notes: list[str]) -> 
         "com ausência explícita são aceitos com flag."
     )
     return info
+
+
+# --------------------------------------------------------------------------- #
+# Registry de reuso F10 (4C/run4) — abrir SOMENTE depois de guard_health        #
+# --------------------------------------------------------------------------- #
+
+
+def resolve_registry_path(value: Any, field: str) -> Path:
+    """`data/...` → ``B3_DATA_DIR``; absoluto continua válido. Sem depender de git."""
+    if not isinstance(value, str) or not value.strip():
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"{field}: caminho ausente ou inválido: {value!r}",
+            "o registry deve declarar caminho absoluto ou relativo a data/",
+        )
+    text = value.strip()
+    if text == "data" or text.startswith("data/"):
+        return Path(DATA_DIR) / text[len("data") :].lstrip("/")
+    return Path(text)
+
+
+def _registry_int(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"{field}: esperado inteiro, recebido {value!r}",
+            "model_version do registry precisa ser inteiro (não bool, não texto)",
+        )
+    return value
+
+
+def _registry_sha256(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+        raise CompareError(
+            "reuse_registry_hash",
+            f"{field}: SHA-256 inválido: {value!r}",
+            "o hash declarado precisa ter 64 dígitos hexadecimais",
+        )
+    return value.lower()
+
+
+def _registry_file_sha256(path: Path, declared: Any, field: str) -> str:
+    expected = _registry_sha256(declared, field)
+    try:
+        actual = sha256_hex(path.read_bytes())
+    except OSError as exc:
+        raise CompareError(
+            "reuse_registry_hash",
+            f"{field}: não foi possível ler {path}: {exc}",
+            "o registry aponta para arquivo ausente ou ilegível",
+        ) from exc
+    if actual != expected:
+        raise CompareError(
+            "reuse_registry_hash",
+            f"{field}: SHA declarado {expected} != real {actual} em {path}",
+            "o arquivo foi alterado desde que o registry foi gravado",
+        )
+    return actual
+
+
+def _registry_json(path: Path, field: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"{field}: não foi possível ler {path}: {exc}",
+            "confira os caminhos declarados no registry",
+        ) from exc
+    except ValueError as exc:
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"{field}: JSON inválido em {path}: {exc}",
+            "o arquivo referido pelo registry foi corrompido",
+        ) from exc
+    if not isinstance(value, dict):
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"{field}: {path} não é um objeto JSON",
+            "o arquivo referido pelo registry precisa ser um objeto",
+        )
+    return value
+
+
+@dataclass(frozen=True)
+class ReuseRecord:
+    """Um registro P3/P4/P5 validado contra arquivo real e prova real."""
+
+    name: str
+    session: str
+    reused_from: Path
+    source_file_sha256: str
+    capture_model_version: int
+    comparison_model_version: int
+    model3_backfill_artifact: Path
+    model3_backfill_artifact_sha256: str
+    proof: dict[str, Any]
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "session": self.session,
+            "reused_from": str(self.reused_from),
+            "source_file_sha256": self.source_file_sha256,
+            "capture_model_version": self.capture_model_version,
+            "comparison_model_version": self.comparison_model_version,
+            "model3_backfill_artifact": str(self.model3_backfill_artifact),
+            "model3_backfill_artifact_sha256": self.model3_backfill_artifact_sha256,
+            "proof": dict(self.proof),
+        }
+
+
+@dataclass(frozen=True)
+class ReuseRegistry:
+    """Registry 4C/run4 válido. Não carrega autorização de gate nem de escrita."""
+
+    path: Path
+    sha256: str
+    session: str
+    capture_model_version: int
+    comparison_model_version: int
+    backfill_path: Path
+    backfill_sha256: str
+    records: dict[str, ReuseRecord]
+
+    def as_json(self) -> dict[str, Any]:
+        return {
+            "path": str(self.path),
+            "sha256": self.sha256,
+            "session": self.session,
+            "capture_model_version": self.capture_model_version,
+            "comparison_model_version": self.comparison_model_version,
+            "backfill": {
+                "path": str(self.backfill_path),
+                "sha256": self.backfill_sha256,
+            },
+            "records": {
+                name: record.as_json() for name, record in sorted(self.records.items())
+            },
+        }
+
+
+def load_reuse_registry(
+    path: Path, session: str, comparison_model_version: int
+) -> ReuseRegistry:
+    """Valida o registry em disco; ``health`` atual é a única guarda de erro.
+
+    ``health_last_error`` e ``gate.p6_p7_authorized`` do registry são ignorados:
+    nenhum campo dele pode autorizar P6/P7/F10.6 ou substituir ``guard_health``.
+    """
+    try:
+        body = path.read_bytes()
+    except OSError as exc:
+        raise CompareError(
+            "reuse_registry_unreadable",
+            f"não foi possível ler {path}: {exc}",
+            "confira --reuse-registry",
+        ) from exc
+    registry_sha = sha256_hex(body)
+    try:
+        data = json.loads(body)
+    except ValueError as exc:
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"JSON inválido em {path}: {exc}",
+            "o registry precisa ser um JSON válido",
+        ) from exc
+    if not isinstance(data, dict):
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"{path} não é um objeto JSON",
+            "o registry precisa ser um objeto",
+        )
+    if data.get("schema") != REUSE_SCHEMA:
+        raise CompareError(
+            "reuse_registry_invalid",
+            f"schema={data.get('schema')!r}, esperado {REUSE_SCHEMA!r}",
+            "somente o registry 4C/run4 deste schema pode ser reutilizado",
+        )
+    declared_session = data.get("session")
+    if (
+        not isinstance(declared_session, str)
+        or not DATE_ISO.match(declared_session)
+        or declared_session != session
+    ):
+        raise CompareError(
+            "reuse_registry_session",
+            f"registry declara sessão {declared_session!r}, pedido {session!r}",
+            "o registry precisa ser da mesma sessão da comparação",
+        )
+    declared_comparison = _registry_int(
+        data.get("comparison_model_version"), "comparison_model_version"
+    )
+    if declared_comparison != comparison_model_version:
+        raise CompareError(
+            "reuse_registry_model",
+            f"registry compara modelo {declared_comparison}, "
+            f"health atual {comparison_model_version}",
+            "modelo do registry e health atual não podem divergir",
+        )
+    capture_model = _registry_int(data.get("capture_model_version"), "capture_model_version")
+
+    backfill = data.get("backfill")
+    if not isinstance(backfill, Mapping):
+        raise CompareError(
+            "reuse_registry_invalid",
+            "backfill ausente ou inválido no registry",
+            "o registry precisa declarar caminho e SHA do backfill modelo 3",
+        )
+    backfill_path = resolve_registry_path(backfill.get("path"), "backfill.path")
+    backfill_sha = _registry_file_sha256(
+        backfill_path, backfill.get("sha256"), "backfill.sha256"
+    )
+    if is_number(backfill.get("bytes")) and int(backfill["bytes"]) != backfill_path.stat().st_size:
+        raise CompareError(
+            "reuse_registry_hash",
+            f"backfill.bytes={backfill['bytes']} != "
+            f"{backfill_path.stat().st_size} em {backfill_path}",
+            "a evidência do backfill foi alterada",
+        )
+    counts = backfill.get("counts")
+    if not isinstance(counts, Mapping) or _registry_int(
+        counts.get("model_version_final"), "backfill.counts.model_version_final"
+    ) != declared_comparison:
+        raise CompareError(
+            "reuse_registry_model",
+            "backfill.counts.model_version_final diverge do comparison_model_version",
+            "o backfill declarado precisa ser do modelo da comparação",
+        )
+
+    raw_records = data.get("records")
+    if not isinstance(raw_records, Mapping):
+        raise CompareError(
+            "reuse_registry_invalid",
+            "records ausente ou inválido no registry",
+            "o registry precisa declarar P3/P4/P5",
+        )
+    records: dict[str, ReuseRecord] = {}
+    for name in REUSE_RECORD_NAMES:
+        field = f"records.{name}"
+        raw = raw_records.get(name)
+        if not isinstance(raw, Mapping):
+            raise CompareError(
+                "reuse_registry_invalid",
+                f"{field}: registro ausente ou inválido",
+                "P3/P4/P5 precisam estar presentes e válidos",
+            )
+        record_session = raw.get("session")
+        if (
+            not isinstance(record_session, str)
+            or not DATE_ISO.match(record_session)
+            or record_session != session
+        ):
+            raise CompareError(
+                "reuse_registry_session",
+                f"{field}.session={record_session!r}, pedido {session!r}",
+                "cada registro precisa ser da mesma sessão da comparação",
+            )
+        record_capture = _registry_int(
+            raw.get("capture_model_version"), f"{field}.capture_model_version"
+        )
+        if record_capture != capture_model:
+            raise CompareError(
+                "reuse_registry_model",
+                f"{field}.capture_model_version={record_capture}, registry={capture_model}",
+                "o modelo de captura do registro precisa casar com o do registry",
+            )
+        record_comparison = _registry_int(
+            raw.get("comparison_model_version"), f"{field}.comparison_model_version"
+        )
+        if record_comparison != declared_comparison:
+            raise CompareError(
+                "reuse_registry_model",
+                f"{field}.comparison_model_version={record_comparison}, "
+                f"registry={declared_comparison}",
+                "o modelo de comparação do registro precisa casar com o do registry",
+            )
+        source_path = resolve_registry_path(raw.get("reused_from"), f"{field}.reused_from")
+        source_sha = _registry_file_sha256(
+            source_path, raw.get("source_file_sha256"), f"{field}.source_file_sha256"
+        )
+        source_payload = _registry_json(source_path, f"{field}.reused_from")
+        if source_payload.get("model_version") != record_capture:
+            raise CompareError(
+                "reuse_registry_model",
+                f"{field}: arquivo real declara model_version="
+                f"{source_payload.get('model_version')!r}, registro {record_capture}",
+                "o modelo declarado no arquivo reutilizado precisa casar com o registro",
+            )
+        proof = raw.get("equivalence_proof")
+        proof_status = proof.get("status") if isinstance(proof, Mapping) else proof
+        if not isinstance(proof, Mapping) or proof_status != "pass":
+            raise CompareError(
+                "reuse_registry_proof",
+                f"{field}.equivalence_proof.status={proof_status!r}",
+                "somente prova com status pass autoriza reuso de P3/P4/P5",
+            )
+        proof_path = resolve_registry_path(
+            proof.get("artifact"), f"{field}.equivalence_proof.artifact"
+        )
+        _registry_file_sha256(
+            proof_path,
+            proof.get("artifact_sha256"),
+            f"{field}.equivalence_proof.artifact_sha256",
+        )
+        proof_payload = _registry_json(proof_path, f"{field}.equivalence_proof")
+        if proof_payload.get("status") != "pass" or proof_payload.get("session") != session:
+            raise CompareError(
+                "reuse_registry_proof",
+                f"{field}: prova real declara status={proof_payload.get('status')!r}, "
+                f"sessão={proof_payload.get('session')!r}",
+                "a prova em disco precisa ser pass e da mesma sessão",
+            )
+        if (
+            _registry_int(
+                proof_payload.get("capture_model_version"),
+                f"{field}.equivalence_proof.capture_model_version",
+            )
+            != record_capture
+            or _registry_int(
+                proof_payload.get("comparison_model_version"),
+                f"{field}.equivalence_proof.comparison_model_version",
+            )
+            != record_comparison
+        ):
+            raise CompareError(
+                "reuse_registry_model",
+                f"{field}: modelos declarados na prova real divergem do registro",
+                "a prova precisa ser do mesmo par captura/comparação",
+            )
+        backfill_artifact = resolve_registry_path(
+            raw.get("model3_backfill_artifact"), f"{field}.model3_backfill_artifact"
+        )
+        if backfill_artifact != backfill_path:
+            raise CompareError(
+                "reuse_registry_hash",
+                f"{field}.model3_backfill_artifact={backfill_artifact} != {backfill_path}",
+                "todos os registros precisam apontar para o mesmo backfill",
+            )
+        record_backfill_sha = _registry_sha256(
+            raw.get("model3_backfill_artifact_sha256"),
+            f"{field}.model3_backfill_artifact_sha256",
+        )
+        if record_backfill_sha != backfill_sha:
+            raise CompareError(
+                "reuse_registry_hash",
+                f"{field}.model3_backfill_artifact_sha256={record_backfill_sha} "
+                f"!= {backfill_sha}",
+                "o SHA do backfill declarado no registro precisa casar com o real",
+            )
+        records[name] = ReuseRecord(
+            name=name,
+            session=record_session,
+            reused_from=source_path,
+            source_file_sha256=source_sha,
+            capture_model_version=record_capture,
+            comparison_model_version=record_comparison,
+            model3_backfill_artifact=backfill_artifact,
+            model3_backfill_artifact_sha256=record_backfill_sha,
+            proof=dict(proof),
+        )
+    return ReuseRegistry(
+        path=path,
+        sha256=registry_sha,
+        session=session,
+        capture_model_version=capture_model,
+        comparison_model_version=declared_comparison,
+        backfill_path=backfill_path,
+        backfill_sha256=backfill_sha,
+        records=records,
+    )
+
+
+def reuse_expected_model(
+    registry: ReuseRegistry | None, name: str, candidates: Sequence[Path | None]
+) -> int | None:
+    """Modelo de captura só quando caminho **e** SHA reais casam com o registry."""
+    if registry is None:
+        return None
+    record = registry.records.get(name)
+    if record is None:
+        return None
+    for candidate in candidates:
+        if candidate is None or not candidate.is_file():
+            continue
+        if candidate.resolve() != record.reused_from.resolve():
+            continue
+        try:
+            actual = sha256_hex(candidate.read_bytes())
+        except OSError:
+            continue
+        if actual == record.source_file_sha256:
+            return record.capture_model_version
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -3818,6 +4239,20 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
     client = ApiClient(args.api_url)
     health = fetch_health(client)
     guard_health(health, args.date, "health_before")
+    # O registry só é lido DEPOIS da guarda do health atual: last_error aborta
+    # aqui, antes de qualquer caminho/hash do registry ser tocado.
+    registry = (
+        load_reuse_registry(args.reuse_registry, args.date, health["model_version"])
+        if args.reuse_registry
+        else None
+    )
+    if registry is not None:
+        output["reuse"] = registry.as_json()
+        notes.append(
+            "Registry de reuso validado por caminho+SHA: P3/P4/P5 podem declarar "
+            "modelo de captura 2; health atual continua sendo a única guarda. "
+            "P6-B preserved_stale é ignorado e nenhum P6/P7/F10.6 é autorizado."
+        )
     output["health_before"] = health["raw"]
     output["reference_date"] = args.date
     output["comparison_model_version"] = health["model_version"]
@@ -3830,8 +4265,25 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
     obm_info = split_capture(capture_verified, "obm", "obm")
     opcoes_info = split_capture(capture_verified, "opcoes_net", "opcoes_net")
     b3lab_info = verify_b3lab(manifests["b3lab"], args.date)
+    # Só troca a expectativa de modelo quando o registro casou caminho+SHA real.
+    expected_p3 = reuse_expected_model(
+        registry, "P3", [manifests["capture"]] if manifests["capture"] else []
+    )
+    expected_p4 = reuse_expected_model(
+        registry, "P4", [manifests["b3lab"]] if manifests["b3lab"] else []
+    )
+    expected_p5: dict[str, int] = {}
+    for p5_manifest_path in manifests["structures"]:
+        parent = Path(p5_manifest_path).parent
+        plan_path = parent / "plan.json"
+        plan_candidates = [plan_path] if plan_path.is_file() else sorted(
+            parent.glob("*.plan.json")
+        )
+        p5_expected = reuse_expected_model(registry, "P5", plan_candidates)
+        if p5_expected is not None:
+            expected_p5[str(Path(p5_manifest_path).resolve())] = p5_expected
     structures_info = verify_structures(
-        manifests["structures"], args.date, notes
+        manifests["structures"], args.date, notes, expected_models=expected_p5
     )
     for info in (obm_info, opcoes_info, b3lab_info, structures_info):
         output["sources"][info.name] = info.as_json()
@@ -3857,13 +4309,21 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
             extras=[("requested_date", capture_manifest.get("requested_date"))],
         )
         guard_manifest_model(
-            "P3", capture_manifest.get("model_version"), model, capture_path
+            "P3",
+            capture_manifest.get("model_version"),
+            expected_p3 if expected_p3 is not None else model,
+            capture_path,
         )
     if manifests["b3lab"] is not None:
         lab_manifest = b3lab_info.payload
         lab_path = str(manifests["b3lab"])
         guard_manifest_session("P4", lab_manifest.get("reference_date"), args.date, lab_path)
-        guard_manifest_model("P4", lab_manifest.get("model_version"), model, lab_path)
+        guard_manifest_model(
+            "P4",
+            lab_manifest.get("model_version"),
+            expected_p4 if expected_p4 is not None else model,
+            lab_path,
+        )
     for p5_path in manifests["structures"]:
         p5_manifest = read_json(Path(p5_path), "structures_manifest")
         guard_manifest_session(
@@ -3876,8 +4336,12 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
                 ("reference_date", p5_manifest.get("reference_date")),
             ],
         )
+        p5_expected = expected_p5.get(str(Path(p5_path).resolve()))
         guard_manifest_model(
-            "P5", p5_manifest.get("model_version"), model, str(p5_path)
+            "P5",
+            p5_manifest.get("model_version"),
+            p5_expected if p5_expected is not None else model,
+            str(p5_path),
         )
 
     obm = parse_obm(obm_info, args.date, notes)
@@ -4250,6 +4714,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_HTTP_URL,
         help=f"API local do b3o (default: B3_HTTP_URL ou {DEFAULT_HTTP_URL})",
     )
+    parser.add_argument(
+        "--reuse-registry",
+        default=None,
+        help="registry 4C/run4 de reuso; lido só depois da guarda do health",
+    )
     return parser
 
 
@@ -4282,6 +4751,11 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         input_dir=input_dir,
         output=output,
         api_url=args.api_url.rstrip("/"),
+        reuse_registry=(
+            resolve_registry_path(args.reuse_registry, "--reuse-registry")
+            if args.reuse_registry
+            else None
+        ),
     )
 
 

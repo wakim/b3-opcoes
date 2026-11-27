@@ -256,7 +256,7 @@ def scenario_at(body: dict[str, Any], spot: float, shift: float, days: int) -> f
 
 
 def verify_structure(name: str, mcp_body: dict[str, Any], http_body: dict[str, Any],
-                     cli_body: dict[str, Any]) -> None:
+                     cli_body: dict[str, Any], expected_model: int) -> None:
     expected = HAND[name]
     data = mcp_body["data"]
     check(
@@ -266,9 +266,10 @@ def verify_structure(name: str, mcp_body: dict[str, Any], http_body: dict[str, A
     )
     check(
         mcp_body["as_of_session"] == SESSION
-        and mcp_body["model_version"] == 2
+        and mcp_body["model_version"] == expected_model
         and data["structure_version"] == 1,
-        f"{name}: as_of_session 19/11, model_version 2, structure_version 1",
+        f"{name}: as_of_session 19/11, model_version {expected_model} (do health), "
+        "structure_version 1",
         f"{mcp_body['as_of_session']}/{mcp_body['model_version']}/{data['structure_version']}",
     )
     check(
@@ -350,6 +351,17 @@ async def main_async() -> int:
             json.dumps(sorted(set(BANNED.findall(text)))),
         )
 
+        # Uma única leitura oficial do modelo: o health é a fonte da verdade.
+        # Sem model_version inteiro não há comparabilidade — falha explícita.
+        health = await call(client, "health", {})
+        if "model_version" not in health:
+            raise AssertionError("health sem model_version — sem comparabilidade de modelo")
+        expected_model = health["model_version"]
+        if isinstance(expected_model, bool) or not isinstance(expected_model, int):
+            raise AssertionError(
+                f"health.model_version não é inteiro: {expected_model!r}"
+            )
+
         for name, body in BODIES.items():
             mcp_body = await call(client, "structure_eval", mcp_arguments(body))
             response = await http.post("/api/structure", json=body)
@@ -365,7 +377,7 @@ async def main_async() -> int:
             except (AssertionError, json.JSONDecodeError) as exc:
                 check(False, f"{name}: b3o struct --json", str(exc)[:200])
                 continue
-            verify_structure(name, mcp_body, http_body, cli_body)
+            verify_structure(name, mcp_body, http_body, cli_body, expected_model)
             print()
 
         print("Provas específicas:")

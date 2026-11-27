@@ -2444,15 +2444,23 @@ class QueryService:
             notes=notes,
         )
 
-    def series(self, ticker: str, maturity: date, days: int = 60) -> SeriesDetail:
+    def series(
+        self,
+        ticker: str,
+        maturity: date,
+        days: int = 60,
+        date: date | None = None,
+    ) -> SeriesDetail:
         """Identidade, última linha e histórico de uma série (contrato §4.3).
 
-        A sessão é a última do lake (a série é `(ticker, maturity)`). Ticker que
-        não existe no lake → `ticker_not_found`; vencimento que não é da série →
-        `maturity_not_found` com amostra; série sem métrica → `metrics_missing`.
+        A sessão é a última do lake por default. Com ``date``, ela é o corte
+        histórico: somente linhas ``refdate <= date`` entram e
+        ``as_of_session`` passa a ser essa sessão. A série é `(ticker, maturity)`;
+        ticker inexistente → `ticker_not_found`, vencimento incompatível →
+        `maturity_not_found` com amostra, série sem métrica → `metrics_missing`.
         """
         code = _clean_ticker(ticker)
-        session = self._session(None)
+        session = self._session(date)
         paths = self._partitions_for("metrics_series", None)
         rows = (
             self._fetch(

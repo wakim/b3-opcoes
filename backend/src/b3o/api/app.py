@@ -447,15 +447,22 @@ def create_app() -> FastAPI:
         return payloads.position_close_payload(_service(), position_id, body)
 
     @app.get("/api/s/{ticker}/{maturity}")
-    def api_series(ticker: str, maturity: str, days: int = 60) -> dict[str, Any]:
-        """Identidade e histórico de uma série (ticker + vencimento)."""
+    def api_series(
+        ticker: str,
+        maturity: str,
+        days: int = 60,
+        date: str | None = None,
+    ) -> dict[str, Any]:
+        """Identidade e histórico de uma série, com corte histórico opcional."""
         parsed = parse_date(maturity, "maturity")
         if parsed is None:
             raise request_error(
                 "maturity ausente",
                 "use /api/s/<ticker>/<AAAA-MM-DD> com o vencimento da série",
             )
-        return payloads.series_payload(_service(), ticker, parsed, days=days)
+        return payloads.series_payload(
+            _service(), ticker, parsed, days=days, date=_date(date)
+        )
 
     @app.post("/api/structure")
     def api_structure(body: dict[str, Any]) -> dict[str, Any]:

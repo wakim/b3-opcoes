@@ -10,7 +10,8 @@ contra o servidor `app` no ar. O que ele prova, com saída colada:
    (n=35), com no máximo 60 linhas e `truncated` coerente;
 3. `underlying PETR4` traz spot 42,67, IV 31,43, 88/782 séries, 25 vencimentos;
 4. `chain` respeita `delta_range`/`liquidity` e `max_rows`; `events` traz o
-   próximo resultado com `actual`/`estimated`;
+   próximo resultado com `actual`/`estimated` e sua grade é coerente com a
+   última sessão do `health`;
 5. MCP e HTTP devolvem **o mesmo JSON** para `health`, `screen` e `underlying`;
 6. erro de ticker/data sai `{"error": {code, message, hint}}`, sem traceback;
 7. nenhuma lista passa de 60 linhas; o envelope de 200 KB trunca com
@@ -29,12 +30,13 @@ import os
 import re
 import time
 from collections.abc import Iterable
+from datetime import date
 from typing import Any
 
 import httpx
 from mcp import Client
 
-from b3o.api.serialize import MAX_RESPONSE_BYTES, envelope
+from b3o.api.serialize import MAX_RESPONSE_BYTES, MAX_ROWS, envelope
 
 MCP_URL = os.environ.get("B3_MCP_URL", "http://host.containers.internal:8080/mcp")
 HTTP_URL = os.environ.get("B3_HTTP_URL", "http://host.containers.internal:8080")
@@ -230,22 +232,51 @@ def verify_chain(body: dict[str, Any]) -> None:
     )
 
 
-def verify_events(body: dict[str, Any]) -> None:
-    """Critério 4: próximo resultado com actual/estimated."""
+def iso_date(value: Any) -> bool:
+    """`YYYY-MM-DD` canônico (o `fromisoformat` aceita formas mais largas)."""
+    if not isinstance(value, str):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def verify_events(body: dict[str, Any], health: dict[str, Any]) -> None:
+    """Critério 4: próximo resultado com actual/estimated e grade da última sessão.
+
+    `events` não recebe data: lista os vencimentos da **última** sessão do lake.
+    A contagem é por sessão e **não** é monotônica (25 em 19/11, 28 em 23/11,
+    23 em 26/11 com o modelo 3), então não há piso histórico para testar. A
+    invariante é a coerência com o `health`: mesma sessão, lista não vazia,
+    ordenada, sem duplicatas, em ISO e dentro do teto, com o `counts` declarado
+    batendo com a lista devolvida.
+    """
     data = body["data"]
+    maturities = data["maturities"]
     next_earnings = data["next_earnings"]
+    last_session = (health.get("data") or {}).get("last_session")
+    check(
+        last_session is not None and body["as_of_session"] == last_session,
+        "events as_of_session = health.data.last_session",
+        f"{body['as_of_session']} vs {last_session}",
+    )
     check(
         next_earnings is not None and next_earnings["kind"] in ("actual", "estimated"),
         "events next_earnings com actual/estimated",
         json.dumps(next_earnings),
     )
     check(
-        # `events` não recebe data: lista os vencimentos da **última** sessão do
-        # lake, então o número cresce quando o lake avança (28 em 23/11/2026,
-        # contra 25 em 19/11). O critério é nunca ficar abaixo da medição de 19/11.
-        len(data["maturities"]) >= 25,
-        "events maturities >= 25",
-        str(len(data["maturities"])),
+        0 < len(maturities) <= MAX_ROWS
+        and maturities == sorted(set(maturities))
+        and all(iso_date(value) for value in maturities),
+        "events maturities: 1..60, únicas, ordenadas e ISO",
+        f"n={len(maturities)} · {maturities[:1]}…{maturities[-1:]}",
+    )
+    check(
+        data["counts"]["maturities"] == len(maturities),
+        "events counts.maturities = len(maturities)",
+        f"{data['counts']['maturities']} vs {len(maturities)}",
     )
     check(
         any(row["kind"] == "dividend" for row in data["strike_events"]),
@@ -429,7 +460,7 @@ async def main_async() -> int:
         verify_screen(screen)
         verify_underlying(underlying)
         verify_chain(chain)
-        verify_events(events)
+        verify_events(events, health)
         positions = position_pages[0]
         position_total = positions.get("meta", {}).get("total", 0)
         check(

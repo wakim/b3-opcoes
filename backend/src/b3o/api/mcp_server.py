@@ -69,8 +69,9 @@ TOOL_CHAIN = (
 )
 TOOL_SERIES = (
     "Identidade, última linha e histórico de uma série (ticker + vencimento): preço, IV, "
-    "delta e gregas da última sessão. Use quando precisar acompanhar uma série específica. "
-    "Não use para a cadeia inteira (use chain)."
+    "delta e gregas da sessão. Use quando precisar acompanhar uma série específica; "
+    "``date`` opcional corta a leitura numa sessão histórica do lake. Não use para a "
+    "cadeia inteira (use chain)."
 )
 TOOL_EVENTS = (
     "Vencimentos listados, eventos de ajuste de strike (provento, escala ou indeterminado) "
@@ -176,11 +177,16 @@ def chain(
 
 
 @mcp.tool(description=TOOL_SERIES)
-def series(ticker: str, maturity: str, days: int = 60) -> dict[str, Any]:
-    """Identidade, última linha e histórico de uma série (ticker + vencimento)."""
+def series(
+    ticker: str,
+    maturity: str,
+    days: int = 60,
+    date: str | None = None,
+) -> dict[str, Any]:
+    """Identidade, última linha e histórico, com ``date`` histórico opcional."""
     return _safe(
         lambda: payloads.series_payload(
-            get_service(), ticker, maturity, days=days
+            get_service(), ticker, maturity, days=days, date=date
         )
     )
 

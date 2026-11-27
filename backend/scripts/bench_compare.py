@@ -22,9 +22,10 @@ Regras não negociáveis
   leitura do ticker (armadilha 1 e 2 do AGENTS.md). Casamento por 4 chaves;
   fallback ``fallback_unique`` só com um candidato de cada lado.
 * ``vi_ratio``/IV bruta do opcoes.net.br são fração (×100); campos já em
-  porcentagem não multiplicam. Gamma mantém bruto **e** candidato ×100 sem
-  corrigir o backend (caso PETRX449, 25/11). Theta/vega só comparados quando a
-  base é confirmada, senão ``unit_unknown``.
+  porcentagem não multiplicam. No modelo 3, gamma já é por R$1 de forward e é
+  comparado diretamente; o candidato ×100 fica só na evidência histórica do
+  modelo 2. Theta/vega só comparados quando a base é confirmada, senão
+  ``unit_unknown``.
 * ``skew_25d_30d_ratio`` do OBM é registrado **bruto**, nunca comparado como
   RR25 enquanto ``fields[]`` não definir a fórmula (F10.1 pendente).
 
@@ -185,9 +186,9 @@ OBM_AGGREGATE_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 GAMMA_NOTE = (
-    "PETRX449 em 2026-11-25: API 0.001012; diferença finita Black-76 "
-    "0.101164403; API×100 = 0.1012. Nenhuma das duas é gravada como correção "
-    "do backend — `gamma_internal_x100` é candidato explícito."
+    "Modelo 3: gamma é comparado diretamente por R$1 de forward. A razão "
+    "gamma_externo/gamma_api ≈ 100 e o candidato ×100 ficam apenas na "
+    "evidência histórica do modelo 2 (`benchmark-2026-11-25-p6b-stale.json`)."
 )
 RHO_NOTE = "A API não expõe rho; rho externo fica bruto e o interno é null com flag."
 SKEW_NOTE = (
@@ -417,22 +418,6 @@ def normalize_price(value: Any, *, unit: str | None) -> tuple[float | None, list
     if unit in {"brl_per_share", "brl", "reais_por_acao"}:
         return number, []
     return None, ["unit_unknown"]
-
-
-def gamma_variants(value: Any) -> dict[str, Any]:
-    """Gamma bruto da API e candidato ×100 — os dois preservados (sem correção)."""
-    number = as_float(value)
-    if number is None:
-        return {
-            "gamma_internal_raw": None,
-            "gamma_internal_x100": None,
-            "flags": ["invalid_gamma"],
-        }
-    return {
-        "gamma_internal_raw": number,
-        "gamma_internal_x100": number * 100.0,
-        "flags": ["gamma_scale_candidate_x100"],
-    }
 
 
 def normalize_theta(
@@ -720,22 +705,35 @@ def fetch_health(client: ApiClient) -> dict[str, Any]:
     }
 
 
-def guard_health(health: Mapping[str, Any], expected: str, phase: str) -> None:
-    """Guarda dura de sessão **e** modelo; divergência aborta sem escrever output.
+def guard_health(health: Mapping[str, Any], reference: str, phase: str) -> None:
+    """Valida o health **atual** para uma comparação histórica.
 
-    ``as_of_session`` e ``data.last_session`` têm que ser iguais a ``--date``;
-    ``model_version`` é ``int`` (``bool`` não conta) e veio do envelope da API.
-    Nenhum JSON parcial de sucesso é devolvido quando uma das duas leituras
-    (antes/depois) falha.
+    A sessão atual precisa ser igual em ``as_of_session``/``last_session`` e
+    nunca pode ser anterior a ``--date``. Os endpoints históricos é que devolvem
+    exatamente ``reference``; o health atual pode estar em 26/11 ou depois.
+    ``model_version`` inteiro, sem ``model_version_mismatch`` e sem
+    ``last_error`` continuam sendo condições duras.
     """
     raw = health.get("raw") if isinstance(health.get("raw"), Mapping) else health
     data = raw.get("data") if isinstance(raw.get("data"), Mapping) else {}
     observed = (raw.get("as_of_session"), data.get("last_session"))
-    if any(value != expected for value in observed):
+    if any(not isinstance(value, str) or not DATE_ISO.match(value) for value in observed):
         raise CompareError(
-            "health_session_mismatch",
-            f"{phase}: health declarou {observed!r}, pedido {expected!r}",
-            "rode `b3o prepare` até a sessão pedida e rode a comparação sem misturar datas",
+            "health_session_incomplete",
+            f"{phase}: health declarou sessão inválida {observed!r}",
+            "confira /api/health antes de comparar",
+        )
+    if observed[0] != observed[1]:
+        raise CompareError(
+            "health_session_inconsistent",
+            f"{phase}: as_of_session={observed[0]!r}, last_session={observed[1]!r}",
+            "aguarde o lago estabilizar; não concilie sessões diferentes",
+        )
+    if observed[0] < reference:
+        raise CompareError(
+            "health_session_before_reference",
+            f"{phase}: health atual {observed[0]!r} é anterior à referência {reference!r}",
+            "a comparação histórica exige que o lago já contenha a sessão de referência",
         )
     model = raw.get("model_version")
     if model is None:
@@ -757,6 +755,25 @@ def guard_health(health: Mapping[str, Any], expected: str, phase: str) -> None:
             "health_last_error",
             f"{phase}: health registrou last_error={data.get('last_error')!r}",
             "resolva a falha de fonte do lake antes de comparar",
+        )
+
+
+def guard_api_reference(
+    payload: Mapping[str, Any], reference: str, model_version: int, label: str
+) -> None:
+    """Endpoint histórico: sessão e modelo exatos, nunca o health atual."""
+    if payload.get("as_of_session") != reference:
+        raise CompareError(
+            "api_session_mismatch",
+            f"{label}: as_of_session={payload.get('as_of_session')!r}, esperado {reference!r}",
+            "o endpoint histórico deve ser cortado exatamente na sessão de referência",
+        )
+    if payload.get("model_version") != model_version:
+        raise CompareError(
+            "api_model_version_mismatch",
+            f"{label}: model_version={payload.get('model_version')!r}, "
+            f"esperado {model_version!r}",
+            "endpoint e health atual não podem misturar modelos",
         )
 
 
@@ -820,8 +837,10 @@ def guard_manifest_session(
         guard_declared_session(name, f"manifesto {extra_name}", extra_date, expected)
 
 
-def fetch_screen_all(client: ApiClient, session: str) -> dict[str, Any]:
-    """`/api/screen` paginado por ``offset``; nenhuma lista passa de 60 linhas."""
+def fetch_screen_all(
+    client: ApiClient, session: str, model_version: int
+) -> dict[str, Any]:
+    """`/api/screen` paginado; toda página precisa cortar na mesma sessão/modelo."""
     rows: list[dict[str, Any]] = []
     offset = 0
     total: int | None = None
@@ -829,6 +848,9 @@ def fetch_screen_all(client: ApiClient, session: str) -> dict[str, Any]:
     while pages < MAX_SCREEN_PAGES:
         payload = client.get(
             "/api/screen", {"date": session, "max_rows": PAGE_SIZE, "offset": offset}
+        )
+        guard_api_reference(
+            payload, session, model_version, f"/api/screen?offset={offset}"
         )
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
         page_rows = data.get("rows") if isinstance(data.get("rows"), list) else []
@@ -843,33 +865,27 @@ def fetch_screen_all(client: ApiClient, session: str) -> dict[str, Any]:
     return {"rows": rows, "total": total, "pages": pages}
 
 
-def fetch_underlying(client: ApiClient, ticker: str, session: str) -> dict[str, Any]:
+def fetch_underlying(
+    client: ApiClient, ticker: str, session: str, model_version: int
+) -> dict[str, Any]:
     payload = client.get(
         f"/api/t/{quote(ticker, safe='')}",
         {"date": session, "sections": "summary,term,smile,history", "days": 252},
     )
-    if payload.get("as_of_session") != session:
-        raise CompareError(
-            "session_mismatch",
-            f"{ticker}: /api/t trouxe {payload.get('as_of_session')!r}, esperado {session}",
-            "a comparação exige a mesma sessão do health",
-        )
+    guard_api_reference(payload, session, model_version, f"/api/t/{ticker}")
     return payload
 
 
 def fetch_series(
-    client: ApiClient, ticker: str, maturity: str, session: str
+    client: ApiClient, ticker: str, maturity: str, session: str, model_version: int
 ) -> dict[str, Any]:
     payload = client.get(
-        f"/api/s/{quote(ticker, safe='')}/{quote(maturity, safe='')}"
+        f"/api/s/{quote(ticker, safe='')}/{quote(maturity, safe='')}",
+        {"date": session},
     )
-    if payload.get("as_of_session") != session:
-        raise CompareError(
-            "session_mismatch",
-            f"{ticker}/{maturity}: /api/s trouxe "
-            f"{payload.get('as_of_session')!r}, esperado {session}",
-            "a comparação exige a mesma sessão do health",
-        )
+    guard_api_reference(
+        payload, session, model_version, f"/api/s/{ticker}/{maturity}"
+    )
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     return {"payload": payload, "data": data}
 
@@ -3114,7 +3130,6 @@ def series_row(
     reason: str | None = None,
     internal_provenance: Mapping[str, Any] | None = None,
     external_inputs: Mapping[str, Any] | None = None,
-    gamma_internal: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     difference = (
         external_normalized - internal_normalized
@@ -3150,14 +3165,6 @@ def series_row(
             "endpoint": internal_endpoint,
             "unit": internal_unit,
             "provenance": dict(internal_provenance or {}),
-            **(
-                {
-                    "gamma_internal_raw": gamma_internal.get("gamma_internal_raw"),
-                    "gamma_internal_x100": gamma_internal.get("gamma_internal_x100"),
-                }
-                if gamma_internal is not None
-                else {}
-            ),
         },
         "external_inputs": dict(external_inputs or {}),
         "difference": difference,
@@ -3171,8 +3178,8 @@ def internal_values(data: Mapping[str, Any]) -> dict[str, Any]:
 
     As linhas de preço/IV carregam só o escalar bruto e de onde ele veio; o
     payload inteiro de ``/api/s`` fica fora do JSON intermediário (P6-A o
-    embutia em ``internal.raw``). Gamma mantém o bruto da API e o candidato
-    ×100; a API não expõe rho, que fica ``null`` + flag.
+    embutia em ``internal.raw``). No modelo 3, gamma já é por R$1 e entra direto;
+    a API não expõe rho, que fica ``null`` + flag.
     """
     last = data.get("last") if isinstance(data.get("last"), dict) else {}
     close = as_float(last.get("close_brl"))
@@ -3186,8 +3193,7 @@ def internal_values(data: Mapping[str, Any]) -> dict[str, Any]:
         price_flags.append("price_from_mid")
     if price is None:
         price_flags.append("price_missing")
-    gamma = data.get("gamma")
-    gamma_v = gamma_variants(gamma)
+    gamma = as_float(data.get("gamma"))
     endpoint = "/api/s/{ticker}/{maturity}"
     provenance = {
         "price": {"field": price_field, "endpoint": endpoint},
@@ -3202,11 +3208,7 @@ def internal_values(data: Mapping[str, Any]) -> dict[str, Any]:
         "price": (price, price_flags),
         "iv": (as_float(last.get("iv_pct")), []),
         "delta": (as_float(last.get("delta")), []),
-        "gamma": (gamma_v["gamma_internal_raw"], gamma_v["flags"]),
-        "gamma_x100_candidate": (
-            gamma_v["gamma_internal_x100"],
-            gamma_v["flags"] + ["gamma_scale_candidate_x100"],
-        ),
+        "gamma": (gamma, [] if gamma is not None else ["invalid_gamma"]),
         "theta": (as_float(data.get("theta_brl")), []),
         "vega": (as_float(data.get("vega_brl")), []),
         "rho": (None, ["internal_api_missing_rho"]),
@@ -3215,8 +3217,6 @@ def internal_values(data: Mapping[str, Any]) -> dict[str, Any]:
             "iv": last.get("iv_pct"),
             "delta": last.get("delta"),
             "gamma": gamma,
-            "gamma_internal_raw": gamma_v["gamma_internal_raw"],
-            "gamma_internal_x100": gamma_v["gamma_internal_x100"],
             "theta": data.get("theta_brl"),
             "vega": data.get("vega_brl"),
             "rho": None,
@@ -3391,21 +3391,18 @@ def build_series_comparisons(
             }
         raw_scalars = values.get("raw") or {}
         provenance = values.get("provenance") or {}
-        metrics = list(METRICS) + ["gamma_x100_candidate"]
-        for metric in metrics:
+        # Modelo 3: gamma da API já é variação do delta por R$1 de forward e
+        # entra em METRICS direto, comparado com o externo sem nenhum fator.
+        # A razão ×100 e o candidato de escala são apenas evidência histórica
+        # do modelo 2 (P6-B stale); não são métrica comparada nem campo de saída.
+        for metric in METRICS:
             internal_number, internal_flags = values.get(metric, (None, []))
-            external_metric = "gamma" if metric == "gamma_x100_candidate" else metric
             external_number, external_flags, external_raw_value = ext.get(
-                external_metric, (None, [], None)
+                metric, (None, [], None)
             )
-            # Gamma: o externo NUNCA é multiplicado. O candidato ×100 é só o
-            # interno, e existe também para b3lab/opcoes_net (não só OBM).
             unit_external = "brl_per_share" if metric == "price" else None
             unit_internal = (
                 "brl_per_share" if metric in {"price", "gamma", "theta", "vega"} else None
-            )
-            raw_field = (
-                "gamma_internal_x100" if metric == "gamma_x100_candidate" else metric
             )
             row = series_row(
                 source=source,
@@ -3423,17 +3420,14 @@ def build_series_comparisons(
                 flags=list(match["flags"]) + list(internal_flags) + list(external_flags),
                 external_raw=external_raw_value,
                 external_normalized=as_float(external_number),
-                internal_raw=raw_scalars.get(raw_field, internal_number),
+                internal_raw=raw_scalars.get(metric, internal_number),
                 internal_normalized=as_float(internal_number),
                 internal_endpoint="/api/s/{ticker}/{maturity}",
                 artifact=artifact,
                 external_unit=unit_external,
                 internal_unit=unit_internal,
-                internal_provenance=provenance.get(raw_field) or provenance.get(metric),
+                internal_provenance=provenance.get(metric),
                 external_inputs=external_inputs,
-                gamma_internal=(
-                    raw_scalars if metric in {"gamma", "gamma_x100_candidate"} else None
-                ),
             )
             rows.append(row)
     notes.append(
@@ -3801,6 +3795,8 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
         "schema": SCHEMA,
         "generated_at": now_iso(),
         "reference_date": args.date,
+        "comparison_model_version": None,
+        "health_current_session": None,
         "model_version": None,
         "input_dir": str(args.input_dir),
         "api_url": args.api_url,
@@ -3823,6 +3819,9 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
     health = fetch_health(client)
     guard_health(health, args.date, "health_before")
     output["health_before"] = health["raw"]
+    output["reference_date"] = args.date
+    output["comparison_model_version"] = health["model_version"]
+    output["health_current_session"] = health["session"]
     output["model_version"] = health["model_version"]
     manifests = discover_manifests(args.input_dir, notes, session=args.date)
     # `capture_verified` é só o verificador interno do P3: as fontes publicadas
@@ -3951,7 +3950,7 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
             underlying = item.get("underlying")
             if ticker and underlying and isinstance(underlying, str):
                 underlyings[ticker] = underlying.upper()
-    screen = fetch_screen_all(client, args.date)
+    screen = fetch_screen_all(client, args.date, health["model_version"])
     screens = {
         str(row.get("underlying", "")).upper(): row
         for row in screen["rows"]
@@ -3961,13 +3960,14 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
         "status": "ok",
         "reason": None,
         "session": health["session"],
+        "reference_date": args.date,
         "model_version": health["model_version"],
         "screen": {"total": screen["total"], "rows": len(screen["rows"]), "pages": screen["pages"]},
         "endpoints": [
             "/api/health",
-            "/api/screen",
-            "/api/t/{ticker}?sections=summary,term,smile,history&days=252",
-            "/api/s/{ticker}/{maturity}",
+            "/api/screen?date={reference}",
+            "/api/t/{ticker}?date={reference}&sections=summary,term,smile,history&days=252",
+            "/api/s/{ticker}/{maturity}?date={reference}",
         ],
     }
 
@@ -3990,7 +3990,9 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
     )
     for ticker, maturity in pairs:
         try:
-            detail = fetch_series(client, ticker, maturity, args.date)
+            detail = fetch_series(
+                client, ticker, maturity, args.date, health["model_version"]
+            )
         except CompareError as exc:
             unavailable.append(
                 {
@@ -4087,7 +4089,9 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
 
     for underlying in sorted(set(underlyings.values())):
         try:
-            detail = fetch_underlying(client, underlying, args.date)
+            detail = fetch_underlying(
+                client, underlying, args.date, health["model_version"]
+            )
         except CompareError as exc:
             unavailable.append(
                 {
@@ -4204,10 +4208,19 @@ def build_output(args: argparse.Namespace) -> dict[str, Any]:
         + list(output["structure_comparisons"])
         + list(output["recalculated"])
     )
-    # Guarda final: health_after tem que ser o MESMO modelo/sessão; divergência
-    # aborta aqui, antes de qualquer escrita em --output.
+    # Guarda final: o health ATUAL tem que permanecer no mesmo modelo e na mesma
+    # sessão entre as duas leituras. A referência continua sendo args.date nos
+    # endpoints históricos; se o lago avançar durante a comparação, aborta.
     health_after = fetch_health(client)
     guard_health(health_after, args.date, "health_after")
+    before_state = (health["session"], health["model_version"])
+    after_state = (health_after["session"], health_after["model_version"])
+    if before_state != after_state:
+        raise CompareError(
+            "lake_changed_during_comparison",
+            f"health atual mudou de {before_state!r} para {after_state!r}",
+            "repita a comparação com o lago estável; não misture sessões/modelos",
+        )
     output["health_after"] = health_after["raw"]
     return output
 

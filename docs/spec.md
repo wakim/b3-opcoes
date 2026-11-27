@@ -330,7 +330,7 @@ underlying(ticker, date=None,
 chain(ticker, expiry=None, date=None,
       delta_range=(0.25, 0.75), liquidity="strict",
       max_rows=60)                                      -> list[ChainRow]
-series(ticker, maturity, days=60)                       -> SeriesDetail   # resumo + histórico (ponto com session_index, leg_id, strike_brl)
+series(ticker, maturity, days=60, date=None)             -> SeriesDetail   # resumo + histórico; date=None usa a última sessão, data explícita corta refdate <= date
 prices(ticker, days=250)                                -> PricesDetail   # só HTTP; fechamento do papel + marcas (ADR-050)
 structure_eval(legs, date=None, capital=None,
                scenarios=True)                          -> StructureResult # payoff, gregas, cenários, perda máxima
@@ -348,7 +348,7 @@ position(id, date=None)                                 -> PositionDetail
 
 ## 8. MCP
 
-Streamable HTTP montado em `/mcp` no mesmo FastAPI (`127.0.0.1:8080/mcp`). Expõe as leituras **descritivas** da §7 (hoje: `health`, `screen`, `underlying`, `chain`, `series`, `events`, `structure_eval`; `positions` no F6), com os nomes canônicos (nomes antigos da doc de arquitetura — `option_chain`, `data_health`, `underlying_overview` — não existem).
+Streamable HTTP montado em `/mcp` no mesmo FastAPI (`127.0.0.1:8080/mcp`). Expõe as leituras **descritivas** da §7 (hoje: `health`, `screen`, `underlying`, `chain`, `series`, `events`, `structure_eval`; `positions` no F6), com os nomes canônicos (nomes antigos da doc de arquitetura — `option_chain`, `data_health`, `underlying_overview` — não existem). A tool `series` aceita `date: str | None`; o default continua sendo a última sessão e a data explícita é um corte histórico, nunca uma captura externa.
 
 `positions` (F6) existe para o agente **conhecer a exposição que você já tem**. O produto não recomenda (ADR-024); a descrição de `screen` e de `structure_eval` instruirá o agente a chamar `positions` antes de **comentar** um papel; sem isso, ele sugeriria dobrar exposição em PETR4 sem saber que você já está vendido em vol.
 
@@ -377,7 +377,7 @@ Regras:
 | `GET /api/t/{t}/chain?exp=&delta=` | cadeia | 60 s |
 | `GET /api/t/{t}/events` | `events` | 1 h |
 | `GET /api/t/{t}/prices?days=&offset=` | fechamento do papel por sessão do lake (escala do B2 aplicada, provento não descontado) + marcas; 60 pontos por página (ADR-050) | 60 s |
-| `GET /api/s/{t}/{maturity}` | `series` (resumo + histórico) | 60 s |
+| `GET /api/s/{t}/{maturity}?date=` | `series` (resumo + histórico); sem `date`, última sessão; com `date`, corte histórico `refdate <= date` e `as_of_session=date` | 60 s |
 | ~~`GET /api/backtest?class=&t=`~~ | não exposto (ADR-027) | — |
 | `GET /api/glossary` · `GET /api/glossary/{key}` | lista e verbete; o número do dia vem da tela, não do texto (ADR-031) | 1 h |
 | ~~`GET /api/briefing?date=`~~ | não existe; o relatório do dia é `b3o screen` → `data/out/` | — |

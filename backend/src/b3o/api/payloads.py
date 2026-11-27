@@ -422,15 +422,23 @@ def series_payload(
     ticker: str,
     maturity: Any,
     days: int = 60,
+    date: Any = None,
 ) -> dict[str, Any]:
-    """Identidade + última linha + histórico de uma série (capado em 60 linhas)."""
-    parsed = maturity if isinstance(maturity, date) else _as_date(maturity, "maturity")
+    """Identidade + última linha + histórico de uma série (capado em 60 linhas).
+
+    ``date`` é um corte histórico opcional; sem ele, o comportamento default
+    continua sendo a última sessão do lake.
+    """
+    # `_as_date` já aceita `date`/ISO/None; sem isinstance aqui porque o
+    # parâmetro `date` sombreia a classe importada de datetime.
+    parsed = _as_date(maturity, "maturity")
     if parsed is None:
         raise request_error(
             "maturity ausente",
             "informe o vencimento da série (AAAA-MM-DD), como em `curve`/`events`",
         )
-    detail = service.series(ticker, parsed, days=days)
+    cutoff = _as_date(date, "date")
+    detail = service.series(ticker, parsed, days=days, date=cutoff)
     history = [jsonable(point) for point in detail.history[:MAX_ROWS]]
     data = {
         "ticker": detail.ticker,

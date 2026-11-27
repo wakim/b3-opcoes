@@ -25,8 +25,8 @@ Documento de trabalho. A **spec** (`docs/spec.md`) é a fonte da verdade para f�
 | Código | **F0 completo e aceito** (fetch+validação, lake parquet 2024–2026, legs+eventos, curva por sessão, calendário CVM, OI, liquidez, `prepare`/`health`/`rates`). **F1 aceito com ressalvas** — `model_version=2`, 722 sessões / 7,77 M séries (ADR-018/020/021). **F1b: o portão NÃO PASSA** e o dono ratificou a Opção 1 — parar no portão (ADR-023); parecer independente APROVADO. **F2 descritivo entregue e aceito** (ADR-024): `b3o screen` grava `data/out/screen-<data>.md` com os 289 papéis do universo (163 `ok` + 126 excluídos com motivo em 19/11), sem classe de sinal. **F3 entregue** (ADR-025/026/027): `b3o.api:app` sobe HTTP + MCP em `/mcp` com `health`, `screen`, `underlying`, `chain`, `series`, `events`, envelope `as_of_session`/`model_version`, `max_rows` 20/60 e teto de 200 KB. **F4 entregue** (ADR-028): `structure_eval` descritivo (payoff, breakevens, perda/ganho máximo, capital comprometido, gregas e 45 cenários) puro em `derive/structure.py` + `QueryService.structure_eval`, exposto em `POST /api/structure`, tool `structure_eval` e `b3o struct`; nada é gravado e `model_version` segue 2. **F5 entregue e aceito**: PWA (Hoje, Ticker, Série, Aprender, builder de estrutura, liquidez) servido pelo FastAPI, instalado no celular via `tailscale serve` 8443 (só tailnet) e offline pelo service worker. **F6 implementado e validado** (ADR-041/045): journal PostgreSQL append-only, carteira com marcação EOD, P&L, gregas, alertas e payoff; aceitação no uso real (ADR-047). **F7 implementado e validado** (ADR-042): Diário de decisões com previsão estruturada, avaliação automática no lote EOD e calibração pessoal; aceitação no uso real (ADR-047). **F8 entregue e aceita** (ADR-043/044/046/047): interface em shadcn + Tailwind, CSS global reduzido a tokens, base e as exceções da ADR-046; avaliação manual do dono aprovada em 25/11/2026. |
 | Retomar em | **F8 aceita; começar a usar F6/F7 (ADR-047).** (1) **Diário todo pregão**: uma decisão real por sessão na app da 8083/8443 (inclusive "não entrei"), com previsão estruturada quando houver tese — a aceitação F7 conta 30 sessões consecutivas e ≥ 10 previsões avaliadas pelo lote. (2) **Duas posições reais** registradas na Carteira na data da execução, e o P&L conferido com o extrato da corretora (F6.6). A F9 está implementada, com validação final pendente; defeito achado no uso vira correção pontual. |
 | Novo pedido | **F9 — níveis de linguagem Expert/Leigo**, pedido do dono em 24/11/2026. Implementação concluída; validação final pendente. É apresentação, não altera dado, cálculo ou a aceitação de uso de F6/F7. |
-| Benchmark externo | **F10 — aderência numérica às referências de mercado**, pedido do dono em 25/11/2026 e revisado em 26/11: cobrir **todas** as métricas de mercado e corrigir o algoritmo interno quando a divergência for bug reproduzido, não mera diferença de metodologia. Capturas P3/P4/P5 e o JSON intermediário P6/P7 foram executados para 25/11; **P6-B fechado e commitado em `8b2a07c`**, com output novo `data/out/benchmark-2026-11-25-p6b-stale.json` (modelo 2). A correção do gamma foi reproduzida em **32/32** séries B3Lab; a config subiu para `model_version=3` e o **backfill integral terminou com exit 0 em 26/11** (`data/out/f10-model3-backfill-20261126-run1.json`): 725 sessões, 7.800.617 séries + 117.341 underlyings, todo modelo 3, contagens pré/pós idênticas e rank/z conferidos com diferença 0 em PETR4/VALE3/BBAS3. O gate de saúde segue **bloqueado** por `source_unavailable` (ReadTimeout no BDI/OI), embora API/CLI estejam em 2026-11-26/modelo 3. A **4B está fechada** (commit `c8dfbe9`) e a **4C documental está fechada** (registry `data/out/f10-reuse-registry-2026-11-25-run4.json`, `f10-gap-register-2026-11-25-run4.md` e provas `-run4`); a **4A** e o **F10.6** continuam pendentes; nenhum checkbox da aceitação está marcado. Fontes: OBM, opcoes.net.br e B3Lab. |
-| Dados baixados | COTAHIST 2024–2026 (2026: 224 sessões, 3.575.881 linhas no lake; 725 sessões no total), OI (12 datas), curva DI (725 sessões; última: 282 nós `b3_reference`), CVM ITR/DFP/FCA 2025+2026 |
+| Benchmark externo | **F10 — aderência numérica às referências de mercado**, pedido do dono em 25/11/2026 e revisado em 26/11: cobrir **todas** as métricas de mercado e corrigir o algoritmo interno quando a divergência for bug reproduzido, não mera diferença de metodologia. Capturas P3/P4/P5 e o JSON intermediário P6/P7 foram executados para 25/11; **P6-B fechado e commitado em `8b2a07c`**, com output novo `data/out/benchmark-2026-11-25-p6b-stale.json` (modelo 2). A correção do gamma foi reproduzida em **32/32** séries B3Lab; a config subiu para `model_version=3` e o **backfill integral terminou com exit 0 em 26/11** (`data/out/f10-model3-backfill-20261126-run1.json`): 725 sessões, 7.800.617 séries + 117.341 underlyings, todo modelo 3, contagens pré/pós idênticas e rank/z conferidos com diferença 0 em PETR4/VALE3/BBAS3. A **4B está fechada** (commit `c8dfbe9`) e a **4C documental está fechada** (registry `data/out/f10-reuse-registry-2026-11-25-run4.json`, `f10-gap-register-2026-11-25-run4.md` e provas `-run4`). A **4A fechou em 27/11/2026** e o **gate de saúde está verde**: um único `prepare` (exit 0, sem retry, COTAHIST 304) trouxe o OI de 26/11 (37.906 séries), com `last_error=null`, `oi_unavailable=false` e `age_sessions=0` — 10 critérios PASS. **P6/P7 rodou em r2** (`data/out/benchmark-2026-11-25-model3-r2.json`, SHA-256 `60334C530D6B2B06A65D8AA2154C76BCE7A1474A0B3E56419DF567495AD00636`), preservando o output antigo `data/out/benchmark-2026-11-25-model3.json` (SHA-256 `EDE9F99A2A422C15E7621B77143A90B08BD05002178AFDB4DFFB4D858079DBAE`). **F10.6 redigido** (`data/out/benchmark-2026-11-25.md`, SHA-256 `5B303231DBEFB4B2109BBA6786A3BA436FD78411634585668CD589E5A9096AB4`; manifesto `data/out/benchmark-2026-11-25-f10.6-manifest.json`); **F10.7 não iniciado**; **nenhum checkbox da Aceitação F10 marcado**. Fontes: OBM, opcoes.net.br e B3Lab. |
+| Dados baixados | COTAHIST 2024–2026 (2026: 225 sessões, 3.590.424 linhas no lake; 726 sessões no total), OI (14 datas), curva DI (726 sessões; última: 278 nós `b3_reference`), CVM ITR/DFP/FCA 2025+2026 |
 | Ambiente | Podman 6.1.4 com `podman compose` (provider docker-compose v5.8); Python 3.15 e `node:26-slim` no container (ADR-011); bind `C:\` ↔ container verificado; repositório em `github.com/wakim/b3-opcoes` (SSH, ADR-016) |
 | Pasta | `C:\Users\wakim\Projects\b3-opcoes` (git local, `origin` = GitHub) |
 
@@ -711,7 +711,7 @@ com referências consolidadas e fazer nosso algoritmo produzir valores iguais a 
 inputs, contrato e metodologia forem equivalentes. Divergência real reproduzida vira correção;
 diferença de metodologia, liquidez ou dado externo não vira ajuste cego.
 
-**Estado real em 26/11/2026:**
+**Estado real em 27/11/2026:**
 - **F10.1 concluído:** “OpçõesBR” não é `opcoes.net.br`; B3Lab usa `r` contínua e `T = du/252`;
   o montador público do OBM não aceita perna de ação; o seletor do opcoes.net.br usa
   `quotesMode=UP`, `#vAAAA-MM-DD` e espera do DataTable. O `fields[]` do agregado OBM confirmou
@@ -732,27 +732,32 @@ diferença de metodologia, liquidez ou dado externo não vira ajuste cego.
   PETRX449 2026-12-18: gamma 0,10116443874196744 na métrica, 0,101164 na API,
   0,1012 no B3Lab e 0,001012 no campo antigo; straddle PETR4 do P5: 15,690665
   contra 0,156907 antes. O P6-B `stale` e as estruturas P5 permanecem no modelo 2.
-  Ainda assim não há veredito F10: o gate de saúde está bloqueado (abaixo); a 4B
-  fechou (commit `c8dfbe9`) e a 4C documental fechou (registry/provas `-run4`), mas
-  a 4A e o F10.6 seguem pendentes (ADR-052).
-- **Gate de saúde bloqueado em 26/11/2026:** API e CLI em 2026-11-25,
-  `model_version=3`, `ingest_model_version=3`, `model_version_mismatch=false`,
-  `age_sessions=0`, mas `last_error=source_unavailable` por ReadTimeout no BDI/OI
-  (`oi_unavailable=true`). O diagnóstico manual de 26/11 devolveu 407 bytes com
-  "Nenhum resultado" (hash
-  `F3EA4924B4CFE1CB4F87DF7711E2903E962E18295456839B8AFE8B09D22A77C9`); isso não
-  autoriza afirmar que o BDI avançou para 26/11. Nenhum checkbox da Aceitação F10
-  é marcado.
-- **4B fechada (commit `c8dfbe9`) e 4C documental fechada** (registry `data/out/f10-reuse-registry-2026-11-25-run4.json`, `f10-gap-register-2026-11-25-run4.md` e provas `-run4`); **4A segue parcial/bloqueada.**
-- **F10.6 não existe.** Nenhum item da **Aceitação F10** está marcado.
+  Ainda não há veredito F10: em 27/11 a 4A fechou e o gate liberou, o P6/P7 rodou
+  em r2 e o F10.6 foi redigido, mas F10.7 não começou e nenhum checkbox da Aceitação
+  F10 foi marcado (ADR-052).
+- **Gate de saúde: bloqueado em 26/11, liberado em 27/11/2026 (4A fechada).** Até
+  26/11, API e CLI em 2026-11-26, `model_version=3`, `ingest_model_version=3`,
+  `model_version_mismatch=false`, `age_sessions=0`, mas
+  `last_error=source_unavailable` por ReadTimeout no BDI/OI (`oi_unavailable=true`).
+  O diagnóstico manual de 26/11 devolveu 407 bytes com "Nenhum resultado" (hash
+  `F3EA4924B4CFE1CB4F87DF7711E2903E962E18295456839B8AFE8B09D22A77C9`): isso não
+  autorizava afirmar que o BDI avançara para 26/11. Em 27/11, um único `prepare`
+  (exit 0, sem retry, COTAHIST 304) trouxe o OI de 26/11 (**37.906 séries**) e
+  limpou `last_error` (agora `null`) e `oi_unavailable` (agora `false`), com
+  `age_sessions=0` e modelo 3/3: **todos os 10 critérios PASS** (`data/out/f10-4a-gate-2026-11-27-fecho.json`, `.md` e manifesto).
+  Nenhum checkbox da Aceitação F10 é marcado.
+- **4B fechada (commit `c8dfbe9`) e 4C documental fechada** (registry `data/out/f10-reuse-registry-2026-11-25-run4.json`, `f10-gap-register-2026-11-25-run4.md` e provas `-run4`); **4A fechada em 27/11/2026** (10 critérios do gate PASS).
+- **F10.6 redigido em 27/11/2026** (`data/out/benchmark-2026-11-25.md`, SHA-256 `5B303231DBEFB4B2109BBA6786A3BA436FD78411634585668CD589E5A9096AB4`; manifesto `data/out/benchmark-2026-11-25-f10.6-manifest.json`). **F10.7 não iniciado.** Nenhum item da **Aceitação F10** está marcado.
 
-**Escopo da retomada:** com o P6-B fechado e o recálculo integral do modelo 3 concluído, auditar a
-prova real e montar a matriz de divergências sobre o lago reescrito; reproduzir independentemente
-cada possível bug interno e corrigir o que for real (nova mudança de fórmula exige novo
-`model_version` e novo backfill integral), fechar a recaptura/lacuna 4A — inclusive o
-bloqueio externo do BDI/OI — e somente então gerar o F10.6 (4B e 4C documental já fecharam). Recapturas são permitidas apenas para
-a mesma sessão do lake e sem sobrescrever brutos ou backups. Não reabre F6/F7/F9 nem altera a
-aceitação de uso real.
+**Escopo da retomada (27/11/2026):** com o P6-B fechado e o recálculo integral do modelo 3
+concluído, auditar a prova real e montar a matriz de divergências sobre o lago reescrito;
+reproduzir independentemente cada possível bug interno e corrigir o que for real (nova mudança
+de fórmula exige novo `model_version` e novo backfill integral), fechar a recaptura/lacuna 4A —
+inclusive o bloqueio externo do BDI/OI — e somente então gerar o F10.6 (4B e 4C documental já
+fecharam). **Em 27/11: 4A fechada e gate verde, P6/P7 r2 gerado e F10.6 redigido; restam F10.7
+(correções de bug, se houver) e a Aceitação F10, sem nenhum checkbox marcado.** Recapturas são
+permitidas apenas para a mesma sessão do lake e sem sobrescrever brutos ou backups. Não reabre
+F6/F7/F9 nem altera a aceitação de uso real.
 
 **Objetivo:** atingir **aderência numérica** às referências de mercado até a precisão publicada,
 sem transformar um site opaco em dono da verdade. O relatório deve separar claramente:
@@ -861,7 +866,7 @@ fonte publica equivalente — verificação por recontagem interna) e `signal_cl
 | F10.6 | Relatório em `data/out/benchmark-AAAA-MM-DD.md`: matriz preenchida (fonte, URL, data de acesso, `n`, mediana, P90, máximo), tolerância por métrica, outliers, classificação (`metodologia`, `liquidez`, `dado_externo`, `bug_interno`) e lista de bugs reproduzidos | 1 h |
 | F10.7 | Corrigir os bugs internos reproduzidos, revalidar cada correção no lago real e, se houver mudança de fórmula, subir `model_version` e recalcular todo o histórico antes do veredito final | 1–3 h |
 
-### Estado dos mecanismos (retomada de 26/11/2026)
+### Estado dos mecanismos (retomada de 27/11/2026)
 
 | Pacote | Arquivo | Estado |
 |---|---|---|
@@ -872,10 +877,12 @@ fonte publica equivalente — verificação por recontagem interna) e `signal_cl
 | P5 | `backend/scripts/bench_structures.py` + `data/bench/structures-2026-11-25-petr4/` | Captura real executada; 3 estruturas comparáveis e 2 ausências ratificadas |
 | P7 | `backend/scripts/bench_recalc.py` | Executado no JSON intermediário; funções puras, sem `b3o` |
 | P6 | `backend/scripts/bench_compare.py` + JSON de revisão | Fechado e commitado (`8b2a07c`); output novo `data/out/benchmark-2026-11-25-p6b-stale.json`, preservado no modelo 2 |
-| Gamma / backfill | correção em `metrics/series.py` + `config.yaml` | Reprodução 32/32 concluída; config e lago em modelo 3; backfill integral exit 0 em 26/11 (725 sessões, 7.800.617 séries, 117.341 underlyings, rank/z com diferença 0); gate de saúde ainda bloqueado por `source_unavailable` no BDI/OI |
-| Captura e relatório | `data/bench/`, `data/out/` | Brutos preservados; 4B fechada (`c8dfbe9`) e 4C documental fechada (registry/provas `-run4`); 4A parcial/bloqueada; F10.6 ainda não gerado |
+| Gamma / backfill | correção em `metrics/series.py` + `config.yaml` | Reprodução 32/32 concluída; config e lago em modelo 3; backfill integral exit 0 em 26/11 (725 sessões, 7.800.617 séries, 117.341 underlyings, rank/z com diferença 0) |
+| P6/P7 r2 (27/11) | `data/out/benchmark-2026-11-25-model3-r2.json` | Execução única, exit 0, modelo 3; SHA-256 `60334C530D6B2B06A65D8AA2154C76BCE7A1474A0B3E56419DF567495AD00636`; output antigo `EDE9F99A…DBAE` preservado; 5.895 comparações / 5.474 `unavailable`; DTL atualizados |
+| 4A / gate (27/11) | `data/out/f10-4a-gate-2026-11-27-fecho.json` + manifesto | 10 critérios PASS: único `prepare` exit 0 (304 no COTAHIST), OI 26/11 com 37.906 séries, `last_error=null`, `oi_unavailable=false`, `age_sessions=0`, modelo 3/3 |
+| Captura e relatório | `data/bench/`, `data/out/` | Brutos preservados; 4B fechada (`c8dfbe9`) e 4C documental fechada (registry/provas `-run4`); 4A fechada em 27/11; F10.6 redigido (`5B303231…AB4`, manifesto `benchmark-2026-11-25-f10.6-manifest.json`); F10.7 não iniciado; nenhum checkbox marcado |
 
-**Aceitação F10**
+**Aceitação F10** — relatório `data/out/benchmark-2026-11-25.md` redigido em 27/11/2026 (SHA-256 `5B303231DBEFB4B2109BBA6786A3BA436FD78411634585668CD589E5A9096AB4`); nenhum checkbox marcado e F10.7 não iniciado.
 - [ ] toda métrica de mercado da matriz tem ao menos uma referência externa no relatório (direta ou
       recalculada), com alvo de aderência e tolerância declarados; as que ficam fora aparecem com o motivo
 - [ ] toda comparação usa a mesma sessão e o mesmo contrato; spot/forward, strike, vencimento, estilo,

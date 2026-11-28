@@ -5158,12 +5158,40 @@ def _atm_row(rows: Sequence[ChainRow], reference: float | None) -> ChainRow | No
     return min(candidates, key=key)
 
 
+def _atm_straddle_brl(
+    by_strike: Mapping[int, Mapping[str, ChainRow]],
+    reference: float | None,
+) -> float | None:
+    """Call + put (R$/ação) no strike mais perto de `reference` com as duas pernas.
+
+    Mesma regra do `_atm_straddle` do pipeline (ADR-054): só strikes com call
+    **e** put de `mid` positivo; desempate pelo menor strike; sem referência
+    positiva ou sem par → `None` (o expected move não se inventa).
+    """
+    if reference is None or reference <= 0.0:
+        return None
+    candidates = [
+        cents
+        for cents, pair in by_strike.items()
+        if cents > 0
+        and (pair.get("C") is not None and (pair["C"].mid_brl or 0.0) > 0.0)
+        and (pair.get("P") is not None and (pair["P"].mid_brl or 0.0) > 0.0)
+    ]
+    if not candidates:
+        return None
+    nearest = min(candidates, key=lambda cents: (abs(cents / 100.0 - reference), cents))
+    pair = by_strike[nearest]
+    return float(pair["C"].mid_brl) + float(pair["P"].mid_brl)  # type: ignore[arg-type]
+
+
 def _term_rows(rows: Sequence[ChainRow], spot: float | None) -> list[TermRow]:
     """Estrutura a termo: um `TermRow` por vencimento (contrato onda-i §4.1).
 
     O forward é reconstruído por paridade dos `mid`s gravados, com a **mesma**
     função pura do pipeline (`forward_by_parity`); sem par honesto ele é `None`
-    e `forward_method` diz `none`. `exp_move_1s` usa a constante da spec §6.10.
+    e `forward_method` diz `none`. `exp_move_1s` usa a constante da spec §6.10
+    sobre o straddle do strike mais perto de F (mesma regra do pipeline, ADR-054);
+    `iv_atm` continua sendo a linha de `|Δ|` mais próximo de 0,5.
     """
     by_maturity: dict[date, list[ChainRow]] = defaultdict(list)
     for row in rows:
@@ -5192,14 +5220,12 @@ def _term_rows(rows: Sequence[ChainRow], spot: float | None) -> list[TermRow]:
                 )
             )
         parity = forward_by_parity(quotes, spot=spot)
-        atm = _atm_row(bucket, parity.forward if parity.forward is not None else spot)
-        straddle: float | None = None
-        if atm is not None:
-            pair = by_strike[_strike_cents(atm)]
-            call = pair.get("C")
-            put = pair.get("P")
-            if call is not None and put is not None and call.mid_brl and put.mid_brl:
-                straddle = call.mid_brl + put.mid_brl
+        reference = parity.forward if parity.forward is not None else spot
+        atm = _atm_row(bucket, reference)
+        t_value = _maturity_t(bucket, maturity)
+        # ADR-054: o straddle do expected move segue a regra do pipeline
+        # (strike mais perto de F com call e put no dia), não a linha ATM por Δ.
+        straddle = _atm_straddle_brl(by_strike, reference) if t_value > 0.0 else None
         exp_move = None if straddle is None or spot is None else expected_move_1s(straddle, spot)
         strikes = {cents for cents in by_strike if cents > 0}
         liquid_strikes = {
@@ -5208,7 +5234,7 @@ def _term_rows(rows: Sequence[ChainRow], spot: float | None) -> list[TermRow]:
         result.append(
             TermRow(
                 maturity=maturity,
-                t=_maturity_t(bucket, maturity),
+                t=t_value,
                 iv_atm=None if atm is None else atm.iv_pct,
                 atm_strike_brl=None if atm is None else atm.strike_brl,
                 forward_brl=parity.forward,

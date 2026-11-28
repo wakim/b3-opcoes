@@ -70,7 +70,7 @@ O gráfico "Fechamento do papel" mostra esse número pregão a pregão. Desdobra
 
 **No painel** — `±7,0% até 18/dez` com spot 41,18 significa que o mercado precifica a ação entre ~38,3 e ~44,1 no vencimento, com ~68% de confiança (1 desvio).
 
-**Expected move 30d do papel** — `exp_move_1s_30d` é o movimento de 1 desvio em **30 dias úteis**, não até o primeiro vencimento: o `1,25 × straddle/spot` de cada vencimento é elevado ao quadrado (variância total), interpolado em `t` entre os dois vencimentos em volta de 30 du e tirada a raiz. Sem vencimento dos dois lados é `null` + `no_30d_bracket` (ADR-053). O número por vencimento continua na estrutura a termo.
+**Expected move 30d do papel** — `exp_move_1s_30d` é o movimento de 1 desvio em **30 dias úteis**, não até o primeiro vencimento: o `1,25 × straddle/spot` de cada vencimento é elevado ao quadrado (variância total), interpolado em `t` entre os dois vencimentos em volta de 30 du e tirada a raiz. Sem vencimento dos dois lados é `null` + `no_30d_bracket` (ADR-053). O número por vencimento continua na estrutura a termo, com a **mesma regra de straddle**: call + put no strike mais perto do forward (spot se não houver forward), só strikes com as duas pernas negociadas, desempate pelo menor strike; vencimento do próprio dia não tem expected move (ADR-054).
 
 ## Delta
 

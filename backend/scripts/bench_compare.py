@@ -3409,7 +3409,10 @@ def build_recalculated(
                 underlying=underlying,
                 metric="implied_div_yield_30d",
                 computed=implied,
-                flags=forward_flags if implied is None else list(ticker_flags),
+                # O forward externo é carry com os proventos ANUNCIADOS: o
+                # dividendo implícito externo só mede o que o calendário tem.
+                flags=(forward_flags if implied is None else list(ticker_flags))
+                + ["external_announced_dividends_only"],
                 artifact=artifact,
                 internal_value=screen.get("implied_div_yield_30d"),
                 internal_endpoint=endpoint,
@@ -3499,31 +3502,41 @@ def build_recalculated(
         else None
     )
     straddle = closest[1] if closest is not None else None
+    # ADR-053: o campo interno é a 30 du. A captura OBM só tem os vencimentos
+    # do smile e o seguinte (ambos > 30 du), então o straddle externo não tem
+    # bracket em 30 du. A referência do gate passa a ser a IV ATM 30d do OBM
+    # levada ao mesmo construto (1,25 × straddle ATM teórico / S). O straddle
+    # do vencimento do smile fica só como diagnóstico, sem diferença.
+    t_30 = 30.0 / 252.0
     exp_row = recalc_row(
         underlying=underlying,
         metric="exp_move_1s_30d",
-        computed=(
-            recalc.expected_move_1s(straddle, spot)
-            if straddle is not None and spot is not None
-            else None
-        ),
-        flags=(
-            []
-            if straddle is not None and spot is not None
-            else ["straddle_unavailable", "ohlc_unavailable"]
-        )
-        + reference_flags,
+        computed=recalc.expected_move_from_atm_iv(external_iv_30, t_30),
+        flags=["from_obm_iv_atm_30d", "assumes_df_f_over_s_one"],
         artifact=artifact,
         internal_value=screen.get("exp_move_1s_30d"),
         internal_endpoint=endpoint,
     )
     exp_row["external"]["reference"] = {
-        "source": reference_source,
-        "forward_30d_internal": forward_ref,
-        "spot_brl": spot,
-        "used": reference,
-        "matched_strike_cents": closest[0] if closest is not None else None,
-        "straddle_brl": straddle,
+        "source": "obm_iv_atm_30d",
+        "iv_atm_30d_pct": external_iv_30,
+        "t": t_30,
+        "diagnostic_smile_straddle": {
+            "source": reference_source,
+            "maturity": smile_maturity,
+            "forward_30d_internal": forward_ref,
+            "spot_brl": spot,
+            "used": reference,
+            "matched_strike_cents": closest[0] if closest is not None else None,
+            "straddle_brl": straddle,
+            "expected_move_at_smile_maturity": (
+                recalc.expected_move_1s(straddle, spot).value
+                if straddle is not None and spot is not None
+                else None
+            ),
+            "flags": reference_flags,
+            "note": "vencimento do smile, não 30 du: não entra na diferença",
+        },
     }
     rows.append(exp_row)
     return rows

@@ -271,6 +271,8 @@ Classes de sinal — **gravadas em `metrics_underlying.signal_class`, mas fora d
 `straddle_atm / spot` → `exp_move_1σ ≈ 1,25 × straddle/spot` (por vencimento; 30d para a métrica do papel).
 `implied_div_yield = r − ln(F/S)/T`.
 
+**Métrica do papel a 30 dias úteis (ADR-053, modelo 4).** `exp_move_1s_30d`, `forward_30d` e `implied_div_yield_30d` são levados a `T = 30/252` entre os dois vencimentos em volta (maior `t ≤ T` e menor `t ≥ T`), como o `iv_atm_30d`: `exp_move²` linear em `t` (variância total), `ln(F/S)` linear em `t` (carry constante) e `implied_div_yield_30d = r(30du) − ln(F_30/S)/T`, com `r(30du)` do DF da curva no nó de 30 du. Cada campo usa os vencimentos em que o próprio insumo existe (straddle ATM, forward por paridade). Sem bracket → `null` + `no_30d_bracket`; nunca extrapola e nunca usa o 1º vencimento cru (era o defeito do modelo ≤ 3).
+
 Densidade neutra ao risco e PoP ficam **fora da v1**: a segunda derivada numa grade esparsa da B3 é ruído com cara de número (ver `BACKLOG.md`).
 
 ### 6.11 Validadores (filtram, não informam)

@@ -39,6 +39,10 @@ TARGET_T_90D = 90 / 252
 FLAG_NO_90D = "no_90d"
 """Sem bracket de vencimento em 90/252: `ts_slope_30_90` é `None` (não se extrapola)."""
 
+FLAG_NO_30D_BRACKET = "no_30d_bracket"
+"""Sem vencimentos em volta de 30/252 para `forward_30d`/`exp_move_1s_30d`/
+`implied_div_yield_30d`: o campo é `None` (não se extrapola — ADR-053)."""
+
 FLAG_NO_ATM_IV = "no_atm_iv"
 """Sem ATM do vencimento de referência (o `bfly25` depende dele)."""
 
@@ -236,6 +240,82 @@ def expected_move_cents(straddle_price: float | None, spot: float) -> float | No
     return expected_move_1s(straddle_price, spot)
 
 
+def bracket_30d(
+    points: Iterable[tuple[float, float]],
+    target_t: float = TARGET_T_30D,
+) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """`(front, back)` em volta de `target_t` entre pontos `(t, valor)` válidos.
+
+    `front` = maior `t <= alvo`, `back` = menor `t >= alvo`; um ponto exatamente
+    no alvo é as duas pontas. `None` quando o alvo cai fora da faixa — nunca
+    extrapola (mesma regra do `iv_atm_30d`, spec §6.4). Desempate pelo menor `t`.
+    """
+    valid = sorted(
+        (t, value)
+        for t, value in points
+        if math.isfinite(t) and t > 0.0 and math.isfinite(value)
+    )
+    front = None
+    for item in valid:
+        if item[0] <= target_t:
+            front = item
+    back = next((item for item in valid if item[0] >= target_t), None)
+    if front is None or back is None:
+        return None
+    return front, back
+
+
+def _linear_at(
+    front: tuple[float, float],
+    back: tuple[float, float],
+    target_t: float,
+) -> float:
+    span = back[0] - front[0]
+    if span <= 0.0:
+        return front[1]
+    return front[1] + (back[1] - front[1]) * ((target_t - front[0]) / span)
+
+
+def forward_at_30d(
+    forwards: Iterable[tuple[float, float]],
+    spot: float,
+    target_t: float = TARGET_T_30D,
+) -> float | None:
+    """Forward a 30 dias úteis: `ln(F/S)` linear em `t` entre os vencimentos em volta.
+
+    `ln(F/S) = (r − q)·t` com carry constante é linear em `t`; interpolar o log
+    (e não `F`) preserva essa forma. Entradas `(t, F)` em anos úteis e na mesma
+    unidade do `spot`; saída na unidade do `spot`. `None` sem bracket (ADR-053).
+    """
+    if not math.isfinite(spot) or spot <= 0.0:
+        return None
+    logs = [(t, math.log(f / spot)) for t, f in forwards if f is not None and f > 0.0]
+    pair = bracket_30d(logs, target_t)
+    if pair is None:
+        return None
+    return spot * math.exp(_linear_at(pair[0], pair[1], target_t))
+
+
+def expected_move_at_30d(
+    moves: Iterable[tuple[float, float]],
+    target_t: float = TARGET_T_30D,
+) -> float | None:
+    """Expected move a 30 dias úteis: `em²` linear em `t` entre os vencimentos em volta.
+
+    `em ≈ σ·√t`, então `em²` é variância total — a mesma interpolação do
+    `iv_atm_30d`. Entradas `(t, em)` com `em` em fração do spot; saída em fração.
+    `None` sem bracket (ADR-053).
+    """
+    squares = [(t, em * em) for t, em in moves if em is not None and em >= 0.0]
+    pair = bracket_30d(squares, target_t)
+    if pair is None:
+        return None
+    w = _linear_at(pair[0], pair[1], target_t)
+    if not math.isfinite(w) or w < 0.0:
+        return None
+    return math.sqrt(w)
+
+
 def implied_div_yield_pct(
     log_df: float | None,
     forward: float | None,
@@ -280,6 +360,7 @@ def classify(
 
 
 __all__ = [
+    "FLAG_NO_30D_BRACKET",
     "FLAG_NO_90D",
     "FLAG_NO_ATM_IV",
     "FLAG_NO_FORWARD",
@@ -289,7 +370,10 @@ __all__ = [
     "TARGET_T_30D",
     "TARGET_T_90D",
     "UnderlyingMetrics",
+    "bracket_30d",
     "classify",
+    "expected_move_at_30d",
+    "forward_at_30d",
     "days_to_liquidate",
     "earnings_before_expiry",
     "expected_move_cents",

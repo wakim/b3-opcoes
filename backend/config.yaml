@@ -15,7 +15,10 @@ log_level: INFO
 # de variação de F/forward. greeks_black76 recebe F em centavos e devolvia γ por
 # centavo; a fronteira de métricas multiplica por 100 (θ/ν/ρ já dividiam por 100).
 # Conferido em 32 séries B3Lab: externo/API = 100 exatamente.
-model_version: 3
+# v4 (28/11/2026): exp_move_1s_30d, forward_30d e implied_div_yield_30d passam a
+# ser levados a 30/252 entre os vencimentos em volta (eram do 1º vencimento cru,
+# contra a spec §6.10). Ver ADR-053.
+model_version: 4
 
 # Fonte do COTAHIST (medido em 22/11/2026 — ver AGENTS.md):
 # o padrão antigo arquivos.b3.com.br/dados/pregao/cotahist/ está morto (404);

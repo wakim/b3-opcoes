@@ -73,6 +73,7 @@ from b3o.metrics.series import (
     series_metrics,
 )
 from b3o.metrics.underlying import (
+    FLAG_NO_30D_BRACKET,
     FLAG_NO_90D,
     FLAG_NO_FORWARD,
     FLAG_OI_UNAVAILABLE,
@@ -82,7 +83,9 @@ from b3o.metrics.underlying import (
     UnderlyingMetrics,
     days_to_liquidate,
     earnings_before_expiry,
+    expected_move_at_30d,
     expected_move_cents,
+    forward_at_30d,
     implied_div_yield_pct,
     interpolate_variance_iv,
     nearest_expiry,
@@ -854,12 +857,31 @@ class _Context:
         )
 
         front_maturity = skew_maturity
-        forward_front = forwards.get(front_maturity) if front_maturity else None
-        t_front = t_by_maturity.get(front_maturity, 0.0) if front_maturity else 0.0
-        log_df_front = log_df_by_maturity.get(front_maturity) if front_maturity else None
-        straddle = _atm_straddle(by_maturity.get(front_maturity, []), forward_front, spot)
-        exp_move = expected_move_cents(straddle, spot)
-        implied_div = implied_div_yield_pct(log_df_front, forward_front, spot, t_front)
+        # ADR-053: os três campos `_30d` são levados a 30/252 entre os dois
+        # vencimentos em volta (como o `iv_atm_30d`), nunca o 1º vencimento cru.
+        forward_points = [
+            (t_by_maturity[maturity], forwards[maturity])
+            for maturity in maturities
+            if t_by_maturity[maturity] > 0.0 and forwards[maturity] is not None
+        ]
+        forward_30 = forward_at_30d(forward_points, spot)
+        move_points: list[tuple[float, float]] = []
+        for maturity in maturities:
+            t_value = t_by_maturity[maturity]
+            if t_value <= 0.0:
+                continue
+            straddle = _atm_straddle(
+                by_maturity.get(maturity, []), forwards[maturity], spot
+            )
+            move = expected_move_cents(straddle, spot)
+            if move is not None:
+                move_points.append((t_value, move))
+        exp_move = expected_move_at_30d(move_points)
+        log_df_30 = (
+            log_df_interp_or_none(round(TARGET_T_30D * 252), curve) if curve else None
+        )
+        implied_div = implied_div_yield_pct(log_df_30, forward_30, spot, TARGET_T_30D)
+        no_30d_bracket = forward_30 is None or exp_move is None
 
         rv, rv_flags = self._realized_vol(refdate, underlying, dividends)
 
@@ -925,6 +947,8 @@ class _Context:
         flags.update(skew.flags)
         if slope is None:
             flags.add(FLAG_NO_90D)
+        if no_30d_bracket:
+            flags.add(FLAG_NO_30D_BRACKET)
         if earnings_flag:
             flags.add("earnings_before_expiry")
         if underlying not in self.earnings_tickers:
@@ -974,7 +998,7 @@ class _Context:
             exp_move_1s_30d=exp_move,
             implied_div_yield_30d=implied_div,
             days_to_liquidate=liquidation,
-            forward_30d=forward_front,
+            forward_30d=forward_30,
             rate_source=rate_source,
             signal_class=label,
             flags=sorted(flags),

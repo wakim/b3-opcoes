@@ -764,6 +764,26 @@ def expected_move_1s(straddle_brl: float | None, spot: float) -> MetricResult[fl
     return _ok(EXP_MOVE_FACTOR * straddle_brl / spot)
 
 
+def expected_move_from_atm_iv(iv_pct: float | None, t: float) -> MetricResult[float]:
+    """``1,25 × straddle_ATM(σ, t) / S`` com o straddle teórico em ``K = F``.
+
+    Verbete: ``docs/glossario.md`` → "Expected move" (ADR-053). O straddle ATM
+    por Black-76 em ``K = F`` é ``2·DF·F·(2N(σ√t/2) − 1)``; com ``DF·F/S = 1``
+    (carry ignorado, flag no chamador) o expected move é
+    ``1,25 · 2 · (2N(σ√t/2) − 1)``. Entrada: IV em % a.a., ``t`` em anos úteis;
+    saída: fração do spot. Serve para levar a IV ATM 30d externa ao mesmo
+    construto do campo interno, quando a captura não tem vencimentos em volta
+    de 30 du para interpolar o straddle.
+    """
+    if iv_pct is None or not math.isfinite(iv_pct) or iv_pct < 0.0:
+        return _none(FLAG_INVALID_INPUT)
+    if not math.isfinite(t) or t <= 0.0:
+        return _none(FLAG_INVALID_INPUT)
+    half = (iv_pct / 100.0) * math.sqrt(t) / 2.0
+    call_over_f = math.erf(half / math.sqrt(2.0))  # 2N(x) − 1 = erf(x/√2)
+    return _ok(EXP_MOVE_FACTOR * 2.0 * call_over_f)
+
+
 # ---------------------------------------------------------------------------
 # 10. P&L e exposição delta — verbetes "Payoff no vencimento", "P&L da
 #     posição", "Exposição delta em reais", "Gregas agregadas da estrutura"

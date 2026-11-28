@@ -722,6 +722,7 @@ export const PRESENTATION = {
       invalid_quote: v('invalid_quote', 'cotação inválida'),
       duplicate_strike: v('duplicate_strike', 'preço de exercício repetido'),
       no_90d: v('no_90d', 'sem janela de 90 pregões'),
+      no_30d_bracket: v('no_30d_bracket', 'sem vencimentos em volta de 30 dias úteis'),
       oi_unavailable: v('oi_unavailable', 'posições em aberto indisponíveis'),
       volume_unavailable: v('volume_unavailable', 'volume indisponível'),
       iv_inconsistent_input: v('iv_inconsistent_input', 'preço da opção inconsistente'),

@@ -70,6 +70,8 @@ O gráfico "Fechamento do papel" mostra esse número pregão a pregão. Desdobra
 
 **No painel** — `±7,0% até 18/dez` com spot 41,18 significa que o mercado precifica a ação entre ~38,3 e ~44,1 no vencimento, com ~68% de confiança (1 desvio).
 
+**Expected move 30d do papel** — `exp_move_1s_30d` é o movimento de 1 desvio em **30 dias úteis**, não até o primeiro vencimento: o `1,25 × straddle/spot` de cada vencimento é elevado ao quadrado (variância total), interpolado em `t` entre os dois vencimentos em volta de 30 du e tirada a raiz. Sem vencimento dos dois lados é `null` + `no_30d_bracket` (ADR-053). O número por vencimento continua na estrutura a termo.
+
 ## Delta
 
 **O que é** — quanto o prêmio muda para cada R$ 1 de variação na ação. Também é a exposição equivalente: uma put com Δ −0,41 se move como 41% de uma ação vendida.
@@ -384,6 +386,8 @@ O gráfico "Fechamento do papel" mostra esse número pregão a pregão. Desdobra
 
 **No painel** — usado internamente para calcular IV sem depender de um chute de dividendo.
 
+**Forward 30d do papel** — `forward_30d` é levado a 30 dias úteis interpolando `ln(F/S)` em `t` entre os dois vencimentos em volta de 30 du; sem vencimento dos dois lados é `null` + `no_30d_bracket` (ADR-053). Não é o forward do primeiro vencimento.
+
 **No MCP (F3)** — a estrutura a termo devolve `forward_brl` por vencimento e `forward_method`: `crossing` (strike onde call = put), `ols` (ajuste na banda OTM) ou `none` (nenhum par honesto → `null`). O forward é reconstruído na leitura a partir dos `mid`s gravados, com a mesma função pura do pipeline; nenhuma métrica é reescrita.
 
 ## Fator de desconto (DF)
@@ -401,6 +405,8 @@ O gráfico "Fechamento do papel" mostra esse número pregão a pregão. Desdobra
 **Erro comum** — usar o dividendo anunciado como se fosse o esperado. O que move a opção é o que o mercado **acredita**, e isso inclui proventos ainda não anunciados.
 
 **No painel** — comparado com o Δstrike (que dá o dividendo **realizado**), mostra quando o mercado espera mais provento do que já aconteceu.
+
+**Prazo** — `implied_div_yield_30d` usa o forward a 30 dias úteis (verbete "Forward implícito") e a taxa da curva no nó de 30 du, com `T = 30/252` (ADR-053). Pode sair negativo: forward acima do carry da curva (custo de aluguel, fechamentos em horários diferentes) — é o número medido, não erro.
 
 ## Estilo: americana × europeia
 
